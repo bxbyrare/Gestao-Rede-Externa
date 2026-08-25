@@ -918,7 +918,7 @@ def api_login():
             session['username'] = user['username']
             session['role'] = user['role']
             log_action(user['id'], user['username'], "Efetuou login no sistema Claro Gestão Rede Externa.")
-            return jsonify({"user": {"id": user['id'], "username": user['username'], "role": user['role']}})
+            return jsonify({"user": {"id": user['id'], "username": user['username'], "role": user['role'], "company": get_user_company(user['id'])}})
 
         time.sleep(1.5)
         return jsonify({"error": "Usuário ou senha incorretos."}), 401
@@ -932,11 +932,27 @@ def api_logout():
         session.clear()
     return jsonify({"success": True})
 
+def get_user_company(user_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.company FROM users u
+            LEFT JOIN technicians t ON u.tech_id = t.id
+            WHERE u.id = %s;
+        """, (user_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return (row['company'].strip() if row and row.get('company') else None)
+    except Exception:
+        return None
+
 @app.route('/api/auth/me', methods=['GET'])
 def api_auth_me():
     if 'user_id' not in session:
         return jsonify({"error": "Não autenticado."}), 401
-    return jsonify({"user": {"id": session['user_id'], "username": session['username'], "role": session['role']}})
+    return jsonify({"user": {"id": session['user_id'], "username": session['username'], "role": session['role'], "company": get_user_company(session['user_id'])}})
 
 # --------------------------------------------------------------------------
 # HONEYPOT / DECOY BAIT ROUTES FOR SCANNER TRAPPING
