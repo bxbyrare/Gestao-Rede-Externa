@@ -1,0 +1,31 @@
+# Environment variables and secrets
+.env
+.env.local
+*.env
+*.pem
+*.key
+
+# Python cache & build files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Database dumps and local storage
+*.db
+*.sqlite
+*.sqlite3
+
+# System Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db

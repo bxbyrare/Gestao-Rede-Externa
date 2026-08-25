@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ form.title }} - Claro Formulários</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #f4f5f8;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1e293b;
+      padding-bottom: 60px;
+    }
+    .banner-container {
+      width: 100%;
+      max-width: 640px;
+      margin: 20px auto 0 auto;
+      border-radius: 12px 12px 0 0;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      background: linear-gradient(135deg, #ee2c24 0%, #ff4438 100%);
+      text-align: center;
+      padding: 24px 16px;
+    }
+    .banner-logo {
+      max-height: 48px;
+      width: auto;
+    }
+    .form-wrapper {
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 0 12px;
+    }
+    .form-card {
+      background-color: #ffffff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      border-top: 6px solid #ee2c24;
+    }
+    .question-card {
+      background-color: #ffffff;
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-top: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e2e8f0;
+    }
+    .question-title {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .required-star { color: #dc2626; }
+    .question-subtitle {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    .text-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .text-input:focus {
+      border-color: #ee2c24;
+      background-color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(204, 29, 21, 0.12);
+    }
+    .options-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: #334155;
+      cursor: pointer;
+      padding: 6px 4px;
+      border-radius: 6px;
+      user-select: none;
+    }
+    .option-item:hover {
+      background-color: #f1f5f9;
+    }
+    .option-item input[type="radio"],
+    .option-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #ee2c24;
+      cursor: pointer;
+    }
+    .btn-submit {
+      width: 100%;
+      background-color: #ee2c24;
+      color: #ffffff;
+      border: none;
+      padding: 14px 24px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 20px;
+      box-shadow: 0 4px 12px rgba(204, 29, 21, 0.25);
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+    .btn-submit:hover {
+      background-color: #c81f18;
+    }
+    .btn-submit:active {
+      transform: scale(0.99);
+    }
+    .success-container {
+      display: none;
+      text-align: center;
+      padding: 40px 20px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      margin-top: 20px;
+      border-top: 6px solid #22c55e;
+    }
+    .success-icon {
+      width: 64px;
+      height: 64px;
+      color: #22c55e;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="form-wrapper">
+    <!-- Banner Header -->
+    <div class="banner-container">
+      <svg width="150" height="50" viewBox="0 0 150 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <text x="10" y="38" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-weight="800" font-size="38" fill="#ffffff" letter-spacing="-1.5">Claro</text>
+        <circle cx="120" cy="14" r="3" fill="#ffffff"/>
+        <rect x="126" y="12" width="9" height="3" rx="1.5" fill="#ffffff"/>
+        <rect x="124" y="5" width="8" height="3" rx="1.5" fill="#ffffff" transform="rotate(-35 124 5)"/>
+        <rect x="119" y="2" width="3" height="7" rx="1.5" fill="#ffffff"/>
+      </svg>
+    </div>
+
+    <!-- Title Card -->
+    <div class="form-card">
+      <h1 style="font-size: 1.6rem; font-weight: 800; color: #0f172a; margin-bottom: 6px;">{{ form.title }}</h1>
+      <p style="font-size: 0.92rem; color: #64748b; line-height: 1.5;">{{ form.description or 'Preencha as informações solicitadas abaixo.' }}</p>
+      <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #f1f5f9; font-size: 0.78rem; color: #dc2626; font-weight: 600;">
+        * Indica um campo obrigatório
+      </div>
+    </div>
+
+    <!-- Success Screen -->
+    <div id="success-screen" class="success-container">
+      <svg class="success-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <h2 style="font-size: 1.4rem; font-weight: 800; color: #0f172a; margin-bottom: 8px;">Sua resposta foi registrada com sucesso!</h2>
+      <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 20px;">Obrigado por enviar as informações. O relatório foi registrado no sistema Claro Gestão.</p>
+      <button onclick="window.location.reload();" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">Enviar outra resposta</button>
+    </div>
+
+    <!-- Main Form -->
+    <form id="public-form" style="display: block;">
+      <input type="hidden" name="form_slug" value="{{ form.slug }}">
+
+      <!-- 1. E-mail -->
+      <div class="question-card">
+        <div class="question-title">E-mail <span class="required-star">*</span></div>
+        <input type="email" name="email" class="text-input" placeholder="Seu e-mail de contato" required>
+      </div>
+
+      <!-- 2. Data -->
+      <div class="question-card">
+        <div class="question-title">Data <span class="required-star">*</span></div>
+        <input type="date" name="date" class="text-input" required>
+      </div>
+
+      <!-- 3. REGIÃO -->
+      <div class="question-card">
+        <div class="question-title">REGIÃO</div>
+        <div class="options-list">
+          <label class="option-item"><input type="checkbox" name="region" value="METROPOLITANA"> METROPOLITANA</label>
+          <label class="option-item"><input type="checkbox" name="region" value="LAGOS"> LAGOS</label>
+          <label class="option-item"><input type="checkbox" name="region" value="NORTE FLUMINENSE"> NORTE FLUMINENSE</label>
+          <label class="option-item"><input type="checkbox" name="region" value="REGIÃO DOS LAGOS"> REGIÃO DOS LAGOS</label>
+          <label class="option-item"><input type="checkbox" name="region" value="SUL FLUMINENSE"> SUL FLUMINENSE</label>
+          <label class="option-item"><input type="checkbox" name="region" value="ES"> ES</label>
+          <label class="option-item"><input type="checkbox" name="region" value="CENTRO ZONA SUL"> CENTRO ZONA SUL</label>
+          <label class="option-item"><input type="checkbox" name="region" value="NORTE 1"> NORTE 1</label>
+          <label class="option-item"><input type="checkbox" name="region" value="NORTE 2"> NORTE 2</label>
+          <label class="option-item"><input type="checkbox" name="region" value="NORTE 3"> NORTE 3</label>
+          <label class="option-item"><input type="checkbox" name="region" value="ZONA OESTE"> ZONA OESTE</label>
+          <label class="option-item"><input type="checkbox" name="region" value="BAIXADA FLUMINENSE"> BAIXADA FLUMINENSE</label>
+          <label class="option-item"><input type="checkbox" name="region" value="REGIÃO SERRANA"> REGIÃO SERRANA</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+            <input type="text" name="region_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique outra região...">
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Motivo do inventário -->
+      <div class="question-card">
+        <div class="question-title">Motivo do inventário <span class="required-star">*</span></div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="reason" value="Inventário de carro" required> Inventário de carro</label>
+          <label class="option-item"><input type="radio" name="reason" value="Conserto ou Reparo"> Conserto ou Reparo</label>
+          <label class="option-item"><input type="radio" name="reason" value="Transporte do equipamento entre bases"> Transporte do equipamento entre bases</label>
+          <label class="option-item"><input type="radio" name="reason" value="Organização entre carros"> Organização entre carros</label>
+          <label class="option-item"><input type="radio" name="reason" value="Devolução de empréstimo"> Devolução de empréstimo</label>
+          <label class="option-item"><input type="radio" name="reason" value="Furto de equipamento ou Roubo"> Furto de equipamento ou Roubo</label>
+          <label class="option-item"><input type="radio" name="reason" value="Equipamento armazenado na base"> Equipamento armazenado na base</label>
+          <label class="option-item"><input type="radio" name="reason" value="Reposição de furto"> Reposição de furto</label>
+          <label class="option-item"><input type="radio" name="reason" value="Transferência de Região de MTP ~ NOF"> Transferência de Região de MTP ~ NOF</label>
+          <label class="option-item"><input type="radio" name="reason" value="Renovação de Senha - Mercosat"> Renovação de Senha - Mercosat</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <label class="option-item"><input type="radio" name="reason" value="Outro"></label>
+            <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+            <input type="text" name="reason_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique outro motivo...">
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Técnico -->
+      <div class="question-card">
+        <div class="question-title">Técnico <span class="required-star">*</span></div>
+        <input type="text" name="technician" class="text-input" placeholder="Nome completo do técnico" required>
+      </div>
+
+      <!-- 6. Carro ou Local -->
+      <div class="question-card">
+        <div class="question-title">Carro ou Local <span class="required-star">*</span></div>
+        <input type="text" name="vehicle_location" class="text-input" placeholder="Identificação do veículo ou base" required>
+      </div>
+
+      <!-- 7. Quantidade de escada no carro -->
+      <div class="question-card">
+        <div class="question-title">Quantidade de escada no carro</div>
+        <div class="options-list">
+          <label class="option-item"><input type="checkbox" name="ladder_qty" value="Uma Escada de 3m - ESCADA 19 DEGRAUS"> Uma Escada de 3m - ESCADA 19 DEGRAUS</label>
+          <label class="option-item"><input type="checkbox" name="ladder_qty" value="Uma Escada de 4,5m - ESCADA 23 DEGRAUS"> Uma Escada de 4,5m - ESCADA 23 DEGRAUS</label>
+          <label class="option-item"><input type="checkbox" name="ladder_qty" value="Uma Escada de 3m - ESCADA 19 DEGRAUS e Uma Escada de 3,6m - ESCADA 23 DEGRAUS"> Uma Escada de 3m (19 degraus) + Uma Escada de 3,6m (23 degraus)</label>
+          <label class="option-item"><input type="checkbox" name="ladder_qty" value="Duas escadas de 3m - ESCADA 19 DEGRAUS"> Duas escadas de 3m - ESCADA 19 DEGRAUS</label>
+          <label class="option-item"><input type="checkbox" name="ladder_qty" value="Duas escadas de 4,5m - ESCADA 23 DEGRAUS"> Duas escadas de 4,5m - ESCADA 23 DEGRAUS</label>
+          <label class="option-item"><input type="checkbox" name="ladder_qty" value="Não tem escada"> Não tem escada</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+            <input type="text" name="ladder_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique...">
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Carro tem inversor ? -->
+      <div class="question-card">
+        <div class="question-title">Carro tem inversor ?</div>
+        <div class="options-list">
+          <label class="option-item"><input type="checkbox" name="inverter" value="SIM , inversor compacto"> SIM , inversor compacto</label>
+          <label class="option-item"><input type="checkbox" name="inverter" value="SIM , inversor padrão NET"> SIM , inversor padrão NET</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+            <input type="text" name="inverter_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique...">
+          </div>
+        </div>
+      </div>
+
+      <!-- 9. Barraca para fusão -->
+      <div class="question-card">
+        <div class="question-title">Barraca para fusão</div>
+        <div class="options-list">
+          <label class="option-item"><input type="checkbox" name="tent" value="Carro tem barraca para fusão"> Carro tem barraca para fusão</label>
+          <label class="option-item"><input type="checkbox" name="tent" value="Carro não tem barraca para fusão"> Carro não tem barraca para fusão</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+            <input type="text" name="tent_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique...">
+          </div>
+        </div>
+      </div>
+
+      <!-- 10. Carro tem mesa e duas cadeiras -->
+      <div class="question-card">
+        <div class="question-title">Carro tem mesa e duas cadeiras</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="table_chairs" value="SIM"> SIM</label>
+          <label class="option-item"><input type="radio" name="table_chairs" value="NÃO"> NÃO</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <label class="option-item"><input type="radio" name="table_chairs" value="Outro"></label>
+            <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+            <input type="text" name="table_chairs_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique...">
+          </div>
+        </div>
+      </div>
+
+      <!-- 11. Máquina de fusão -->
+      <div class="question-card">
+        <div class="question-title">Máquina de fusão</div>
+        <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE (Ex: Fitel 8417 - 33760 - MERCOSAT)</div>
+        <input type="text" name="fusion_machine" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 12. Proprietário da Máquina de fusão -->
+      <div class="question-card">
+        <div class="question-title">Proprietário da Máquina de fusão</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="fusion_owner" value="Claro"> Claro</label>
+          <label class="option-item"><input type="radio" name="fusion_owner" value="Mercosat"> Mercosat</label>
+          <label class="option-item"><input type="radio" name="fusion_owner" value="FFA"> FFA</label>
+          <label class="option-item"><input type="radio" name="fusion_owner" value="Procisa"> Procisa</label>
+        </div>
+      </div>
+
+      <!-- 13. CLIVADOR -->
+      <div class="question-card">
+        <div class="question-title">CLIVADOR</div>
+        <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE (Ex: SUMITOMO FC6S - 33760 - MERCOSAT)</div>
+        <input type="text" name="cleaver" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 14. Proprietário do Clivador -->
+      <div class="question-card">
+        <div class="question-title">Proprietário do Clivador</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="cleaver_owner" value="Claro"> Claro</label>
+          <label class="option-item"><input type="radio" name="cleaver_owner" value="Mercosat"> Mercosat</label>
+          <label class="option-item"><input type="radio" name="cleaver_owner" value="FFA"> FFA</label>
+          <label class="option-item"><input type="radio" name="cleaver_owner" value="Procisa"> Procisa</label>
+        </div>
+      </div>
+
+      <!-- 15. Carro tem alicate decapador? -->
+      <div class="question-card">
+        <div class="question-title">Carro tem alicate decapador?</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="stripper_pliers" value="Sim , bom estado."> Sim , bom estado.</label>
+          <label class="option-item"><input type="radio" name="stripper_pliers" value="Sim , precário."> Sim , precário.</label>
+          <label class="option-item"><input type="radio" name="stripper_pliers" value="NÃO TEM"> NÃO TEM</label>
+        </div>
+      </div>
+
+      <!-- 16. Carro tem luz visivel? -->
+      <div class="question-card">
+        <div class="question-title">Carro tem luz visivel?</div>
+        <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
+        <input type="text" name="vfl_light" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 17. Proprietário da luz visivel -->
+      <div class="question-card">
+        <div class="question-title">Proprietário da luz visivel</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="vfl_owner" value="Claro"> Claro</label>
+          <label class="option-item"><input type="radio" name="vfl_owner" value="Mercosat"> Mercosat</label>
+          <label class="option-item"><input type="radio" name="vfl_owner" value="FFA"> FFA</label>
+          <label class="option-item"><input type="radio" name="vfl_owner" value="Procisa"> Procisa</label>
+        </div>
+      </div>
+
+      <!-- 18. OTDR -->
+      <div class="question-card">
+        <div class="question-title">OTDR</div>
+        <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
+        <input type="text" name="otdr" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 19. Proprietário do OTDR -->
+      <div class="question-card">
+        <div class="question-title">Proprietário do OTDR</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="otdr_owner" value="Claro"> Claro</label>
+          <label class="option-item"><input type="radio" name="otdr_owner" value="Mercosat"> Mercosat</label>
+          <label class="option-item"><input type="radio" name="otdr_owner" value="FFA"> FFA</label>
+          <label class="option-item"><input type="radio" name="otdr_owner" value="Procisa"> Procisa</label>
+        </div>
+      </div>
+
+      <!-- 20. POWER METER -->
+      <div class="question-card">
+        <div class="question-title">POWER METER</div>
+        <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
+        <input type="text" name="power_meter" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 21. Proprietário do Power Meter -->
+      <div class="question-card">
+        <div class="question-title">Proprietário do Power Meter</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="power_meter_owner" value="Claro"> Claro</label>
+          <label class="option-item"><input type="radio" name="power_meter_owner" value="Mercosat"> Mercosat</label>
+          <label class="option-item"><input type="radio" name="power_meter_owner" value="FFA"> FFA</label>
+          <label class="option-item"><input type="radio" name="power_meter_owner" value="Procisa"> Procisa</label>
+        </div>
+      </div>
+
+      <!-- 22. Roletador -->
+      <div class="question-card">
+        <div class="question-title">Roletador</div>
+        <div class="options-list">
+          <label class="option-item"><input type="checkbox" name="slitter" value="Carro tem roletador"> Carro tem roletador</label>
+          <label class="option-item"><input type="checkbox" name="slitter" value="Carro não tem roletador"> Carro não tem roletador</label>
+        </div>
+      </div>
+
+      <!-- 23. Testador de Fibra ativa -->
+      <div class="question-card">
+        <div class="question-title">Testador de Fibra ativa</div>
+        <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
+        <input type="text" name="active_fiber_tester" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 24. Proprietário do Testador de Fibra Ativa -->
+      <div class="question-card">
+        <div class="question-title">Proprietário do Testador de Fibra Ativa</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="active_fiber_tester_owner" value="Claro"> Claro</label>
+          <label class="option-item"><input type="radio" name="active_fiber_tester_owner" value="Mercosat"> Mercosat</label>
+          <label class="option-item"><input type="radio" name="active_fiber_tester_owner" value="FFA"> FFA</label>
+          <label class="option-item"><input type="radio" name="active_fiber_tester_owner" value="Procisa"> Procisa</label>
+        </div>
+      </div>
+
+      <!-- 25. Medidor - Marca / Modelo /Número de Serie -->
+      <div class="question-card">
+        <div class="question-title">Medidor - Marca / Modelo /Número de Serie</div>
+        <input type="text" name="meter_details" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 26. Etiquetadora -->
+      <div class="question-card">
+        <div class="question-title">Etiquetadora</div>
+        <div class="options-list">
+          <label class="option-item"><input type="radio" name="label_maker" value="Sim"> Sim</label>
+          <label class="option-item"><input type="radio" name="label_maker" value="Carro sem etiquetadora"> Carro sem etiquetadora</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <label class="option-item"><input type="radio" name="label_maker" value="Outro"></label>
+            <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+            <input type="text" name="label_maker_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique...">
+          </div>
+        </div>
+      </div>
+
+      <!-- 27. O que precisamos comprar ou providenciar? -->
+      <div class="question-card">
+        <div class="question-title">O que precisamos comprar ou providenciar?</div>
+        <input type="text" name="items_to_buy" class="text-input" placeholder="Sua resposta">
+      </div>
+
+      <!-- 28. Foto importante quando solicitado -->
+      <div class="question-card">
+        <div class="question-title">Foto importante quando solicitado</div>
+        <div class="question-subtitle">Faça upload ou tire foto dos equipamentos (até 10 fotos).</div>
+        <input type="file" name="photos" id="photos-input" multiple accept="image/*" class="text-input" style="padding: 10px; cursor: pointer;">
+      </div>
+
+      <!-- 29. Observação : -->
+      <div class="question-card">
+        <div class="question-title">Observação :</div>
+        <textarea name="notes" class="text-input" rows="3" placeholder="Sua resposta"></textarea>
+      </div>
+
+      <!-- Submit Button -->
+      <button type="submit" id="submit-btn" class="btn-submit">Enviar Resposta</button>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('public-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+
+      const formData = new FormData(this);
+      const data = {};
+
+      formData.forEach((value, key) => {
+        if (data[key]) {
+          if (!Array.isArray(data[key])) {
+            data[key] = [data[key]];
+          }
+          data[key].push(value);
+        } else {
+          data[key] = value;
+        }
+      });
+
+      const slug = "{{ form.slug }}";
+
+      fetch('/f/' + slug + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.error) {
+          alert('Erro ao enviar: ' + resData.error);
+          btn.disabled = false;
+          btn.textContent = 'Enviar Resposta';
+        } else {
+          document.getElementById('public-form').style.display = 'none';
+          document.getElementById('success-screen').style.display = 'block';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      })
+      .catch(err => {
+        console.error('Erro na submissão:', err);
+        alert('Ocorreu um erro ao enviar sua resposta. Tente novamente.');
+        btn.disabled = false;
+        btn.textContent = 'Enviar Resposta';
+      });
+    });
+  </script>
+</body>
+</html>

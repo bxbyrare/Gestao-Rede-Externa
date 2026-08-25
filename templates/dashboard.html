@@ -1,0 +1,2879 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão Rede Externa - Claro Dashboard</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style_v2.css') }}?v=6.3.0">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body class="dashboard-body">
+
+  <!-- ==========================================================================
+       HEADER
+       ========================================================================== -->
+  <header class="dash-header">
+    <!-- Hamburger button (mobile only) -->
+    <button class="sidebar-hamburger" id="sidebar-hamburger" aria-label="Abrir menu" onclick="toggleSidebar()">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="header-logo u2-flex-36">
+      <img src="{{ url_for('static', filename='img/logo_flat.png') }}" alt="Claro" style="height: 26px;">
+      <h2 class="header-title">Gestão <span style="font-weight: 800; color: var(--primary); text-transform: uppercase;">Rede Externa</span></h2>
+    </div>
+    <div class="user-profile">
+      <div class="profile-details header-profile-text">
+        <span style="font-weight: 600; color: #ffffff; font-size: 0.85rem; display: block; line-height: 1.2;">{{ username }}</span>
+        <span class="profile-role" style="font-weight: 500; color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px;">{{ role }}</span>
+      </div>
+      <a href="{{ url_for('logout') }}" class="btn-logout" title="Sair do sistema">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+      </a>
+    </div>
+  </header>
+  <!-- Sidebar overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+  <div class="dash-layout">
+    <!-- ==========================================================================
+         SIDEBAR
+         ========================================================================== -->
+    <aside class="dash-sidebar" id="dash-sidebar">
+      <button class="sidebar-close-btn" onclick="toggleSidebar()" aria-label="Fechar menu">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>      <ul class="sidebar-menu">
+        <li>
+          <button class="menu-btn active" data-tab="favorites-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+            </svg>
+            <span>Favoritos</span>
+          </button>
+        </li>
+        {% if username|lower == 'alexandre.candido' %}
+        <li>
+          <button class="menu-btn" data-tab="workspace-tab" title="Área de Trabalho Exclusiva do Administrador">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            <span>Área de Trabalho</span>
+          </button>
+        </li>
+        {% endif %}
+        <li>
+          <button class="menu-btn" data-tab="pessoas-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5 5 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+            <span>Pessoas</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="veiculos-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10M21 16V10a2 2 0 00-2-2h-5m-1 8h7"/>
+            </svg>
+            <span>Veículos</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="buscador-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <span>Buscador</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="mapa-eventos-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+            </svg>
+            <span>Mapa de Eventos</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="financial-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Financeiro</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="escala-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <span>Escala</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="evaluation-tab" title="Avaliação Técnica de Colaboradores">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+            </svg>
+            <span>Avaliação</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="inventario-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+            </svg>
+            <span>Inventário</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="projects-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+            </svg>
+            <span>Projetos</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="forms-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+            </svg>
+            <span>Formulários</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="rotas-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span>Rotas</span>
+          </button>
+        </li>
+        <li>
+          <button class="menu-btn" data-tab="metrics-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z"/>
+            </svg>
+            <span>Indicadores</span>
+          </button>
+        </li>
+        {% if role in ['Coordenador', 'Supervisor'] %}
+        <li>
+          <button class="menu-btn" data-tab="data-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span>Gerenciamento</span>
+          </button>
+        </li>
+        {% endif %}
+      </ul>
+    </aside>
+
+    <!-- ==========================================================================
+         MAIN CONTENT AREA
+         ========================================================================== -->
+    <main class="dash-content">
+
+      <!-- ==========================================================================
+           TAB 1: PESSOAS (TECNICOS)
+           ========================================================================== -->
+      <section class="tab-pane" id="pessoas-tab">
+        <div class="filter-bar">
+          <div class="filter-inputs">
+            <div class="search-input-wrapper">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="tech-search" placeholder="Buscar por nome, CPF ou área...">
+            </div>
+          </div>
+          <div class="u-flex-6">
+            <button class="btn btn-outline" id="btn-export-techs">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gy-14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Exportar CSV
+            </button>
+            <button class="btn btn-outline" id="btn-bulk-techs">+ Lote</button>
+            <button class="btn btn-primary" id="btn-open-tech-modal">+ Cadastrar Técnico</button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nome Completo</th>
+                <th>CPF</th>
+                <th>Empresa</th>
+                <th>Telefone</th>
+                <th>Cargo</th>
+                <th>Área de Atuação</th>
+                <th>Tamanho Uniformes</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="techs-table-body">
+              <!-- Content loaded via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB 2: VEÍCULOS
+           ========================================================================== -->
+      <section class="tab-pane" id="veiculos-tab">
+        <div class="filter-bar">
+          <div class="filter-inputs">
+            <div class="search-input-wrapper">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="vehicle-search" placeholder="Buscar por placa, modelo, condutor ou responsável...">
+            </div>
+          </div>
+          <div class="u-flex-6">
+            <button class="btn btn-outline" id="btn-export-vehicles">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gy-14">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Exportar CSV
+            </button>
+            <button class="btn btn-outline" id="btn-bulk-vehicles">+ Lote</button>
+            <button class="btn btn-primary" id="btn-open-vehicle-modal">+ Adicionar Veículo</button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Placa</th>
+                <th>Modelo / Tipo</th>
+                <th>Sub-Classe</th>
+                <th>Área / Base</th>
+                <th>Setor</th>
+                <th>Condutor Dia</th>
+                <th>Condutor Tarde</th>
+                <th>Condutor Madrugada</th>
+                <th>Equipamentos</th>
+                <th>Ticket Car</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="vehicles-table-body">
+              <!-- Content loaded via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: BUSCADOR DE FALHAS
+           ========================================================================== -->
+      <section class="tab-pane" id="buscador-tab">
+        <div class="section-header-flex gx-18">
+          <div>
+            <h3 class="u2-font-35">Buscador de Falhas</h3>
+            <p class="gx-11">Consultas analíticas de dados e indicadores operacionais (RAL, REC, HFC, GPON)</p>
+          </div>
+        </div>
+
+        <!-- Topic Selection Header Buttons -->
+        <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+          <button class="sub-tab-btn btn-buscador-topic active" data-topic="RAL" style="padding: 10px 28px; font-weight: 800; border-radius: 8px; cursor: pointer; font-size: 0.95rem; background: #23232b; color: #ffffff; border: 1px solid var(--border);">RAL</button>
+          <button class="sub-tab-btn btn-buscador-topic gx-33" data-topic="REC">REC</button>
+          <button class="sub-tab-btn btn-buscador-topic gx-33" data-topic="HFC">HFC</button>
+          <button class="sub-tab-btn btn-buscador-topic gx-33" data-topic="GPON">GPON</button>
+        </div>
+
+        <!-- Update Info Status Box & Actions -->
+        <div style="background-color: #16161a; border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Última Atualização da Base</div>
+            <div id="buscador-update-info" style="font-weight: 800; color: #ffffff; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #30d158;"></span>
+              Atualizado --/-- - --:--
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;" id="buscador-record-count">0 registros disponíveis</div>
+          </div>
+          
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            {% if role in ['Coordenador', 'Supervisor'] %}
+            <button class="btn btn-primary" id="btn-open-buscador-upload" style="font-weight: 700; display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="u-icon-18">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              Carregar arquivo
+            </button>
+            {% endif %}
+            <button class="btn btn-outline gx-34" id="btn-buscador-export">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="u-icon-16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              Exportar base
+            </button>
+            <button class="btn btn-outline" id="btn-buscador-whatsapp" style="font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-color: #25D366; color: #25D366;">
+              <svg fill="currentColor" viewBox="0 0 24 24" class="u-icon-16">
+                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+              </svg>
+              Enviar Whatsapp
+            </button>
+          </div>
+        </div>
+
+        <!-- Search & Filter Bar Input -->
+        <div class="filter-bar" style="margin-bottom: 15px; background: #16161a; padding: 12px 18px; border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+          <div style="flex: 1; display: flex; align-items: center; gap: 12px; min-width: 280px;">
+            <label for="buscador-search-input" style="font-weight: 800; color: #ffffff; font-size: 0.9rem; min-width: 75px;">Buscador:</label>
+            <input type="text" id="buscador-search-input" class="search-input" placeholder="Digite termos para pesquisar em tempo real nas colunas..." style="width: 100%; max-width: 600px; background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 10px 14px; border-radius: 8px; font-size: 0.9rem;">
+          </div>
+
+          <!-- Filtro de Rota (Visível para HFC e tópicos com rotas) -->
+          <div id="buscador-route-wrapper" class="u-flex-35">
+            <label for="buscador-route-select" style="font-weight: 800; color: #ffffff; font-size: 0.9rem; white-space: nowrap;">Filtro de Rota:</label>
+            <select id="buscador-route-select" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; min-width: 180px; max-width: 300px; cursor: pointer;">
+              <option value="">Todas as Rotas</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Data Table Container -->
+        <div class="table-container" style="background-color: #16161a; border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow);">
+          <table class="data-table" id="buscador-table">
+            <thead>
+              <tr id="buscador-table-header">
+                <!-- Dynamically injected via JS -->
+              </tr>
+            </thead>
+            <tbody id="buscador-table-body">
+              <!-- Dynamically loaded via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: MAPA DE EVENTOS
+           ========================================================================== -->
+      <section class="tab-pane" id="mapa-eventos-tab">
+
+        <!-- Power BI Header Bar -->
+        <div style="background: #18181f; border-bottom: 2px solid var(--border); padding: 14px 20px; border-radius: 12px 12px 0 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 15px;">
+          <div class="u2-flex-36">
+            <img src="{{ url_for('static', filename='img/logo_flat.png') }}" alt="Claro" style="height: 24px;" onerror="this.style.display='none'">
+            <h3 style="font-size: 1.3rem; font-weight: 800; color: #ffffff; margin: 0; letter-spacing: -0.3px;">
+              Mapa de Eventos
+            </h3>
+          </div>
+
+          <!-- Center: View Toggle (MAPA / PROJEÇÃO) -->
+          <div style="display: flex; align-items: center; gap: 4px; background: #121216; padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+            <button id="mapa-view-btn-mapa" class="mapa-view-toggle-btn active" onclick="switchMapaView('mapa')"
+              style="padding: 7px 22px; font-weight: 800; font-size: 0.82rem; border-radius: 6px; border: none; background: #e11d48; color: #ffffff; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px;">
+              MAPA
+            </button>
+            <button id="mapa-view-btn-projecao" class="mapa-view-toggle-btn" onclick="switchMapaView('projecao')"
+              style="padding: 7px 22px; font-weight: 800; font-size: 0.82rem; border-radius: 6px; border: none; background: transparent; color: #94a3b8; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px;">
+              PROJEÇÃO
+            </button>
+          </div>
+
+          <!-- Right: Event Type Filters -->
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <button class="mapa-event-type-btn active" data-event-type="CURTO CIRCUITO"
+              style="padding: 6px 14px; font-weight: 800; font-size: 0.78rem; border-radius: 6px; border: 2px solid #1e40af; background: #1e40af; color: #ffffff; cursor: pointer; transition: all 0.2s;">
+              CURTO CIRCUITO
+            </button>
+            <button class="mapa-event-type-btn active" data-event-type="REDE BAIXA"
+              style="padding: 6px 14px; font-weight: 800; font-size: 0.78rem; border-radius: 6px; border: 2px solid #92400e; background: #92400e; color: #ffffff; cursor: pointer; transition: all 0.2s;">
+              REDE BAIXA
+            </button>
+            <button class="mapa-event-type-btn active" data-event-type="VANDALISMO"
+              style="padding: 6px 14px; font-weight: 800; font-size: 0.78rem; border-radius: 6px; border: 2px solid #e11d48; background: #e11d48; color: #ffffff; cursor: pointer; transition: all 0.2s;">
+              VANDALISMO
+            </button>
+          </div>
+
+          <div style="font-size: 0.78rem; color: #94a3b8; text-align: right; display: flex; align-items: center; gap: 20px;">
+            <div>
+              <span style="display: block; font-weight: 800; font-size: 1.1rem; color: var(--primary);" id="mapa-total-eventos">0</span>
+              <span>Total de eventos</span>
+            </div>
+            <div>
+              <span style="display: block; font-weight: 700; color: #f8fafc;" id="mapa-last-updated">Ao vivo</span>
+              <span>Atualização mais recente</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== VIEW: MAPA (default) ===== -->
+        <div id="mapa-view-mapa" class="mapa-eventos-grid" style="gap: 15px; min-height: 680px;">
+          <!-- Left Sidebar Filters -->
+          <div style="background: #16161c; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto;">
+
+            <!-- Date Filter: Year & Month -->
+            <div class="u-flex-6">
+              <div class="gy-43">
+                <label class="u2-font-7">Ano</label>
+                <select id="mapa-filter-year" class="gy-2">
+                  <option value="2026" selected>2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                  <option value="">Todos</option>
+                </select>
+              </div>
+              <div class="gy-43">
+                <label class="u2-font-7">Mês</label>
+                <select id="mapa-filter-month" class="gy-2">
+                  <option value="">Todos</option>
+                  <option value="1">jan</option>
+                  <option value="2">fev</option>
+                  <option value="3">mar</option>
+                  <option value="4">abr</option>
+                  <option value="5">mai</option>
+                  <option value="6">jun</option>
+                  <option value="7" selected>jul</option>
+                  <option value="8">ago</option>
+                  <option value="9">set</option>
+                  <option value="10">out</option>
+                  <option value="11">nov</option>
+                  <option value="12">dez</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Filter: Origem -->
+            <div>
+              <label class="gx-36">Origem</label>
+              <div class="mapa-origem-selector u-flex-37">
+                <button class="mapa-origem-item gx-4" data-origem="RAL">RAL</button>
+                <button class="mapa-origem-item gx-4" data-origem="REC">REC</button>
+                <button class="mapa-origem-item gx-4" data-origem="HFC">HFC</button>
+                <button class="mapa-origem-item gx-4" data-origem="OUTAGE">OUTAGE</button>
+                <button class="mapa-origem-item gx-4" data-origem="GPON">GPON</button>
+                <button class="mapa-origem-item active gx-38" data-origem="">Todas</button>
+              </div>
+            </div>
+
+            <!-- Filter: Região -->
+            <div>
+              <label class="gx-36">Região</label>
+              <div class="mapa-regiao-selector u-flex-37">
+                <button class="mapa-regiao-item gx-4" data-regiao="RIO B">RIO B</button>
+                <button class="mapa-regiao-item gx-4" data-regiao="RIO A">RIO A</button>
+                <button class="mapa-regiao-item active gx-38" data-regiao="">Todas</button>
+              </div>
+            </div>
+
+            <!-- Filter: Área -->
+            <div>
+              <label class="gx-36">Área</label>
+              <div class="mapa-area-selector u-flex-37">
+                <button class="mapa-area-item gx-4" data-area="BXF">BXF (Baixada Fluminense)</button>
+                <button class="mapa-area-item gx-4" data-area="MTP">MTP (Metropolitana)</button>
+                <button class="mapa-area-item gx-4" data-area="NO1">NO1 (Norte 1)</button>
+                <button class="mapa-area-item gx-4" data-area="NO2">NO2 (Norte 2)</button>
+                <button class="mapa-area-item gx-4" data-area="NO3">NO3 (Norte 3)</button>
+                <button class="mapa-area-item active gx-38" data-area="">Todas as Áreas</button>
+              </div>
+            </div>
+
+            <!-- Footer Mini-Chart -->
+            <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 0.72rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Evento por Mês</span>
+              </div>
+              <div id="mapa-monthly-chart" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; height: 60px; padding: 0 4px;"></div>
+            </div>
+          </div>
+
+          <!-- Right: Leaflet Map -->
+          <div style="position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); min-height: 600px; background: #121216;">
+            <div id="mapa-eventos-leaflet" style="width: 100%; height: 100%; min-height: 650px; z-index: 1;"></div>
+            <!-- Map Legend Overlay -->
+            <div style="position: absolute; bottom: 20px; right: 20px; z-index: 1000; background: rgba(18,18,22,0.92); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); padding: 12px 16px; border-radius: 10px; font-size: 0.78rem; color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+              <div style="font-weight: 800; margin-bottom: 8px; color: #f8fafc; letter-spacing: 0.5px;">LEGENDA DO MAPA</div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div class="u-flex-12"><span style="width: 12px; height: 12px; border-radius: 50%; background: #ef4444; display: inline-block;"></span><span class="u-fw-13">VANDALISMO</span></div>
+                <div class="u-flex-12"><span style="width: 12px; height: 12px; border-radius: 50%; background: #f59e0b; display: inline-block;"></span><span class="u-fw-13">REDE BAIXA</span></div>
+                <div class="u-flex-12"><span style="width: 12px; height: 12px; border-radius: 50%; background: #3b82f6; display: inline-block;"></span><span class="u-fw-13">CURTO CIRCUITO</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== VIEW: PROJEÇÃO (Power BI style charts) ===== -->
+        <div id="mapa-view-projecao" class="u-hidden">
+
+          <!-- Filter bar (Region + Origem - mirrors Power BI) -->
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; padding: 12px 16px; background: #18181f; border-radius: 10px; border: 1px solid var(--border);">
+            <span class="gx-39">Região:</span>
+            <button class="proj-regiao-btn active gx-40" data-regiao="">ES</button>
+            <button class="proj-regiao-btn gx-14" data-regiao="RIO A">RIO A</button>
+            <button class="proj-regiao-btn gx-14" data-regiao="RIO B">RIO B</button>
+            <span class="gy-25"></span>
+            <span class="gx-39">Origem:</span>
+            <button class="proj-origem-btn gx-14" data-origem="GPON">GPON</button>
+            <button class="proj-origem-btn gx-14" data-origem="OUTAGE">OUTAGE</button>
+            <button class="proj-origem-btn active gx-40" data-origem="RAL">RAL</button>
+            <span class="gy-25"></span>
+            <span class="gx-39">Evento:</span>
+            <button class="proj-event-btn active gx-40" data-event-type="CURTO CIRCUITO">CURTO CIRCUITO</button>
+            <button class="proj-event-btn gx-14" data-event-type="REDE BAIXA">REDE BAIXA</button>
+            <button class="proj-event-btn gx-14" data-event-type="VANDALISMO">VANDALISMO</button>
+          </div>
+
+          <!-- TOP ROW: Projeção e Qtde (2 cards) -->
+          <div class="proj-charts-grid u-mb-17">
+
+            <!-- Card 1: Projeção e Qtde Evento por Área (current month) -->
+            <div class="gx-19">
+              <div id="proj-month-label-1" class="u2-font-12">julho</div>
+              <div class="gx-20">Projeção e Qtde Evento por Área</div>
+              <div class="u2-flex-11">
+                <span class="u-flex-21"><span class="gy-15"></span> Projeção</span>
+                <span class="u-flex-21"><span class="gy-16"></span> Qtde Evento</span>
+              </div>
+              <div class="gy-39">
+                <canvas id="proj-chart-area-month"></canvas>
+              </div>
+            </div>
+
+            <!-- Card 2: Projeção e Qtde por SubCluster (current month) -->
+            <div class="gx-19">
+              <div id="proj-month-label-2" class="u2-font-12">julho</div>
+              <div class="gx-20">Projeção e Qtde por SubCluster</div>
+              <div class="u2-flex-11">
+                <span class="u-flex-21"><span class="gy-15"></span> Projeção</span>
+                <span class="u-flex-21"><span class="gy-16"></span> Qtde Evento</span>
+              </div>
+              <div class="gy-39">
+                <canvas id="proj-chart-subcluster-month"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- BOTTOM ROW: Últimos 3 meses (2 cards) -->
+          <div class="proj-charts-grid">
+
+            <!-- Card 3: Últimos 3 meses por Área -->
+            <div class="gx-19">
+              <div class="gx-20">Últimos 3 meses por Área</div>
+              <div class="gy-40">
+                <canvas id="proj-chart-area-history"></canvas>
+              </div>
+            </div>
+
+            <!-- Card 4: Últimos 3 meses por SubCluster -->
+            <div class="gx-19">
+              <div class="gx-20">Últimos 3 meses por SubCluster</div>
+              <div class="gy-40">
+                <canvas id="proj-chart-subcluster-history"></canvas>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /mapa-view-projecao -->
+      </section>
+
+      <!-- ==========================================================================
+           TAB 2: FINANCEIRO
+           ========================================================================== -->
+      <section class="tab-pane" id="financial-tab">
+        <div class="section-header-flex" style="margin-bottom: 25px; background: linear-gradient(145deg, rgba(25, 25, 30, 0.8), rgba(20, 20, 25, 0.6)); border: 1px solid rgba(255,255,255,0.06); padding: 20px 24px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); backdrop-filter: blur(12px);">
+          <div>
+            <h3 style="font-weight: 800; font-size: 1.5rem; margin-bottom: 4px; background: linear-gradient(90deg, #ffffff, #a1a1aa); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Controle de Custos Operacionais</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 2px;">Monitore despesas de faturamentos de equipes e consumíveis</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <button class="btn btn-secondary" id="btn-export-finance" style="display: flex; align-items: center; gap: 8px; font-weight: 700; border-radius: 8px; padding: 10px 16px; transition: all 0.2s ease;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="u-icon-18"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Exportar Relatório
+            </button>
+            <div style="text-align: right; background: rgba(255, 255, 255, 0.04); padding: 12px 20px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);">
+              <span style="font-size: 0.75rem; color: #cbd5e1; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; display: block; margin-bottom: 2px;">Total Acumulado</span>
+              <h2 id="financial-running-total" style="color: #f8fafc; font-weight: 800; font-size: 1.85rem; margin: 0;">R$ 0,00</h2>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-tabs nav -->
+        <!-- Sub-tabs nav -->
+        <div style="display: flex; gap: 12px; margin-bottom: 25px;">
+          <button class="sub-tab-btn active" data-subtab="fin-teams-subtab" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-weight: 800; padding: 10px 24px; border-radius: 30px; cursor: pointer; font-size: 0.95rem; box-shadow: 0 0 12px rgba(239, 68, 68, 0.15); transition: all 0.2s ease;">Equipes</button>
+          <button class="sub-tab-btn" data-subtab="fin-consumables-subtab" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: #94a3b8; font-weight: 700; padding: 10px 24px; border-radius: 30px; cursor: pointer; font-size: 0.95rem; transition: all 0.2s ease;">Consumíveis</button>
+        </div>
+
+        <!-- Sub-tab 1: Equipes -->
+        <div class="subtab-pane active" id="fin-teams-subtab">
+          <div class="filter-bar" style="background: rgba(22, 22, 26, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px 16px 0 0; padding: 18px 24px; border-bottom: 1px solid rgba(255,255,255,0.02);">
+            <h4 style="font-weight: 800; font-size: 1.1rem; color: #ffffff;">Faturamento de Equipes Externas</h4>
+            <button class="btn btn-primary" id="btn-open-fin-team-modal" style="border-radius: 10px; font-weight: 700; padding: 10px 18px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.25);">+ Registrar Equipe</button>
+          </div>
+          <div class="table-container" style="background: rgba(22, 22, 26, 0.2); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); border-radius: 0 0 16px 16px; border-top: none; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+            <table class="data-table" id="fin-teams-table">
+              <thead style="background: rgba(255,255,255,0.03);">
+                <tr>
+                  <th class="gx-5">MÊS REF.</th>
+                  <th class="gx-5">PESSOA 1 (RESPONSÁVEL)</th>
+                  <th class="gx-5">PESSOA 2 (AUXILIAR)</th>
+                  <th class="gx-5">ÁREA DE TRABALHO</th>
+                  <th class="gx-5">VALOR MENSAL</th>
+                  <th class="gx-5">AÇÕES</th>
+                </tr>
+              </thead>
+              <tbody id="fin-teams-table-body">
+                <!-- Javascript populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sub-tab 2: Consumíveis -->
+        <div class="subtab-pane" id="fin-consumables-subtab">
+          <div class="filter-bar" style="background: rgba(25, 25, 30, 0.5); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px 12px 0 0; padding: 18px 24px; border-bottom: none;">
+            <h4 style="font-weight: 800; font-size: 1.1rem; color: #f4f4f5;">Custos de Consumíveis</h4>
+            <button class="btn btn-primary" id="btn-open-fin-consumable-modal" style="border-radius: 8px; font-weight: 700; padding: 10px 18px; box-shadow: 0 4px 12px rgba(238, 44, 36, 0.3);">+ Registrar Consumível</button>
+          </div>
+          <div class="table-container" style="background: rgba(25, 25, 30, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 0 0 12px 12px; border-top: none;">
+            <table class="data-table" id="fin-consumables-table">
+              <thead style="background: rgba(0,0,0,0.2);">
+                <tr>
+                  <th class="gx-5">MÊS REF.</th>
+                  <th class="gx-5">DESCRIÇÃO / FORNECEDOR</th>
+                  <th class="gx-5">ÁREA (OPCIONAL)</th>
+                  <th class="gx-5">VALOR MENSAL</th>
+                  <th class="gx-5">AÇÕES</th>
+                </tr>
+              </thead>
+              <tbody id="fin-consumables-table-body">
+                <!-- Javascript populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: ESCALA DE TRABALHO
+           ========================================================================== -->
+      <section class="tab-pane" id="escala-tab">
+        <div class="section-header-flex gx-18">
+          <div>
+            <h3 class="gx-41">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 24px; height: 24px; color: var(--primary);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              Escala de Trabalho
+            </h3>
+            <p class="gx-11">Gestão mensal de folgas, férias, banco de horas e sobreaviso da equipe externa</p>
+          </div>
+          <div class="u2-flex-37">
+            <button class="btn btn-outline gx-34" id="btn-export-escala">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="u-icon-16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Exportar Escala (CSV)
+            </button>
+          </div>
+        </div>
+
+        <!-- Top Filters Bar -->
+        <div class="filter-bar gx-42">
+          <div class="u-flex-43">
+            
+            <!-- Filter 1: Mês -->
+            <div class="u-flex-12">
+              <label for="escala-filter-month" class="gx-44">Mês:</label>
+              <input type="month" id="escala-filter-month" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem; cursor: pointer; font-weight: 700;">
+            </div>
+
+            <!-- Filter 2: Área (REQUIRED) -->
+            <div class="u-flex-12">
+              <label for="escala-filter-area" class="gx-44">Área <span class="gx-45">*</span>:</label>
+              <select id="escala-filter-area" style="background: #1a1a1e; border: 1.5px solid var(--primary); color: #ffffff; padding: 8px 14px; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; min-width: 190px;">
+                <option value="">-- Selecione a Área --</option>
+                <!-- Populated dynamically via JS -->
+              </select>
+            </div>
+
+            <!-- Filter 3: Empresa -->
+            <div class="u-flex-12">
+              <label for="escala-filter-company" class="gx-44">Empresa:</label>
+              <select id="escala-filter-company" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem; cursor: pointer;">
+                <option value="Todas">Todas</option>
+                <option value="Claro">Claro</option>
+                <option value="FFA">FFA</option>
+                <option value="Procisa">Procisa</option>
+              </select>
+            </div>
+
+            <!-- Filter 4: Nome Search -->
+            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; max-width: 300px;">
+              <input type="text" id="escala-filter-search" placeholder="Buscar por nome..." style="width: 100%; background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Toolbar / Painter & Horário Customizável -->
+        <div id="escala-painter-bar" style="display: none; margin-bottom: 20px; background: #16161c; padding: 14px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+          
+          <!-- Status Painter Palette Buttons -->
+          <div class="u2-flex-33">
+            <span style="font-weight: 800; font-size: 0.82rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Selecione para Pintar o Dia:</span>
+            
+            <button class="escala-status-btn active" data-status="Folga" >
+              Folga
+            </button>
+
+            <button class="escala-status-btn" data-status="Trabalho" >
+              Trabalho
+            </button>
+
+            <button class="escala-status-btn" data-status="Férias" >
+              Férias
+            </button>
+
+            <button class="escala-status-btn" data-status="BH" >
+              BH
+            </button>
+
+            <button class="escala-status-btn" data-status="Feriado" >
+              Feriado
+            </button>
+          </div>
+
+          <!-- Horário de Trabalho Editable Selector -->
+          <div class="u2-flex-33">
+            <label for="escala-work-hours-input" style="font-weight: 800; font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Horário Padrão:</label>
+            <select id="escala-work-preset" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+              <option value="08 às 17:48hs">08 às 17:48hs (Comercial)</option>
+              <option value="14 às 22:48hs">14 às 22:48hs (Tarde)</option>
+              <option value="07 às 16:48hs">07 às 16:48hs (Manhã)</option>
+              <option value="13 às 21:48hs">13 às 21:48hs</option>
+              <option value="22 às 06:48hs">22 às 06:48hs (Madrugada)</option>
+              <option value="custom">Personalizado...</option>
+            </select>
+            <input type="text" id="escala-work-hours-input" value="08 às 17:48hs" placeholder="Ex: 14 às 22:48hs" style="background: rgba(22, 22, 26, 0.7); backdrop-filter: blur(8px); border: 1px solid rgba(59, 130, 246, 0.5); box-shadow: 0 0 10px rgba(59, 130, 246, 0.15); color: #f8fafc; font-weight: 700; padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; width: 160px; outline: none; transition: all 0.2s ease;">
+          </div>
+        </div>
+
+        <!-- Informative State Container (When Area not selected) -->
+        <div id="escala-empty-notice" style="background: rgba(22, 22, 26, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 8px 32px rgba(0,0,0,0.2); border-radius: 20px; padding: 60px 20px; text-align: center; margin-top: 20px;">
+          <div style="width: 72px; height: 72px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05)); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 24px; transform: rotate(-5deg); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);">
+            <div style="transform: rotate(5deg);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width: 34px; height: 34px;"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            </div>
+          </div>
+          <h3 style="font-weight: 800; color: #ffffff; margin-bottom: 12px; font-size: 1.4rem;">Nenhuma Área Selecionada</h3>
+          <p style="font-size: 1rem; color: #94a3b8; max-width: 500px; margin: 0 auto 20px auto; line-height: 1.6;">
+            Por favor, selecione primeiro a <strong style="color: #cbd5e1; font-weight: 700;">Área de Atuação</strong> no filtro acima para carregar a escala de trabalho da equipe correspondente.
+          </p>
+        </div>
+
+        <!-- Schedule Grid Table Container -->
+        <div id="escala-table-wrapper" style="display: none; background: rgba(22, 22, 26, 0.5); backdrop-filter: blur(12px); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 8px 32px rgba(0,0,0,0.2); overflow-x: auto; margin-top: 16px; padding-bottom: 8px;">
+          <table class="data-table" id="escala-grid-table" style="width: 100%; border-collapse: separate; border-spacing: 0;">
+            <thead>
+              <tr id="escala-table-header-days">
+                <!-- Dynamically generated via JS -->
+              </tr>
+              <tr id="escala-table-header-weekdays">
+                <!-- Dynamically generated via JS -->
+              </tr>
+            </thead>
+            <tbody id="escala-table-body">
+              <!-- Dynamically populated via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: INVENTÁRIO
+           ========================================================================== -->
+      <section class="tab-pane" id="inventario-tab">
+        <div class="section-header-flex" style="margin-bottom: 25px;">
+          <div>
+            <h3>Controle de Inventário Físico</h3>
+            <p>Gerencie o estoque de ferramentas, cabos, equipamentos e EPIs de campo</p>
+          </div>
+        </div>
+
+                <!-- Category cards -->
+        <div class="financial-grid" style="margin-bottom: 25px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+          <div class="inventory-card-btn active" data-category="Cabos">
+            <h4 class="gx-22">Cabos</h4>
+            <p class="gx-23">Fibras, drop, ópticos, coaxiais</p>
+          </div>
+          <div class="inventory-card-btn" data-category="Equipamento">
+            <h4 class="gx-22">Equipamento</h4>
+            <p class="gx-23">ONUs, roteadores, splitters, caixas CTO</p>
+          </div>
+          <div class="inventory-card-btn" data-category="EPI">
+            <h4 class="gx-22">EPI</h4>
+            <p class="gx-23">Capacetes, cintos, botas, óculos, luvas</p>
+          </div>
+          <div class="inventory-card-btn" data-category="Ferramentas">
+            <h4 class="gx-22">Ferramentas</h4>
+            <p class="gx-23">Máquinas de fusão, clivadores, OTDRs</p>
+          </div>
+        </div>
+
+        <div class="filter-bar">
+          <h4 id="inventory-selected-title" class="u-fw-13">Estoque: Cabos</h4>
+          <button class="btn btn-primary" id="btn-open-inventory-modal">+ Adicionar Item</button>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item / Modelo</th>
+                <th>Quantidade</th>
+                <th>Número de Série / Lote</th>
+                <th>Descrição / Especificações</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="inventory-table-body">
+              <!-- Loaded via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB 3: PROJETOS
+           ========================================================================== -->
+      <section class="tab-pane" id="projects-tab">
+        <div id="project-breadcrumbs" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); padding: 10px 15px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <!-- Breadcrumbs injectados por JS -->
+        </div>
+
+        <!-- Dropzone de arrastar/soltar e copiar/colar arquivos -->
+        <div id="projects-dropzone" style="margin-bottom: 15px; border: 2px dashed rgba(255,255,255,0.15); border-radius: 12px; padding: 18px 24px; text-align: center; background: rgba(255,255,255,0.01); transition: all 0.25s ease; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px;">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 22px; height: 22px; color: var(--primary);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <span style="font-size: 0.88rem; color: var(--text-muted); font-weight: 600;">Arraste arquivos e solte aqui <strong>ou use Ctrl + V (Copiar/Colar)</strong> para salvar nesta pasta</span>
+        </div>
+
+        <div class="filter-bar">
+          <div class="filter-inputs">
+            <div class="search-input-wrapper" style="max-width: 360px;">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="project-search" placeholder="Buscar projeto por nome ou área...">
+            </div>
+          </div>
+          <div class="u-flex-6">
+            <button class="btn btn-outline" id="btn-open-folder-modal">+ Nova Pasta</button>
+            <button class="btn btn-primary" id="btn-open-project-modal">+ Criar Projeto / Arquivo</button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nome / Tipo</th>
+                <th>Descrição</th>
+                <th>Área</th>
+                <th>Mapa de Rede (KMZ)</th>
+                <th>Documentos</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="projects-table-body">
+              <!-- Content loaded via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB 4: GERENCIAMENTO DO SISTEMA
+           ========================================================================== -->
+      <section class="tab-pane" id="data-tab">
+        <div class="section-header-flex" style="margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 15px;">
+          <div>
+            <h3 class="u2-font-35">Gerenciamento do Sistema</h3>
+            <p class="gx-11">Controle de contas de acesso dos usuários e monitoramento de logs de auditoria</p>
+          </div>
+        </div>
+
+        <!-- Gerenciamento de Contas -->
+        <div style="background-color: #16161a; border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); margin-bottom: 30px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+            <div class="u-flex-35">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gx-46">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+              </svg>
+              <h4 class="u2-font-31">Contas de Acesso</h4>
+            </div>
+            <button class="btn btn-primary" id="btn-open-user-modal" style="font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="u-icon-16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+              </svg>
+              Criar Novo Usuário
+            </button>
+          </div>
+          
+          <div class="table-container gy-34">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Nome de Usuário</th>
+                  <th>Cargo / Acesso</th>
+                  <th>Criado Em</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="users-table-body">
+                <!-- Content loaded via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Logs de Auditoria -->
+        <div style="background-color: #16161a; border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: var(--shadow);">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 14px; flex-wrap: wrap;">
+            <div class="u-flex-35">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gx-46">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+              <h4 class="u2-font-31">Logs de Auditoria e Ações</h4>
+            </div>
+
+            <div class="search-input-wrapper" style="max-width: 300px; margin: 0;">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="log-user-search" placeholder="Filtrar por usuário...">
+            </div>
+          </div>
+
+          <div class="table-container gy-34">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Data / Hora</th>
+                  <th>Usuário Executor</th>
+                  <th>Ação Executada</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table-body">
+                <!-- Content loaded via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: FAVORITOS
+           ========================================================================== -->
+      <section class="tab-pane active" id="favorites-tab">
+        <div class="filter-bar">
+          <div class="filter-inputs">
+            <div class="search-input-wrapper">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="fav-search" placeholder="Buscar por nome ou link...">
+            </div>
+          </div>
+          <div class="u-flex-6">
+            <button class="btn btn-primary" id="btn-open-favorite-modal">+ Cadastrar Favorito</button>
+          </div>
+        </div>
+
+        <div id="favorites-container" class="favorites-grid">
+          <!-- Dynamic cards injected via JS -->
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: FORMULÁRIOS (ENTRE PROJETOS E ROTAS)
+           ========================================================================== -->
+      <section class="tab-pane" id="forms-tab">
+        <div class="filter-bar">
+          <div class="filter-inputs">
+            <div class="search-input-wrapper">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="forms-search" placeholder="Buscar formulário por nome ou descrição...">
+            </div>
+            <select id="forms-category-filter" style="padding: 8px 12px; background: #1f1f24; border: 1px solid var(--border); border-radius: var(--radius-md); color: #ffffff; font-size: 0.88rem; outline: none;">
+              <option value="">Todas as Categorias</option>
+              <option value="Inspeção">Inspeção</option>
+              <option value="Vistoria">Vistoria</option>
+              <option value="Rede Externa">Rede Externa</option>
+              <option value="Técnico">Técnico</option>
+              <option value="Relatório">Relatório</option>
+              <option value="Outros">Outros</option>
+            </select>
+          </div>
+          <div class="u-flex-6">
+            <button class="btn btn-primary" id="btn-open-form-modal" onclick="openFormModal()">+ Cadastrar Formulário</button>
+          </div>
+        </div>
+
+        <div id="forms-container" class="routes-grid">
+          <!-- Dynamic form cards injected via JS -->
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: ROTAS (EMPRESARIAL / RESIDENCIAL + SUB-PÁGINA DE LINHAS)
+           ========================================================================== -->
+      <section class="tab-pane" id="rotas-tab">
+        <!-- 1. MAIN LIST VIEW -->
+        <div id="routes-main-view">
+          <div class="filter-bar">
+            <div class="filter-inputs">
+              <div class="search-input-wrapper">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input type="text" id="route-search" placeholder="Buscar rota por nome...">
+              </div>
+              <select id="route-type-filter" style="padding: 8px 12px; background: #1f1f24; border: 1px solid var(--border); border-radius: var(--radius-sm); color: #ffffff; font-size: 0.88rem; outline: none;">
+                <option value="">Todos os Tipos</option>
+                <option value="Empresarial">Empresarial</option>
+                <option value="Residencial">Residencial</option>
+              </select>
+            </div>
+            <div class="u-flex-6">
+              <button class="btn btn-primary" id="btn-open-route-modal" onclick="openRouteModal()">+ Incluir Rota</button>
+            </div>
+          </div>
+
+          <div id="routes-container" class="routes-grid">
+            <!-- Dynamic route cards injected via JS -->
+          </div>
+        </div>
+
+        <!-- 2. SUB-PAGE DETAIL VIEW (SUB-PÁGINA DA ROTA) -->
+        <div id="route-detail-subpage" class="u-hidden">
+          <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <button class="btn btn-outline" id="btn-back-routes">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gx-47">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+              </svg>
+              Voltar para Lista de Rotas
+            </button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <button class="btn btn-outline u-fw-13" id="btn-create-route-folder">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gx-47">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                </svg>
+                Criar Pasta
+              </button>
+              <button class="btn btn-outline u-fw-13" id="btn-upload-route-file">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gx-47">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                Carregar arquivo
+              </button>
+              <button class="btn btn-outline" id="btn-import-route-lines" onclick="openRouteLinesImportModal()">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gy-38">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                Importar
+              </button>
+              <button class="btn btn-outline" id="btn-export-route-lines" onclick="exportRouteLines()">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gy-38">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Exportar
+              </button>
+              <button class="btn btn-primary" id="btn-open-line-modal" onclick="openRouteLineModal()">+ Adicionar Linha</button>
+            </div>
+          </div>
+
+          <div class="subpage-header-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                <h3 id="subpage-route-title" style="color: #ffffff; font-size: 1.3rem; font-weight: 700;">Nome da Rota</h3>
+                <span id="subpage-route-type-badge" class="route-badge">Empresarial</span>
+              </div>
+              <p id="subpage-route-description" style="color: var(--text-muted); font-size: 0.9rem;">Descrição da rota...</p>
+            </div>
+            <div>
+              <button class="btn" id="btn-whatsapp-route" onclick="shareRouteOnWhatsApp()" style="background: #25d366; color: #ffffff; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border: none; padding: 10px 18px; border-radius: 8px; font-size: 0.88rem; cursor: pointer; transition: transform 0.2s, background-color 0.2s; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l.999 1.594-1.05 3.834 3.794-.993.999.594z"/>
+                </svg>
+                Enviar no WhatsApp
+              </button>
+            </div>
+          </div>
+
+          <!-- Drag and Drop / Paste Upload Zone -->
+          <div id="route-dropzone" style="border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 22px 18px; text-align: center; background: rgba(22, 22, 26, 0.6); margin-bottom: 20px; cursor: pointer; transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 12px; color: #94a3b8; font-size: 0.9rem; font-weight: 500;">
+              <span>Arraste arquivos e solte aqui ou use Ctrl+V (Copiar/Colar) para salvar nesta pasta</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ee2c24" stroke-width="2" style="width: 22px; height: 22px; flex-shrink: 0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            </div>
+            <input type="file" id="route-file-input" multiple class="u-hidden">
+          </div>
+
+          <!-- Route Folders & Files Explorer -->
+          <div id="route-explorer-container" style="margin-bottom: 24px; display: none;">
+            <div id="route-breadcrumbs" style="margin-bottom: 12px; font-size: 0.85rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;"></div>
+            <div id="route-folders-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
+            <div id="route-files-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+          </div>
+
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Local da Medição</th>
+                  <th>Medição</th>
+                  <th>Observações Técnicas</th>
+                  <th>Endereço</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="route-lines-table-body">
+                <!-- Lines injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB 5: INDICADORES INTERIOR
+           ========================================================================== -->
+      <section class="tab-pane" id="metrics-tab">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 24px; background: rgba(255,255,255,0.03); padding: 16px 20px; border-radius: 12px; border: 1px solid var(--border);">
+          <div>
+            <h2 style="font-size: 1.4rem; font-weight: 800; color: #ffffff; margin: 0;">Indicadores Interior</h2>
+            <p class="gx-11">Painel gerencial de metas e KPIs por região e modalidade (Janeiro/2026 a Dezembro/2027)</p>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <!-- Auto-save Status Badge -->
+            <span id="auto-save-status" style="font-size: 0.8rem; font-weight: 700; color: #4ade80; display: flex; align-items: center; gap: 6px; background: rgba(22, 163, 74, 0.15); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(22, 163, 74, 0.3); opacity: 0; transition: all 0.3s ease;">
+              ✓ Salvo automaticamente
+            </span>
+
+            <!-- Modern Month Selector Control -->
+            <div class="month-selector-bar" style="display: flex; align-items: center; gap: 8px; background: rgba(239, 68, 68, 0.1); backdrop-filter: blur(8px); padding: 8px 14px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);">
+              <label for="indicator-month-select" style="font-size: 0.8rem; font-weight: 800; color: #f87171; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; margin-right: 4px;">📅 MÊS REFERÊNCIA:</label>
+              <select id="indicator-month-select" style="background: rgba(22, 22, 26, 0.8); color: #ffffff; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.88rem; outline: none; cursor: pointer; padding: 6px 12px; border-radius: 8px; color-scheme: dark; transition: all 0.2s ease;">
+                <!-- Generated via JS -->
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 COLUMNS GRID OF TABLES -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; align-items: start;">
+          
+          <!-- COLUMN 1: INDICADORES EMPRESARIAIS -->
+          <div class="u-flex-24">
+            <div class="gx-25">
+              <div class="gx-26">
+                <h4 class="gx-27">Indicadores Empresariais</h4>
+              </div>
+              
+              <!-- Tabela 1.1: RAL -->
+              <div class="u-pad-28">
+                <table class="data-table indicator-table gx-8">
+                  <thead>
+                    <tr class="gx-9">
+                      <th class="gx-10">Area</th>
+                      <th class="u-pad-3">RAL (%)</th>
+                      <th class="u-pad-3">Total</th>
+                      <th class="u-pad-3">FP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-ral-body">
+                    <!-- JS Injected -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Tabela 1.2: REC -->
+              <div class="gx-48">
+                <table class="data-table indicator-table gx-8">
+                  <thead>
+                    <tr class="gx-9">
+                      <th class="gx-10">Area</th>
+                      <th class="u-pad-3">REC (%)</th>
+                      <th class="u-pad-3">Total</th>
+                      <th class="u-pad-3">FP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-rec-body">
+                    <!-- JS Injected -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMN 2: INDICADORES RESIDENCIAIS -->
+          <div class="u-flex-24">
+            <div class="gx-25">
+              <div class="gx-26">
+                <h4 class="gx-27">Indicadores Residenciais</h4>
+              </div>
+
+              <!-- Tabela 2.1: HFC -->
+              <div class="u-pad-28">
+                <table class="data-table indicator-table gx-8">
+                  <thead>
+                    <tr class="gx-9">
+                      <th class="gx-10">Area</th>
+                      <th class="u-pad-3">HFC (%)</th>
+                      <th class="u-pad-3">Total</th>
+                      <th class="u-pad-3">FP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-hfc-body">
+                    <!-- JS Injected -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Tabela 2.2: GPON -->
+              <div class="gx-48">
+                <table class="data-table indicator-table gx-8">
+                  <thead>
+                    <tr class="gx-9">
+                      <th class="gx-10">Area</th>
+                      <th class="u-pad-3">GPON (%)</th>
+                      <th class="u-pad-3">Total</th>
+                      <th class="u-pad-3">FP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-gpon-body">
+                    <!-- JS Injected -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMN 3: TEMPO - RESIDENCIAL -->
+          <div class="u-flex-24">
+            <div class="gx-25">
+              <div class="gx-26">
+                <h4 class="gx-27">Tempo - Residencial</h4>
+              </div>
+
+              <!-- Tabela 3.1: ME3 - HFC -->
+              <div class="u-pad-28">
+                <table class="data-table indicator-table gx-8">
+                  <thead>
+                    <tr class="gx-9">
+                      <th class="gx-10">Area</th>
+                      <th class="u-pad-3">ME3 - HFC</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-me3-hfc-body">
+                    <!-- JS Injected -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Tabela 3.2: ME3 - GPON -->
+              <div class="gx-48">
+                <table class="data-table indicator-table gx-8">
+                  <thead>
+                    <tr class="gx-9">
+                      <th class="gx-10">Area</th>
+                      <th class="u-pad-3">ME3 - GPON</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-me3-gpon-body">
+                    <!-- JS Injected -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMN 4: HFC -->
+          <div class="u-flex-24">
+            <div class="gx-25">
+              <div class="gx-26">
+                <h4 class="gx-27">HFC</h4>
+              </div>
+
+              <!-- Tabela 4.1: ME1.1 -->
+              <div class="u-pad-28">
+                <table class="data-table indicator-table gx-8">
+                  <thead>
+                    <tr class="gx-9">
+                      <th class="gx-10">Area</th>
+                      <th class="u-pad-3">ME1.1 (%)</th>
+                      <th class="u-pad-3">Total</th>
+                      <th class="u-pad-3">FP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-me11-body">
+                    <!-- JS Injected -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- JUSTIFICATIVAS BLOCK -->
+        <div style="margin-top: 28px; background: #16161a; border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: var(--shadow);">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gx-46">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            <h4 style="color: #ffffff; font-weight: 800; font-size: 1.05rem; margin: 0;">Justificativas Operacionais do Mês</h4>
+          </div>
+          <textarea id="indicator-justificativas" rows="4" placeholder="Digite aqui as justificativas operacionais para metas não atingidas no mês selecionado..."></textarea>
+          <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+            <span id="indicator-auto-save-status" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); opacity: 0; transition: opacity 0.3s;"></span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ==========================================================================
+           TAB: ÁREA DE TRABALHO (TAREFAS & NOTAS EXCLUSIVAS DO USUÁRIO)
+           ========================================================================== -->
+      <section class="tab-pane" id="workspace-tab">
+        <div class="section-header-flex gx-18">
+          <div>
+            <h3 class="gx-41">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 24px; height: 24px; color: #60a5fa;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+              Área de Trabalho Exclusiva
+            </h3>
+            <p class="gx-11">Painel privativo individual para acompanhamento de tarefas, lembretes e acionamento de colaboradores (visível somente para você)</p>
+          </div>
+          <div>
+            <button class="btn btn-primary u2-font-26" id="btn-open-task-modal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="u-icon-18"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Nova Atividade / Nota
+            </button>
+          </div>
+        </div>
+
+        <!-- Task Stats Cards -->
+        <div class="stats-grid gy-19">
+          <div class="stat-card u2-bg-10">
+            <div class="u2-font-21">Total de Atividades</div>
+            <div id="task-stat-total" class="gx-49">0</div>
+          </div>
+          <div class="stat-card" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 14px; padding: 18px;">
+            <div style="font-size: 0.8rem; color: #fca5a5; font-weight: 700; text-transform: uppercase;">Pendentes</div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: #ef4444; margin-top: 4px;" id="task-stat-pending">0</div>
+          </div>
+          <div class="stat-card u2-bg-8">
+            <div class="u2-font-22">Em Andamento</div>
+            <div id="task-stat-progress" class="u2-font-27">0</div>
+          </div>
+          <div class="stat-card u2-bg-9">
+            <div class="u2-font-23">Concluídas</div>
+            <div id="task-stat-completed" class="u2-font-28">0</div>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar gx-42">
+          <div class="u-flex-43">
+            <input type="text" id="task-search-input" placeholder="Buscar por título ou descrição..." class="gy-3">
+            <select id="task-filter-priority" class="gx-50">
+              <option value="">Todas as Prioridades</option>
+              <option value="Alta">🔴 Alta</option>
+              <option value="Média">🟡 Média</option>
+              <option value="Baixa">🟢 Baixa</option>
+            </select>
+            <select id="task-filter-status" class="gx-50">
+              <option value="">Todos os Status</option>
+              <option value="Pendente">Pendente</option>
+              <option value="Em Andamento">Em Andamento</option>
+              <option value="Concluído">Concluído</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Task List Container -->
+        <div id="task-list-wrapper" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+          <!-- Loaded dynamically via JS -->
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           TAB: AVALIAÇÃO TÉCNICA (FFA & PROCISA)
+           ========================================================================== -->
+      <section class="tab-pane" id="evaluation-tab">
+        <div class="section-header-flex gx-18">
+          <div>
+            <h3 class="gx-41">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 24px; height: 24px; color: #f59e0b;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              Avaliação Técnica de Colaboradores
+            </h3>
+            <p class="gx-11">Modelo contínuo de avaliação de desempenho para gestores (FFA & Procisa)</p>
+          </div>
+          <div class="u2-flex-37">
+            <button class="btn btn-outline gx-34" id="btn-export-evaluations">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="u-icon-16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Exportar para Excel (CSV)
+            </button>
+            <button class="btn btn-primary u2-font-26" id="btn-open-eval-modal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="u-icon-18"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Nova Avaliação Técnica
+            </button>
+          </div>
+        </div>
+
+        <!-- Evaluation Summary Cards -->
+        <div class="stats-grid gy-19">
+          <div class="stat-card u2-bg-10">
+            <div class="u2-font-21">Total Avaliações</div>
+            <div id="eval-stat-total" class="gx-49">0</div>
+          </div>
+          <div class="stat-card u2-bg-8">
+            <div class="u2-font-22">Média Geral (0-10)</div>
+            <div id="eval-stat-avg" class="u2-font-27">0.0</div>
+          </div>
+          <div class="stat-card" style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 14px; padding: 18px;">
+            <div style="font-size: 0.8rem; color: #93c5fd; font-weight: 700; text-transform: uppercase;">Média FFA</div>
+            <div style="font-size: 1.8rem; font-weight: 800; color: #3b82f6; margin-top: 4px;" id="eval-stat-ffa">0.0</div>
+          </div>
+          <div class="stat-card u2-bg-9">
+            <div class="u2-font-23">Média Procisa</div>
+            <div id="eval-stat-procisa" class="u2-font-28">0.0</div>
+          </div>
+        </div>
+
+        <!-- Evaluation Filter Bar -->
+        <div class="filter-bar gx-42">
+          <div class="u-flex-43">
+            <input type="text" id="eval-search-input" placeholder="Buscar por colaborador..." class="gy-3">
+            <select id="eval-filter-company" class="gx-50">
+              <option value="Todas">Todas as Empresas</option>
+              <option value="FFA">FFA</option>
+              <option value="Procisa">Procisa</option>
+              <option value="Claro">Claro</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Evaluation Table Wrapper -->
+        <div class="table-container" style="background: rgba(22, 22, 26, 0.5); backdrop-filter: blur(12px); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); overflow-x: auto;">
+          <table class="data-table" id="evaluation-table">
+            <thead>
+              <tr>
+                <th>COLABORADOR</th>
+                <th>EMPRESA</th>
+                <th>CARGO / ÁREA</th>
+                <th>COMPORTAMENTO (1-10)</th>
+                <th>PRODUTIVIDADE (1-10)</th>
+                <th>INDICADORES (1-10)</th>
+                <th>PROCESSOS (1-10)</th>
+                <th>RESULTADO GERAL</th>
+                <th>AVALIADOR</th>
+                <th>DATA</th>
+                <th style="text-align: center;">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody id="evaluation-table-body">
+              <!-- Dynamically populated via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 1: CADASTRAR/EDITAR TÉCNICO
+       ========================================================================== -->
+  <div class="modal-overlay" id="tech-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="tech-modal-title">Cadastrar Novo Técnico</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="tech-form" class="modal-form" enctype="multipart/form-data">
+        <input type="hidden" id="tech-id" name="id">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tech-name">Nome Completo</label>
+            <input type="text" id="tech-name" name="name" required placeholder="Nome do técnico">
+          </div>
+          <div class="form-group">
+            <label for="tech-cpf">CPF (Opcional)</label>
+            <input type="text" id="tech-cpf" name="cpf" placeholder="000.000.000-00">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tech-phone">Telefone</label>
+            <input type="text" id="tech-phone" name="phone" placeholder="(00) 00000-0000">
+          </div>
+          <div class="form-group">
+            <label for="tech-identity">Identidade (RG)</label>
+            <input type="text" id="tech-identity" name="identity" placeholder="RG do colaborador">
+          </div>
+          <div class="form-group">
+            <label for="tech-email">E-mail</label>
+            <input type="email" id="tech-email" name="email" placeholder="nome@empresa.com">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tech-dob">Data de Nascimento (Opcional)</label>
+            <input type="date" id="tech-dob" name="dob">
+          </div>
+          <div class="form-group">
+            <label for="tech-role">Cargo Técnico</label>
+            <select id="tech-role" name="role">
+              <option value="Técnico">Técnico</option>
+              <option value="Auxiliar">Auxiliar</option>
+              <option value="Supervisor">Supervisor</option>
+              <option value="Coordenador">Coordenador</option>
+              <option value="Administrativo">Administrativo</option>
+              <option value="COP">COP</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="tech-company">Empresa Parceira</label>
+            <select id="tech-company" name="company">
+              <option value="">Selecione...</option>
+              <option value="Claro">Claro</option>
+              <option value="FFA">FFA</option>
+              <option value="Procisa">Procisa</option>
+            </select>
+          </div>
+        </div>
+
+        <h4 class="gx-29">Acessos & Identificadores de Sistema</h4>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tech-reg-claro">Matricula Claro</label>
+            <input type="text" id="tech-reg-claro" name="registration_claro" placeholder="Ex: C123456">
+          </div>
+          <div class="form-group">
+            <label for="tech-reg-third">Matricula Terceiro</label>
+            <input type="text" id="tech-reg-third" name="registration_third" placeholder="Ex: T998877">
+          </div>
+          <div class="form-group">
+            <label for="tech-toa-login">Login TOA</label>
+            <input type="text" id="tech-toa-login" name="toa_login" placeholder="Ex: usr.toa.123">
+          </div>
+        </div>
+
+        <h4 class="gx-29">Smartphone & Dispositivo Móvel</h4>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tech-phone-model">Modelo Telefone</label>
+            <input type="text" id="tech-phone-model" name="phone_model" placeholder="Ex: Samsung Galaxy A14, Moto G23">
+          </div>
+          <div class="form-group">
+            <label for="tech-imei1">IMEI 1 Telefone</label>
+            <input type="text" id="tech-imei1" name="imei_1" placeholder="351234567890123">
+          </div>
+          <div class="form-group">
+            <label for="tech-imei2">IMEI 2 Telefone</label>
+            <input type="text" id="tech-imei2" name="imei_2" placeholder="351234567890124 (Opcional)">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tech-area">Área de Atuação</label>
+            <input type="text" id="tech-area" name="area" placeholder="Clique para selecionar as áreas..." readonly style="cursor: pointer;">
+          </div>
+          <div class="form-group">
+            <label for="tech-team-type">Tipo de Equipe</label>
+            <select id="tech-team-type" name="team_type">
+              <option value="Fusão">Fusão (Emenda Fibra)</option>
+              <option value="Lançamento">Lançamento (Cabeamento)</option>
+              <option value="Coaxial">Coaxial</option>
+              <option value="Vistoriador Estático">Vistoriador Estático</option>
+              <option value="Gestão">Gestão</option>
+            </select>
+          </div>
+        </div>
+
+        <h4 class="gx-29">Grade de Tamanhos (EPI & Uniforme)</h4>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tech-shirt">Camisa</label>
+            <select id="tech-shirt" name="shirt_size">
+              <option value="">Selecione</option>
+              <option value="P">P</option>
+              <option value="M">M</option>
+              <option value="G">G</option>
+              <option value="GG">GG</option>
+              <option value="XGG">XGG</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="tech-boot">Bota (Nº)</label>
+            <input type="number" id="tech-boot" name="boot_size" min="30" max="50" placeholder="Ex: 40">
+          </div>
+          <div class="form-group">
+            <label for="tech-pants">Calça</label>
+            <input type="text" id="tech-pants" name="pants_size" placeholder="Ex: 42">
+          </div>
+          <div class="form-group">
+            <label for="tech-jacket">Casaco</label>
+            <select id="tech-jacket" name="jacket_size">
+              <option value="">Selecione</option>
+              <option value="P">P</option>
+              <option value="M">M</option>
+              <option value="G">G</option>
+              <option value="GG">GG</option>
+              <option value="XGG">XGG</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group u-mt-51">
+          <label for="tech-team">Identificação da Equipe</label>
+          <input type="text" id="tech-team" name="team" placeholder="Ex: Equipe Alfa - Fusão">
+        </div>
+
+        <div class="modal-footer u2-flex-20">
+          <button type="button" class="btn u2-bg-6" id="btn-send-tech-whatsapp">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="u-icon-18"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+            Enviar no WhatsApp
+          </button>
+          <div class="u-flex-6">
+            <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar Cadastro</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       SUB-MODAL: SELEÇÃO DE ÁREAS DE ATUAÇÃO
+       ========================================================================== -->
+  <div class="modal-overlay" id="area-modal" style="z-index: 1100;">
+    <div class="modal-card modal-card-small" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3>Selecionar Áreas de Atuação</h3>
+        <button type="button" class="btn-close-modal" id="btn-close-area-modal">&times;</button>
+      </div>
+      <div class="modal-form" style="max-height: 60vh; overflow-y: auto;">
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Todo Interior">
+            <span>Todo Interior</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Norte Fluminense">
+            <span>Norte Fluminense</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Região dos Lagos">
+            <span>Região dos Lagos</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Metropolitana">
+            <span>Metropolitana</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Baixada Fluminense">
+            <span>Baixada Fluminense</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Região Serrana">
+            <span>Região Serrana</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Costa Verde">
+            <span>Costa Verde</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Sul Fluminense">
+            <span>Sul Fluminense</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Toda Capital">
+            <span>Toda Capital</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Norte 1">
+            <span>Norte 1</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Norte 2">
+            <span>Norte 2</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Norte 3">
+            <span>Norte 3</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Centro Zona Sul">
+            <span>Centro Zona Sul</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Sul 2">
+            <span>Sul 2</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Zona Oeste">
+            <span>Zona Oeste</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="FTTH - GPON">
+            <span>FTTH - GPON</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="HFC">
+            <span>HFC</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Madrugada">
+            <span>Madrugada</span>
+          </label>
+          <label class="u-flex-clickable-2">
+            <input type="checkbox" class="area-checkbox u-icon-18" value="Equipe FFH">
+            <span>Equipe FFH</span>
+          </label>
+        </div>
+        <div class="modal-footer" style="margin-top: 0;">
+          <button type="button" class="btn btn-primary" id="btn-save-areas" style="width: 100%;">Confirmar Áreas</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 2: ADICIONAR/EDITAR VEÍCULO
+       ========================================================================== -->
+  <div class="modal-overlay" id="vehicle-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="vehicle-modal-title">Adicionar Veículo</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="vehicle-form" class="modal-form">
+        <input type="hidden" id="vehicle-id">
+
+        <div class="form-group">
+          <label for="vehicle-plate">Placa do Veículo</label>
+          <input type="text" id="vehicle-plate" placeholder="AAA-0000" required>
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-model">Modelo do Veículo</label>
+          <input type="text" id="vehicle-model" placeholder="Ex: Fiat Fiorino 1.4, Toyota Hilux" required>
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-type">Tipo de Veículo</label>
+          <select id="vehicle-type" required>
+            <option value="Passeio">Passeio</option>
+            <option value="Utilitário">Utilitário (Fiorino, Kangoo)</option>
+            <option value="4x4">Caminhonete 4x4</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-responsible">Responsável (Membro da Equipe)</label>
+          <select id="vehicle-responsible">
+            <option value="">Sem responsável cadastrado</option>
+            <!-- Carregado via JS -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-subclus">Sub-Classe (Abrangência)</label>
+          <select id="vehicle-subclus">
+            <option value="">Selecione...</option>
+            <option value="RIO CAPITAL">Rio Capital</option>
+            <option value="INTERIOR">Interior</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-area-rede">Área de Rede</label>
+          <input type="text" id="vehicle-area-rede" placeholder="Ex: SUL 2, NORTE 1, OESTE">
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-base">Base</label>
+          <input type="text" id="vehicle-base" placeholder="Ex: MIRANTE, PENHA, CAMERINO">
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-setor">Setor</label>
+          <input type="text" id="vehicle-setor" placeholder="Ex: CORRETIVO, PREVENTIVA">
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-condutor-dia">Condutor Dia</label>
+          <input type="text" id="vehicle-condutor-dia" placeholder="Nome do Condutor Dia">
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-condutor-tarde">Condutor Tarde</label>
+          <input type="text" id="vehicle-condutor-tarde" placeholder="Nome do Condutor Tarde">
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-condutor-madrugada">Condutor Madrugada</label>
+          <input type="text" id="vehicle-condutor-madrugada" placeholder="Nome do Condutor Madrugada">
+        </div>
+
+        <h4 class="gx-29">Atributos & Equipamentos</h4>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px;">
+          <label class="u-flex-clickable-30">
+            <input type="checkbox" id="vehicle-rack" class="u-icon-18">
+            <span>Possui Rack de Teto</span>
+          </label>
+          <label class="u-flex-clickable-30">
+            <input type="checkbox" id="vehicle-basket" class="u-icon-18">
+            <span>Possui Cesto Aéreo</span>
+          </label>
+          <label class="u-flex-clickable-30">
+            <input type="checkbox" id="vehicle-giroflex" class="u-icon-18">
+            <span>Possui Giroflex/Strobo</span>
+          </label>
+          <label class="u-flex-clickable-30">
+            <input type="checkbox" id="vehicle-inverter" class="u-icon-18">
+            <span>Possui Inversor de Tensão</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label for="vehicle-ticket-car">Número Ticket Car</label>
+          <input type="text" id="vehicle-ticket-car" placeholder="Identificador do cartão combustível">
+        </div>
+
+        <div class="modal-footer u2-flex-20">
+          <button type="button" class="btn u2-bg-6" id="btn-send-vehicle-whatsapp">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="u-icon-18"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+            Enviar no WhatsApp
+          </button>
+          <div class="u-flex-6">
+            <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar Veículo</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 4: NOVO PROJETO DE REDE EXTERNA
+       ========================================================================== -->
+  <!-- ==========================================================================
+       MODAL 4: NOVO/EDITAR PROJETO DE REDE EXTERNA
+       ========================================================================== -->
+  <div class="modal-overlay" id="project-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="project-modal-title">Cadastrar Projeto de Rede</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="project-form" class="modal-form" enctype="multipart/form-data">
+        <input type="hidden" id="proj-id" name="id">
+        <input type="hidden" id="proj-folder-id" name="folder_id">
+
+        <div class="form-group">
+          <label for="proj-name">Nome do Setor / Obra</label>
+          <input type="text" id="proj-name" name="name" required placeholder="Ex: Ampliação GPON - Araruama Centro">
+        </div>
+
+        <div class="form-group">
+          <label for="proj-desc">Descrição / Observações</label>
+          <textarea id="proj-desc" name="description" rows="3" placeholder="Informações adicionais do projeto..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="proj-area">Área de Trabalho</label>
+          <select id="proj-area" name="area" required>
+            <option value="">Selecione a área...</option>
+            <option value="Zona Oeste">Zona Oeste</option>
+            <option value="Centro Zona Sul">Centro Zona Sul</option>
+            <option value="Sul 2">Sul 2</option>
+            <option value="FTTH - GPON">FTTH - GPON</option>
+            <option value="HFC">HFC</option>
+            <option value="Norte 1">Norte 1</option>
+            <option value="Norte 2">Norte 2</option>
+            <option value="Norte 3">Norte 3</option>
+            <option value="Região dos Lagos">Região dos Lagos</option>
+            <option value="Norte Fluminense">Norte Fluminense</option>
+            <option value="Metropolitana">Metropolitana</option>
+            <option value="Baixada Fluminense">Baixada Fluminense</option>
+            <option value="Região Serrana">Região Serrana</option>
+            <option value="Costa Verde">Costa Verde</option>
+            <option value="Sul Fluminense">Sul Fluminense</option>
+            <option value="Toda Capital">Toda Capital</option>
+            <option value="Todo Interior">Todo Interior</option>
+          </select>
+        </div>
+
+        <div class="form-group u-mt-51">
+          <label>Anexar Mapa de Rede (KMZ / KML)</label>
+          <label for="proj-kmz" class="file-upload-trigger">
+            <span class="file-upload-text" id="kmz-file-label">Selecionar mapa do Google Earth (.kmz, .kml)...</span>
+            <span class="file-upload-btn-label">Buscar</span>
+          </label>
+          <input type="file" id="proj-kmz" name="kmz_file" accept=".kmz,.kml" multiple class="u-hidden">
+          <span class="u2-font-24">Anexe o mapa do traçado de fibra (.kmz ou .kml)</span>
+        </div>
+
+        <div class="form-group u-mt-51">
+          <label>Anexar Documentação Técnica (Word / PDF / Excel / Imagens)</label>
+          <label for="proj-pdf" class="file-upload-trigger">
+            <span class="file-upload-text" id="pdf-file-label">Selecionar arquivos técnicos (.pdf, .docx, .xlsx, .txt, .png)...</span>
+            <span class="file-upload-btn-label">Buscar</span>
+          </label>
+          <input type="file" id="proj-pdf" name="pdf_file" accept=".pdf,.xlsx,.xls,.doc,.docx,.txt,.png,.jpg,.jpeg" multiple class="u-hidden">
+          <span class="u2-font-24">Planilhas, diagramas unifilares, relatórios ou fotos (.pdf, .docx, .xlsx, .txt, .jpg)</span>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-project">Salvar Projeto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 5: USUÁRIOS
+       ========================================================================== -->
+  <div class="modal-overlay" id="user-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="user-modal-title">Adicionar Usuário</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="user-form" class="modal-form" style="padding-top: 16px;">
+        <input type="hidden" id="user-id">
+
+        <div class="form-group u-mb-15">
+          <label for="user-tech-id" class="gx-31">Vincular Pessoa Cadastrada *</label>
+          <select id="user-tech-id" required class="gx-32">
+            <option value="">Selecione uma pessoa...</option>
+          </select>
+          <small class="u2-font-17">É obrigatório cadastrar a pessoa na aba de <strong>#Pessoas</strong> antes de criar a conta de usuário.</small>
+        </div>
+
+        <div class="form-group u-mb-15">
+          <label for="user-username" class="gx-31">Nome de Usuário (Login)</label>
+          <input type="text" id="user-username" required placeholder="ex: alexandre.candido" class="gx-32">
+        </div>
+
+        <div class="form-group u-mb-15" id="password-group">
+          <label for="user-password" class="gx-31">Nova Senha (Opcional)</label>
+          <input type="password" id="user-password" placeholder="Digite a nova senha..." class="gx-32">
+          <small id="user-password-hint" class="u2-font-17">Deixe em branco para manter a senha atual. Em contas novas, será definida como <strong>NomeDaEmpresa@2026</strong> (ex: Claro@2026).</small>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 24px;">
+          <label for="user-role" class="gx-31">Cargo / Nível de Acesso</label>
+          <select id="user-role" required class="gx-32">
+            <option value="Coordenador">Coordenador</option>
+            <option value="Supervisor">Supervisor</option>
+            <option value="Técnico">Técnico</option>
+            <option value="Auxiliar">Auxiliar</option>
+            <option value="Administrativo">Administrativo</option>
+            <option value="COP">COP</option>
+          </select>
+        </div>
+
+        <div class="modal-footer" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; margin-top: 10px;">
+          <button type="button" class="btn-cancel-modal" style="background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s;">Cancelar</button>
+          <button type="submit" id="btn-save-user" style="background: rgba(238, 44, 36, 0.15); border: 1px solid rgba(238, 44, 36, 0.4); color: #fca5a5; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s;">Salvar Usuário</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: TÉCNICOS EM MASSA
+       ========================================================================== -->
+  <div class="modal-overlay" id="tech-bulk-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Cadastrar Técnicos em Massa</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-form">
+        <p class="u2-font-18">Coloque uma pessoa por linha, separada por ponto e vírgula ou vírgula no formato:<br><strong>Nome;CPF;DataNascimento(AAAA-MM-DD);Cargo;Empresa;Telefone(opc);RG(opc);Área(opc);TipoEquipe(opc);Equipe(opc)</strong></p>
+        <div class="form-group">
+          <label for="tech-bulk-data">Dados Delimitados (CSV / Texto)</label>
+          <textarea id="tech-bulk-data" rows="8" placeholder="Exemplo:&#10;João Silva;12345678901;1990-05-15;Técnico;Claro;22999999999;123456;Região dos Lagos;Fusão;Alfa" class="u2-font-1"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button id="btn-save-tech-bulk" class="btn btn-primary">Processar Importação</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: VEÍCULOS EM MASSA
+       ========================================================================== -->
+  <div class="modal-overlay" id="vehicle-bulk-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Importar / Cadastrar Veículos em Massa</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-form">
+        <div class="form-group u2-margin-42">
+          <label for="vehicle-bulk-file" style="font-weight: 700; color: #38bdf8; margin-bottom: 6px; display: block;">
+            📁 Selecionar Arquivo Excel (.xlsx, .xls, .xlsm) ou CSV (.csv)
+          </label>
+          <input type="file" id="vehicle-bulk-file" accept=".xlsx,.xls,.xlsm,.csv,.txt" style="font-size: 0.85rem; background: #0b0f19; border: 1px solid var(--border); color: #ffffff; padding: 10px; border-radius: var(--radius-sm); width: 100%;">
+        </div>
+
+        <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; margin: 12px 0; font-weight: 700; text-transform: uppercase;">
+          — OU COLE OS DADOS EM TEXTO ABAIXO —
+        </div>
+
+        <p class="u2-font-18">Coloque um veículo por linha, separado por ponto e vírgula ou vírgula no formato:<br><strong>Placa;Modelo;Tipo(Passeio/Utilitário/4x4);CPFResponsável(opc);SubClasse(opc);ÁreaRede(opc);Base(opc);Setor(opc);CondutorDia(opc);CondutorTarde(opc);CondutorMadrugada(opc);TicketCar(opc)</strong></p>
+        <textarea id="vehicle-bulk-data" rows="6" placeholder="Exemplo:&#10;KXX-1234;Fiat Fiorino;Utilitário;12345678901;INTERIOR;Região dos Lagos;Cabo Frio;CORRETIVO;João;Maria;José;998877" class="u2-font-1"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline btn-cancel-modal">Cancelar</button>
+        <button id="btn-save-vehicle-bulk" class="btn btn-primary">Processar Importação</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==========================================================================
+       MODAL: NOVA PASTA DE PROJETOS
+       ========================================================================== -->
+  <div class="modal-overlay" id="folder-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3>Criar Nova Pasta</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="folder-form" class="modal-form">
+        <input type="hidden" id="folder-parent-id">
+        <div class="form-group">
+          <label for="folder-name">Nome da Pasta</label>
+          <input type="text" id="folder-name" required placeholder="Ex: Projetos Lançamento 2026">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar Pasta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: NOVA PASTA EM ROTAS
+       ========================================================================== -->
+  <div class="modal-overlay" id="route-folder-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3>Criar Pasta na Rota</h3>
+        <button type="button" class="btn-close-modal" onclick="closeRouteFolderModal()">&times;</button>
+      </div>
+      <form id="route-folder-form" class="modal-form">
+        <input type="hidden" id="route-folder-parent-id">
+        <div class="form-group">
+          <label for="route-folder-name">Nome da Pasta</label>
+          <input type="text" id="route-folder-name" required placeholder="Ex: Medições KMZ, Documentação Técnica">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline btn-cancel-modal" onclick="closeRouteFolderModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar Pasta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: FAVORITOS (CADASTRAR / EDITAR)
+       ========================================================================== -->
+  <div class="modal-overlay" id="favorite-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="fav-modal-title">Cadastrar Favorito</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="favorite-form" class="modal-form">
+        <input type="hidden" id="fav-id">
+
+        <div class="form-group">
+          <label for="fav-title">Nome do Favorito</label>
+          <input type="text" id="fav-title" required placeholder="Ex: Sistema Claro / Documentação">
+        </div>
+
+        <div class="form-group">
+          <label for="fav-link">Link (URL)</label>
+          <input type="url" id="fav-link" required placeholder="https://exemplo.com">
+        </div>
+
+        <div class="form-group">
+          <label>Cor da Tag</label>
+          <div class="color-options-picker">
+            <label class="color-option-btn color-vermelho active">
+              <input type="radio" name="fav-color" value="Vermelho" checked>
+              <span class="color-dot" style="background-color: #ee2c24;"></span> Vermelho
+            </label>
+            <label class="color-option-btn color-roxo">
+              <input type="radio" name="fav-color" value="Roxo">
+              <span class="color-dot" style="background-color: #a855f7;"></span> Roxo
+            </label>
+            <label class="color-option-btn color-amarelo">
+              <input type="radio" name="fav-color" value="Amarelo">
+              <span class="color-dot" style="background-color: #f59e0b;"></span> Amarelo
+            </label>
+            <label class="color-option-btn color-verde">
+              <input type="radio" name="fav-color" value="Verde">
+              <span class="color-dot" style="background-color: #10b981;"></span> Verde
+            </label>
+            <label class="color-option-btn color-azul">
+              <input type="radio" name="fav-color" value="Azul">
+              <span class="color-dot" style="background-color: #3b82f6;"></span> Azul
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-favorite">Salvar Favorito</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: FORMULÁRIOS (CADASTRAR / EDITAR FORMULÁRIO)
+       ========================================================================== -->
+  <div class="modal-overlay" id="form-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="form-modal-title">Cadastrar Formulário</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="forms-form" class="modal-form">
+        <input type="hidden" id="form-id">
+
+        <div class="form-group">
+          <label for="form-title">Nome do Formulário</label>
+          <input type="text" id="form-title" required placeholder="Ex: Formulário de Vistoria de Campo / POP">
+        </div>
+
+        <div class="form-group">
+          <label for="form-category">Categoria</label>
+          <select id="form-category" required>
+            <option value="Inspeção">Inspeção</option>
+            <option value="Vistoria">Vistoria</option>
+            <option value="Rede Externa">Rede Externa</option>
+            <option value="Técnico">Técnico</option>
+            <option value="Relatório">Relatório</option>
+            <option value="Outros">Outros</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="form-link">Link do Formulário / Documento (URL)</label>
+          <input type="text" id="form-link" placeholder="Ex: https://forms.office.com/... ou link de acesso">
+        </div>
+
+        <div class="form-group">
+          <label for="form-description">Descrição / Instruções de Preenchimento</label>
+          <textarea id="form-description" rows="3" placeholder="Orientações técnicas para os técnicos de campo..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-form">Salvar Formulário</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: FORMULÁRIOS - INDICADORES E RESPOSTAS (ESCALA INDUSTRIAL)
+       ========================================================================== -->
+  <div class="modal-overlay" id="form-responses-modal">
+    <div class="modal-card" style="max-width: 1000px; width: 95%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; padding: 24px;">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; shrink: 0;">
+        <div>
+          <h3 id="form-responses-modal-title" style="font-size: 1.2rem; color: #ffffff;">Indicadores e Respostas do Formulário</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Análise em massa de dados, relatórios e fichas de respostas individuais dos técnicos</p>
+        </div>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+
+      <!-- Action Bar & Tabs -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid var(--border); shrink: 0;">
+        <div class="u2-flex-41">
+          <button class="btn btn-outline active" id="tab-btn-form-analytics" style="font-size: 0.82rem; padding: 7px 14px; background: var(--primary); color: #ffffff; border-color: var(--primary); display: flex; align-items: center; gap: 6px;">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="u-icon-16">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z"/>
+            </svg>
+            Massa de Respostas (Indicadores)
+          </button>
+          <button class="btn btn-outline" id="tab-btn-form-individual" style="font-size: 0.82rem; padding: 7px 14px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="u-icon-16">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Respostas Individuais (<span id="form-responses-count">0</span>)
+          </button>
+        </div>
+        <div class="u2-flex-41">
+          <button class="btn btn-outline" onclick="openFormResponsesImportModal()" style="font-size: 0.8rem; padding: 7px 12px; border-color: rgba(255,255,255,0.2); display: flex; align-items: center; gap: 6px;">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 15px; height: 15px; color: #60a5fa;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+            Importar Excel / CSV
+          </button>
+          <button class="btn btn-primary" onclick="exportCurrentFormResponses()" style="font-size: 0.8rem; padding: 7px 12px; display: flex; align-items: center; gap: 6px;">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 15px; height: 15px;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Exportar Excel / CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- VIEW 1: MASSA DE RESPOSTAS (INDICADORES) -->
+      <div id="form-view-analytics" class="custom-scrollbar" style="display: block; flex: 1; overflow-y: auto; padding-right: 8px; margin-bottom: 10px;">
+        <!-- KPI Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px;">
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-left: 4px solid #e62319; border-radius: 8px; padding: 16px;">
+            <span class="gx-52">Total de Respostas</span>
+            <div id="kpi-total-responses" class="gx-49">0</div>
+          </div>
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-left: 4px solid #60a5fa; border-radius: 8px; padding: 16px;">
+            <span class="gx-52">Técnicos Distintos</span>
+            <div id="kpi-unique-techs" style="font-size: 1.8rem; font-weight: 800; color: #60a5fa; margin-top: 4px;">0</div>
+          </div>
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-left: 4px solid #34d399; border-radius: 8px; padding: 16px;">
+            <span class="gx-52">Regiões Cobertas</span>
+            <div id="kpi-unique-regions" style="font-size: 1.8rem; font-weight: 800; color: #34d399; margin-top: 4px;">0</div>
+          </div>
+        </div>
+
+        <!-- Breakdown Analytics Grids -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+          <div class="u2-bg-13">
+            <div class="u2-flex-30">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 18px; height: 18px; color: #60a5fa;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+              <h4 class="u2-font-32">Distribuição por Região</h4>
+            </div>
+            <div id="analytics-regions-list" class="u2-flex-29">
+              <!-- Injected via JS -->
+            </div>
+          </div>
+
+          <div class="u2-bg-13">
+            <div class="u2-flex-30">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 18px; height: 18px; color: #34d399;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+              <h4 class="u2-font-32">Motivos do Inventário</h4>
+            </div>
+            <div id="analytics-reasons-list" class="u2-flex-29">
+              <!-- Injected via JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 2: RESPOSTAS INDIVIDUAIS -->
+      <div id="form-view-individual" class="custom-scrollbar" style="display: none; flex: 1; overflow-y: auto; padding-right: 8px; margin-bottom: 10px;">
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Data/Hora</th>
+                <th>Técnico</th>
+                <th>E-mail</th>
+                <th>Resumo da Resposta</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="form-responses-table-body">
+              <!-- Content loaded via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="margin-top: 20px;">
+        <button type="button" class="btn btn-outline btn-cancel-modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: IMPORTAR RESPOSTAS DO GOOGLE FORMS / EXCEL
+       ========================================================================== -->
+  <div class="modal-overlay" id="form-responses-import-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3>Importar Respostas do Excel / CSV</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div style="padding: 10px 0;">
+        <div class="form-group u-mb-53">
+          <label for="form-responses-file-input" style="display: block; font-size: 0.85rem; font-weight: 600; color: #ffffff; margin-bottom: 8px;">
+            📂 Selecionar arquivo do computador (.xlsx, .xls, .csv)
+          </label>
+          <input type="file" id="form-responses-file-input" accept=".xlsx, .xls, .csv" class="text-input" style="padding: 10px; cursor: pointer; background: #1a1a1e; border: 1px dashed rgba(255, 255, 255, 0.3);">
+        </div>
+
+        <div class="u-mb-53">
+          <button type="button" class="btn" id="btn-extract-downloads-excel" onclick="extractDownloadsExcel()" style="background: rgba(204, 29, 21, 0.15); color: #f87171; border: 1px solid rgba(204, 29, 21, 0.35); padding: 9px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; width: 100%; cursor: pointer;">
+            ⚡ Importar Direto: "2 - Inventário - Maquina e ferramentas.xlsx" (Downloads)
+          </button>
+        </div>
+
+        <div style="text-align: center; color: var(--text-muted); font-size: 0.78rem; margin: 12px 0;">— OU COLE O CONTEÚDO CSV / EXCEL ABAIXO —</div>
+
+        <textarea id="form-responses-csv-text" rows="6" class="text-input" style="width: 100%; font-family: monospace; font-size: 0.8rem; background: #121215; color: #e2e8f0;" placeholder="Cole o texto CSV do Excel / Google Forms aqui..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-save-form-responses-import">Processar Importação</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: FICHA DETALHADA DE RESPOSTA INDIVIDUAL
+       ========================================================================== -->
+  <div class="modal-overlay" id="form-single-response-modal">
+    <div class="modal-card" style="max-width: 700px; width: 90%;">
+      <div class="modal-header">
+        <h3 id="single-response-title">Ficha de Resposta do Técnico</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div id="single-response-content" style="max-height: 500px; overflow-y: auto; padding: 14px 0;">
+        <!-- Injected via JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline btn-cancel-modal">Fechar Ficha</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: ROTAS (INCLUIR / EDITAR ROTA)
+       ========================================================================== -->
+  <div class="modal-overlay" id="route-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="route-modal-title">Incluir Rota</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="route-form" class="modal-form">
+        <input type="hidden" id="route-id">
+
+        <div class="form-group">
+          <label for="route-name">Nome da Rota</label>
+          <input type="text" id="route-name" required placeholder="Ex: Rota Centro - Cabo Frio / Backbone 01">
+        </div>
+
+        <div class="form-group">
+          <label for="route-type">Tipo de Rota</label>
+          <select id="route-type" required>
+            <option value="Empresarial">Empresarial</option>
+            <option value="Residencial">Residencial</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="route-description">Descrição / Observações (Opcional)</label>
+          <textarea id="route-description" rows="3" placeholder="Informações gerais sobre a rota..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-route">Salvar Rota</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: LINHAS DA ROTA (ADICIONAR / EDITAR LINHA)
+       ========================================================================== -->
+  <div class="modal-overlay" id="route-line-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="route-line-modal-title">Adicionar Medição na Rota</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="route-line-form" class="modal-form">
+        <input type="hidden" id="route-line-id">
+
+        <div class="form-group">
+          <label for="line-stretch-name">Data</label>
+          <input type="text" id="line-stretch-name" required placeholder="Ex: 26/07/2026">
+        </div>
+
+        <div class="form-group">
+          <label for="line-pop-box">Local da Medição</label>
+          <input type="text" id="line-pop-box" placeholder="Ex: POP Cabo Frio / CTO-CF-12">
+        </div>
+
+        <div class="form-group">
+          <label for="line-cable-type">Medição</label>
+          <input type="text" id="line-cable-type" placeholder="Ex: -18.5 dBm / 1490nm">
+        </div>
+
+        <div class="form-group">
+          <label for="line-notes">Observações Técnicas</label>
+          <textarea id="line-notes" rows="2" placeholder="Ex: Posteação compartilhada, fusão na porta 4..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="line-address">Endereço</label>
+          <input type="text" id="line-address" placeholder="Ex: Av. Assunção, 150 - Centro, Cabo Frio">
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-route-line">Salvar Medição</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: IMPORTAR LINHAS / MEDIÇÕES DA ROTA
+       ========================================================================== -->
+  <div class="modal-overlay" id="route-lines-import-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Importar Medições em Lote (CSV)</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-form">
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px; line-height: 1.4;">
+          Cole os dados separados por ponto e vírgula (<strong>;</strong>) ou vírgula (<strong>,</strong>) no formato:<br>
+          <code style="color: #60a5fa;">Data ; Local da Medição ; Medição ; Observações Técnicas ; Endereço</code>
+        </p>
+        <div class="form-group">
+          <textarea id="route-lines-bulk-data" rows="8" placeholder="26/07/2026;POP Centro; -18.5 dBm;Sinal excelente;Av. Brasil, 100&#10;26/07/2026;CTO-CF-04; -22.1 dBm;Fusão OK;Rua Porto Alegre, 45"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btn-save-route-lines-bulk">Importar Dados</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: FATURAMENTO DE EQUIPE (FINANCEIRO)
+       ========================================================================== -->
+  <div class="modal-overlay" id="fin-team-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="fin-team-modal-title">Registrar Faturamento da Equipe</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="fin-team-form" class="modal-form">
+        <input type="hidden" id="fin-team-record-id">
+        <div class="form-group">
+          <label for="fin-team-tech1">Pessoa 1 (Técnico / Responsável)</label>
+          <select id="fin-team-tech1" required>
+            <option value="">Selecione o colaborador...</option>
+            <!-- Injetado por JS -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="fin-team-tech2">Pessoa 2 (Auxiliar / Técnico)</label>
+          <select id="fin-team-tech2" required>
+            <option value="">Selecione o colaborador...</option>
+            <!-- Injetado por JS -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="fin-team-area">Área de Trabalho</label>
+          <select id="fin-team-area" required>
+            <option value="">Selecione a área...</option>
+            <option value="Zona Oeste">Zona Oeste</option>
+            <option value="Centro Zona Sul">Centro Zona Sul</option>
+            <option value="Sul 2">Sul 2</option>
+            <option value="FTTH - GPON">FTTH - GPON</option>
+            <option value="HFC">HFC</option>
+            <option value="Norte 1">Norte 1</option>
+            <option value="Norte 2">Norte 2</option>
+            <option value="Norte 3">Norte 3</option>
+            <option value="Todo Interior">Todo Interior</option>
+            <option value="Norte Fluminense">Norte Fluminense</option>
+            <option value="Região dos Lagos">Região dos Lagos</option>
+            <option value="Metropolitana">Metropolitana</option>
+            <option value="Baixada Fluminense">Baixada Fluminense</option>
+            <option value="Região Serrana">Região Serrana</option>
+            <option value="Costa Verde">Costa Verde</option>
+            <option value="Sul Fluminense">Sul Fluminense</option>
+            <option value="Toda Capital">Toda Capital</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="fin-team-month">Mês de Referência</label>
+          <input type="month" id="fin-team-month" required>
+        </div>
+        <div class="form-group">
+          <label for="fin-team-amount">Valor Mensal (R$)</label>
+          <input type="number" id="fin-team-amount" step="0.01" min="0.01" required placeholder="0.00">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-fin-team">Registrar Equipe</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: CONSUMÍVEIS (FINANCEIRO)
+       ========================================================================== -->
+  <div class="modal-overlay" id="fin-consumable-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="fin-consumable-modal-title">Registrar Consumível</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="fin-consumable-form" class="modal-form">
+        <input type="hidden" id="fin-consumable-record-id">
+        <div class="form-group">
+          <label for="fin-consumable-desc">Descrição / Material</label>
+          <input type="text" id="fin-consumable-desc" required placeholder="Ex: Fita isolante, conectores, cabos ópticos">
+        </div>
+        <div class="form-group">
+          <label for="fin-consumable-area">Área de Trabalho</label>
+          <select id="fin-consumable-area" required>
+            <option value="">Selecione a área...</option>
+            <option value="Zona Oeste">Zona Oeste</option>
+            <option value="Centro Zona Sul">Centro Zona Sul</option>
+            <option value="Sul 2">Sul 2</option>
+            <option value="FTTH - GPON">FTTH - GPON</option>
+            <option value="HFC">HFC</option>
+            <option value="Norte 1">Norte 1</option>
+            <option value="Norte 2">Norte 2</option>
+            <option value="Norte 3">Norte 3</option>
+            <option value="Todo Interior">Todo Interior</option>
+            <option value="Norte Fluminense">Norte Fluminense</option>
+            <option value="Região dos Lagos">Região dos Lagos</option>
+            <option value="Metropolitana">Metropolitana</option>
+            <option value="Baixada Fluminense">Baixada Fluminense</option>
+            <option value="Região Serrana">Região Serrana</option>
+            <option value="Costa Verde">Costa Verde</option>
+            <option value="Sul Fluminense">Sul Fluminense</option>
+            <option value="Toda Capital">Toda Capital</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="fin-consumable-month">Mês de Referência</label>
+          <input type="month" id="fin-consumable-month" required>
+        </div>
+        <div class="form-group">
+          <label for="fin-consumable-amount">Valor Mensal (R$)</label>
+          <input type="number" id="fin-consumable-amount" step="0.01" min="0.01" required placeholder="0.00">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-fin-consumable">Registrar Despesa</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: LANÇAMENTO INVENTÁRIO
+       ========================================================================== -->
+  <div class="modal-overlay" id="inventory-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="inventory-modal-title">Registrar Ativo de Inventário</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="inventory-form" class="modal-form">
+        <input type="hidden" id="inventory-id">
+        <input type="hidden" id="inventory-category">
+
+        <div class="form-group">
+          <label for="inventory-name">Nome / Modelo do Item</label>
+          <input type="text" id="inventory-name" required placeholder="Ex: Bobina de Drop Óptico 1km, Alicate Crimpador">
+        </div>
+
+        <div class="form-group">
+          <label for="inventory-quantity">Quantidade em Estoque</label>
+          <input type="number" id="inventory-quantity" min="0" required placeholder="0">
+        </div>
+
+        <div class="form-group">
+          <label for="inventory-serial">Número de Série / Lote (Opcional)</label>
+          <input type="text" id="inventory-serial" placeholder="Ex: BR-99887766, Lote 4B">
+        </div>
+
+        <div class="form-group">
+          <label for="inventory-description">Observações / Especificações</label>
+          <textarea id="inventory-description" rows="2" placeholder="Especificações técnicas ou localização do ativo..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar no Estoque</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: UPLOAD BASE BUSCADOR
+       ========================================================================== -->
+  <div class="modal-overlay" id="buscador-upload-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="buscador-upload-title">Carregar Nova Base</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="buscador-upload-form" class="modal-form" enctype="multipart/form-data">
+        <input type="hidden" id="buscador-upload-topic" value="RAL">
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; line-height: 1.4;">
+          Ao carregar um novo arquivo, as informações editadas anteriormente serão preservadas e as novas linhas da planilha serão adicionadas.
+        </p>
+        <div class="form-group">
+          <label for="buscador-file-input">Selecione a Planilha (.xlsx, .xlsm, .xls, .csv)</label>
+          <input type="file" id="buscador-file-input" accept=".xlsx, .xlsm, .xls, .csv" required style="padding: 10px; background: #1a1a1e; border: 1px solid var(--border); border-radius: 8px; width: 100%; color: #ffffff;">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-buscador-upload">Substituir Base</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: EDITAR DISTÂNCIA (BUSCADOR)
+       ========================================================================== -->
+  <div class="modal-overlay" id="buscador-edit-distance-modal">
+    <div class="modal-card modal-card-small">
+      <div class="modal-header">
+        <h3 id="buscador-edit-distance-title">Editar Distância & REF</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="buscador-edit-distance-form" class="modal-form">
+        <input type="hidden" id="buscador-edit-distance-rec-id">
+        <div class="form-group u2-margin-42">
+          <label for="buscador-edit-distance-input" class="u2-font-5">DISTÂNCIA</label>
+          <input type="text" id="buscador-edit-distance-input" placeholder="Informe a distância (ex: 10km, 500m)..." class="gy-4">
+        </div>
+        <div class="form-group u-mb-15">
+          <label for="buscador-edit-ref-input" class="u2-font-5">REF (REFERÊNCIA)</label>
+          <input type="text" id="buscador-edit-ref-input" placeholder="Informe a referência (ex: REF-001, Teste)..." class="gy-4">
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-outline btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-edit-distance">Salvar Alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: ÁREA DE TRABALHO (CADASTRAR TAREFA / NOTA)
+       ========================================================================== -->
+  <div class="modal-overlay" id="task-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="task-modal-title">Nova Atividade / Nota Exclusiva</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="task-form" class="modal-form">
+        <input type="hidden" id="task-id">
+
+        <div class="form-group u-mb-17">
+          <label for="task-title">Título da Atividade / Nota <span class="gx-45">*</span></label>
+          <input type="text" id="task-title" required placeholder="Ex: Acompanhar manutenção preventiva POP Centro">
+        </div>
+
+        <div class="form-row u-mb-17">
+          <div class="form-group">
+            <label for="task-priority">Prioridade</label>
+            <select id="task-priority">
+              <option value="Alta">🔴 Alta</option>
+              <option value="Média" selected>🟡 Média</option>
+              <option value="Baixa">🟢 Baixa</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-due-date">Data de Conclusão</label>
+            <input type="date" id="task-due-date">
+          </div>
+        </div>
+
+        <div class="form-group u-mb-17">
+          <label for="task-assigned-tech">Acionar Colaborador (Opcional)</label>
+          <select id="task-assigned-tech">
+            <option value="">Nenhum colaborador acionado</option>
+            <!-- Loaded dynamically via JS -->
+          </select>
+        </div>
+
+        <div class="form-group u-mb-17">
+          <label for="task-description">Descrição / Observações</label>
+          <textarea id="task-description" rows="3" placeholder="Detalhes ou instruções da atividade privativa..."></textarea>
+        </div>
+
+        <div class="form-group u-mb-15">
+          <label for="task-status">Status</label>
+          <select id="task-status">
+            <option value="Pendente">Pendente</option>
+            <option value="Em Andamento">Em Andamento</option>
+            <option value="Concluído">Concluído</option>
+          </select>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-task">Salvar Atividade</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: NOVA AVALIAÇÃO TÉCNICA (FFA & PROCISA)
+       ========================================================================== -->
+  <div class="modal-overlay" id="evaluation-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="evaluation-modal-title">Nova Avaliação Técnica</h3>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+      <form id="evaluation-form" class="modal-form">
+        <div class="form-group" style="margin-bottom: 18px;">
+          <label for="eval-tech-select">Selecione o Colaborador (FFA / Procisa) <span class="gx-45">*</span></label>
+          <select id="eval-tech-select" required style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px; color: #f8fafc; font-size: 0.95rem;">
+            <option value="">Carregando colaboradores...</option>
+          </select>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px; margin-bottom: 20px;">
+          <h4 style="margin-bottom: 14px; color: #f59e0b; font-weight: 800; font-size: 0.95rem; text-transform: uppercase;">Critérios de Avaliação (Notas de 1 a 10)</h4>
+          
+          <div class="form-row u-mb-53">
+            <div class="form-group">
+              <label for="eval-score-behavior">Comportamento (1 a 10)</label>
+              <input type="number" id="eval-score-behavior" min="1" max="10" value="10" required>
+            </div>
+            <div class="form-group">
+              <label for="eval-score-productivity">Produtividade / Efetividade (1 a 10)</label>
+              <input type="number" id="eval-score-productivity" min="1" max="10" value="10" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="eval-score-kpi">Indicadores Técnicos (1 a 10)</label>
+              <input type="number" id="eval-score-kpi" min="1" max="10" value="10" required>
+            </div>
+            <div class="form-group">
+              <label for="eval-score-process">Processos (1 a 10)</label>
+              <input type="number" id="eval-score-process" min="1" max="10" value="10" required>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-weight: 700; color: #cbd5e1; font-size: 0.9rem;">Resultado Geral Calculado:</span>
+            <span id="eval-calculated-score" style="font-size: 1.4rem; font-weight: 800; color: #f59e0b;">10.0 / 10</span>
+          </div>
+        </div>
+
+        <div class="form-group u-mb-15">
+          <label for="eval-comments">Parecer / Observações do Gestor</label>
+          <textarea id="eval-comments" rows="3" placeholder="Insira o feedback ou motivo dos pontos aplicados..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-eval">Salvar Avaliação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script>
+    window.currentUserRole = "{{ role }}";
+    window.currentUsername = "{{ username }}";
+    window.currentUserCompany = "{{ company }}";
+  </script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}?v=6.3.0"></script>
+  <script>
+    // ---- Mobile sidebar toggle ----
+    function toggleSidebar() {
+      const sidebar = document.getElementById('dash-sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+      const isOpen = sidebar.classList.contains('open');
+      if (isOpen) {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+      } else {
+        sidebar.classList.add('open');
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    // Auto-close sidebar when a menu item is clicked (mobile)
+    document.querySelectorAll('.menu-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          const sidebar = document.getElementById('dash-sidebar');
+          const overlay = document.getElementById('sidebar-overlay');
+          sidebar.classList.remove('open');
+          overlay.classList.remove('active');
+          document.body.style.overflow = '';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

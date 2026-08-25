@@ -1,0 +1,5 @@
+DISPLAY_NAME=Gestao Rede Externa
+LANGUAGE=python
+MEMORY=1024
+VERSION=recommended
+CUSTOM_COMMAND=pip install -r requirements.txt && cd frontend && npm install && npm run build && cd .. && python app.py

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚠️ HONEYPOT DETECTADO • ACESSO NEGADO</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background-color: #050000;
+      color: #ff2a2a;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      text-align: center;
+      padding: 20px;
+    }
+    .jumpscare-container {
+      max-width: 720px;
+      width: 100%;
+      background: rgba(15, 0, 0, 0.95);
+      border: 3px solid #ff0000;
+      border-radius: 20px;
+      padding: 30px 24px;
+      box-shadow: 0 0 70px rgba(255, 0, 0, 0.9);
+      animation: pulseGlow 0.8s infinite alternate;
+    }
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 30px rgba(255, 0, 0, 0.5); border-color: #880000; }
+      100% { box-shadow: 0 0 90px rgba(255, 0, 0, 1); border-color: #ff0000; }
+    }
+    .jumpscare-img {
+      width: 100%;
+      max-height: 380px;
+      object-fit: cover;
+      border-radius: 14px;
+      border: 2px solid #ff1111;
+      margin-bottom: 24px;
+      box-shadow: 0 0 40px rgba(255, 0, 0, 0.8);
+      animation: shake 0.25s infinite;
+    }
+    @keyframes shake {
+      0% { transform: translate(1px, 1px) scale(1); }
+      20% { transform: translate(-2px, -2px) scale(1.01); }
+      40% { transform: translate(-3px, 0px) scale(1); }
+      60% { transform: translate(3px, 2px) scale(1.01); }
+      80% { transform: translate(1px, -1px) scale(1); }
+      100% { transform: translate(-1px, 2px) scale(1); }
+    }
+    .phrase-title {
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+      text-shadow: 0 0 15px #ff0000, 0 0 30px #ff0000;
+    }
+    .info-card {
+      background: rgba(255, 0, 0, 0.1);
+      border: 1px solid rgba(255, 0, 0, 0.4);
+      padding: 16px 20px;
+      border-radius: 12px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.05rem;
+      color: #ff9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .info-card strong {
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="jumpscare-container">
+    <img src="{{ url_for('static', filename='img/jumpscare.png') }}" class="jumpscare-img" alt="Honeypot Decoy">
+    
+    <div class="phrase-title">
+      Para de tentar capturar algo skiddie, voce nao vai arrumar nada aqui
+    </div>
+
+    <div class="info-card">
+      <div><strong>IP:</strong> {{ client_ip }}</div>
+      <div><strong>LOCALIZAÇÃO:</strong> {{ location }}</div>
+    </div>
+  </div>
+
+  <audio id="jumpscareAudio" loop preload="auto">
+    <source src="{{ url_for('static', filename='audio/jumpscare_scream.mp3') }}" type="audio/mpeg">
+    <source src="https://www.myinstants.com/media/sounds/loud-jumpscare-scream.mp3" type="audio/mpeg">
+  </audio>
+
+  <script>
+    let audioCtx = null;
+
+    function init100xAudioBoost() {
+      const audio = document.getElementById('jumpscareAudio');
+      if (!audio) return;
+
+      audio.volume = 1.0;
+      audio.play().catch(() => {});
+
+      if (!audioCtx) {
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          audioCtx = new AudioCtx();
+
+          const source = audioCtx.createMediaElementSource(audio);
+
+          // 100x Volume Gain Amplification Chain (Gain 10 x Gain 10 = 100x)
+          const gain1 = audioCtx.createGain();
+          gain1.gain.value = 10.0;
+
+          const gain2 = audioCtx.createGain();
+          gain2.gain.value = 10.0;
+
+          const compressor = audioCtx.createDynamicsCompressor();
+          compressor.threshold.value = -30;
+          compressor.knee.value = 40;
+          compressor.ratio.value = 12;
+          compressor.attack.value = 0.003;
+          compressor.release.value = 0.25;
+
+          source.connect(gain1);
+          gain1.connect(gain2);
+          gain2.connect(compressor);
+          compressor.connect(audioCtx.destination);
+        } catch(e) {
+          console.error("Web Audio API boost error:", e);
+        }
+      }
+
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      init100xAudioBoost();
+
+      const forceEvents = ['click', 'mousemove', 'keydown', 'touchstart', 'scroll'];
+      forceEvents.forEach(evt => {
+        window.addEventListener(evt, () => {
+          init100xAudioBoost();
+        });
+      });
+    });
+  </script>
+</body>
+</html>

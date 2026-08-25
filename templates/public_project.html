@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ project.name }} - Claro Gestão Rede Externa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #0f172a;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f8fafc;
+      padding-bottom: 60px;
+    }
+    .banner-container {
+      width: 100%;
+      max-width: 680px;
+      margin: 20px auto 0 auto;
+      border-radius: 16px 16px 0 0;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(211, 30, 21, 0.35);
+      background: linear-gradient(135deg, #ee2c24 0%, #c81f18 100%);
+      text-align: center;
+      padding: 24px 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .project-wrapper {
+      width: 100%;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 14px;
+    }
+    .project-card {
+      background-color: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0 0 16px 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    .project-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+    .area-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: rgba(226, 29, 21, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      margin-bottom: 12px;
+    }
+    .project-desc {
+      font-size: 0.92rem;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 24px 0 14px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .file-item {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .file-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      word-break: break-all;
+    }
+    .file-name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+    .file-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-file {
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.2s;
+    }
+    .btn-view {
+      background: #3b82f6;
+      color: #ffffff;
+    }
+    .btn-download {
+      background: #10b981;
+      color: #ffffff;
+    }
+    .btn-file:hover {
+      opacity: 0.9;
+    }
+    .footer-brand {
+      text-align: center;
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="project-wrapper">
+    <!-- Header Banner -->
+    <div class="banner-container">
+      <svg width="150" height="46" viewBox="0 0 150 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <text x="10" y="35" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-weight="800" font-size="36" fill="#ffffff" letter-spacing="-1.5">Claro</text>
+        <circle cx="120" cy="13" r="3" fill="#ffffff"/>
+        <rect x="126" y="11" width="9" height="3" rx="1.5" fill="#ffffff"/>
+        <rect x="124" y="4" width="8" height="3" rx="1.5" fill="#ffffff" transform="rotate(-35 124 4)"/>
+        <rect x="119" y="1" width="3" height="7" rx="1.5" fill="#ffffff"/>
+      </svg>
+    </div>
+
+    <!-- Project Details Card -->
+    <div class="project-card">
+      <h1 class="project-title">{{ project.name }}</h1>
+      {% if project.area %}
+        <span class="area-badge">{{ project.area }}</span>
+      {% endif %}
+      <p class="project-desc">{{ project.description or 'Nenhuma descrição detalhada fornecida para este projeto.' }}</p>
+
+      <!-- Mapas KMZ/KML -->
+      <h3 class="section-title">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px; color: #f59e0b;">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+        </svg>
+        Mapas de Rede (Google Earth - KMZ / KML)
+      </h3>
+
+      {% if kmz_files %}
+        {% for file in kmz_files %}
+          <div class="file-item">
+            <div class="file-info">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 18px; height: 18px; color: #f59e0b;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              </svg>
+              <span class="file-name">{{ file.name }}</span>
+            </div>
+            <div class="file-actions">
+              <a href="/uploads/{{ file.path }}" target="_blank" class="btn-file btn-view">Visualizar</a>
+              <a href="/uploads/{{ file.path }}" download class="btn-file btn-download">Download</a>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size: 0.85rem; color: #64748b; font-style: italic;">Nenhum mapa (.kmz/.kml) anexado.</p>
+      {% endif %}
+
+      <!-- Documentação Técnica -->
+      <h3 class="section-title">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px; color: #3b82f6;">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+        </svg>
+        Documentação Técnica e Anexos
+      </h3>
+
+      {% if pdf_files %}
+        {% for file in pdf_files %}
+          <div class="file-item">
+            <div class="file-info">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 18px; height: 18px; color: #3b82f6;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <span class="file-name">{{ file.name }}</span>
+            </div>
+            <div class="file-actions">
+              <a href="/uploads/{{ file.path }}" target="_blank" class="btn-file btn-view">Visualizar</a>
+              <a href="/uploads/{{ file.path }}" download class="btn-file btn-download">Download</a>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size: 0.85rem; color: #64748b; font-style: italic;">Nenhuma documentação técnica anexada.</p>
+      {% endif %}
+
+    </div>
+
+    <div class="footer-brand">
+      Claro Gestão Rede Externa
+    </div>
+  </div>
+
+</body>
+</html>
