@@ -12,6 +12,7 @@ import UsersPage from './pages/UsersPage';
 import EvaluationsPage from './pages/EvaluationsPage';
 import WorkspacePage from './pages/WorkspacePage';
 import FinancePage from './pages/FinancePage';
+import IndicatorsPage from './pages/IndicatorsPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 export default function App() {
@@ -40,7 +41,7 @@ export default function App() {
           <Route path="projetos" element={<PlaceholderPage title="Projetos" />} />
           <Route path="formularios" element={<PlaceholderPage title="Formulários" />} />
           <Route path="rotas" element={<PlaceholderPage title="Rotas" />} />
-          <Route path="indicadores" element={<PlaceholderPage title="Indicadores" />} />
+          <Route path="indicadores" element={<IndicatorsPage />} />
           <Route path="gerenciamento" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
