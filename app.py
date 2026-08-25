@@ -864,10 +864,6 @@ def serve_react_app():
 def react_assets(filename):
     return send_from_directory(os.path.join(REACT_DIST, 'assets'), filename)
 
-@app.route('/favicon.svg')
-def react_favicon():
-    return send_from_directory(REACT_DIST, 'favicon.svg')
-
 @app.route('/logout')
 def logout():
     if 'user_id' in session:
@@ -885,6 +881,9 @@ def spa_catch_all(path):
     if path.startswith('api/') or path.startswith('uploads/') or path.startswith('static/'):
         return jsonify({"error": "Não encontrado."}), 404
     if '.' in path.rsplit('/', 1)[-1]:
+        # Root-level built assets (favicon.png, claro-icon.png, icons.svg, ...)
+        if os.path.isfile(os.path.join(REACT_DIST, path)):
+            return send_from_directory(REACT_DIST, path)
         return jsonify({"error": "Arquivo não encontrado."}), 404
     return serve_react_app()
 

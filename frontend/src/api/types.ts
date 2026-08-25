@@ -96,6 +96,39 @@ export interface Evaluation {
   created_at: string;
 }
 
+export interface UserTask {
+  id: number;
+  title: string;
+  priority: string;
+  due_date: string | null;
+  assigned_tech_id: number | null;
+  assigned_tech_name: string;
+  description: string;
+  status: string;
+  created_at: string;
+}
+
+export interface TeamFinanceRecord {
+  id: number;
+  tech1_id: number;
+  tech2_id: number;
+  tech1_name: string;
+  tech2_name: string;
+  area: string;
+  amount: number;
+  reference_month: string;
+  created_at: string;
+}
+
+export interface ConsumableFinanceRecord {
+  id: number;
+  description: string;
+  area: string;
+  amount: number;
+  reference_month: string;
+  created_at: string;
+}
+
 export interface MapaEvento {
   id: number;
   lat: number;

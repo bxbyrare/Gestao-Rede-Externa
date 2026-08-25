@@ -10,6 +10,8 @@ import VehiclesPage from './pages/VehiclesPage';
 import InventoryPage from './pages/InventoryPage';
 import UsersPage from './pages/UsersPage';
 import EvaluationsPage from './pages/EvaluationsPage';
+import WorkspacePage from './pages/WorkspacePage';
+import FinancePage from './pages/FinancePage';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 export default function App() {
@@ -26,12 +28,12 @@ export default function App() {
           }
         >
           <Route index element={<FavoritesPage />} />
-          <Route path="area-de-trabalho" element={<PlaceholderPage title="Área de Trabalho" />} />
+          <Route path="area-de-trabalho" element={<WorkspacePage />} />
           <Route path="pessoas" element={<PessoasPage />} />
           <Route path="veiculos" element={<VehiclesPage />} />
           <Route path="buscador" element={<PlaceholderPage title="Buscador" />} />
           <Route path="mapa-eventos" element={<MapaEventosPage />} />
-          <Route path="financeiro" element={<PlaceholderPage title="Financeiro" />} />
+          <Route path="financeiro" element={<FinancePage />} />
           <Route path="escala" element={<PlaceholderPage title="Escala" />} />
           <Route path="avaliacao" element={<EvaluationsPage />} />
           <Route path="inventario" element={<InventoryPage />} />
