@@ -1,11 +1,73 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, MessageCircle, Pencil, Search, Upload } from 'lucide-react';
+import { Download, MessageCircle, Pencil, Search, Upload, X } from 'lucide-react';
 import { api, ApiError } from '../api/client';
-import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
+import { Button, Card, Field, Input, PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
 import { isCoordenador, useAuth } from '../state/AuthContext';
 
 const TOPICS = ['RAL', 'REC', 'HFC', 'GPON'];
+const MAX_ROUTE_SUGGESTIONS = 30;
+
+// A plain <select> with tens of thousands of <option>s (this base has
+// 60k+ records → ~29k distinct routes) freezes the browser on open.
+// Filters client-side and only ever renders a handful of suggestions.
+function RouteFilterCombobox({ routes, value, onChange }: { routes: string[]; value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => setQuery(value), [value]);
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    if (!q) return routes.slice(0, MAX_ROUTE_SUGGESTIONS);
+    return routes.filter((r) => r.toUpperCase().includes(q)).slice(0, MAX_ROUTE_SUGGESTIONS);
+  }, [routes, query]);
+
+  function pick(r: string) {
+    onChange(r);
+    setQuery(r);
+    setOpen(false);
+  }
+  function clear() {
+    onChange('');
+    setQuery('');
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative sm:max-w-[280px] w-full">
+      <Input
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Filtrar por rota..."
+        className="rounded-full pr-9"
+      />
+      {value && (
+        <button onMouseDown={(e) => { e.preventDefault(); clear(); }} aria-label="Limpar filtro de rota" className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-faint)] hover:text-[var(--color-text)]">
+          <X className="w-4 h-4" />
+        </button>
+      )}
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-xl glass border border-white/10 shadow-2xl">
+          {suggestions.map((r) => (
+            <button
+              key={r}
+              onMouseDown={(e) => { e.preventDefault(); pick(r); }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-white/[0.07] truncate"
+            >
+              {r}
+            </button>
+          ))}
+          {routes.length > MAX_ROUTE_SUGGESTIONS && suggestions.length === MAX_ROUTE_SUGGESTIONS && (
+            <div className="px-4 py-2 text-[11px] text-[var(--color-text-faint)] border-t border-white/5">Digite para refinar — {routes.length} rotas no total.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface BuscadorResponse {
   topic: string;
@@ -158,10 +220,7 @@ export default function BuscadorPage() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar em todas as colunas..." className="pl-11 rounded-full" />
         </div>
-        <Select value={route} onChange={(e) => setRoute(e.target.value)} className="sm:max-w-[240px]">
-          <option value="">Todas as rotas</option>
-          {(data?.routes || []).map((r) => <option key={r} value={r}>{r}</option>)}
-        </Select>
+        <RouteFilterCombobox routes={data?.routes || []} value={route} onChange={setRoute} />
       </div>
 
       {loading ? (

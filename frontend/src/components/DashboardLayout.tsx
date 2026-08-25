@@ -13,9 +13,23 @@ const COMPANY_LOGOS: Record<string, string> = {
   procisa: '/procisa-icon.png',
 };
 
+// Claro's icon already has a transparent background — a white backing
+// behind it just shows up as an ugly ring. FFA/Procisa are flat white-bg
+// exports, so they need the white circle to avoid a hard square corner.
+const COMPANY_LOGO_NEEDS_WHITE_BG: Record<string, boolean> = {
+  claro: false,
+  ffa: true,
+  procisa: true,
+};
+
 function companyLogoUrl(company: string | null | undefined): string | null {
   if (!company) return null;
   return COMPANY_LOGOS[company.trim().toLowerCase()] || null;
+}
+
+function companyLogoNeedsWhiteBg(company: string | null | undefined): boolean {
+  if (!company) return false;
+  return COMPANY_LOGO_NEEDS_WHITE_BG[company.trim().toLowerCase()] ?? false;
 }
 
 // Keeps the address bar showing just the bare domain — routing still works
@@ -123,7 +137,11 @@ export default function DashboardLayout() {
         <div className="p-3 border-t border-white/5">
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
             {companyLogoUrl(user?.company) ? (
-              <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1 shrink-0"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
+              companyLogoNeedsWhiteBg(user?.company) ? (
+                <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1 shrink-0"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
+              ) : (
+                <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover shrink-0" />
+              )
             ) : (
               <div className="w-9 h-9 rounded-full bg-[var(--color-accent-dim)] flex items-center justify-center text-[var(--color-accent)] font-bold text-sm shrink-0">
                 {(user?.username || '?').charAt(0).toUpperCase()}
@@ -150,7 +168,11 @@ export default function DashboardLayout() {
           </button>
           <div className="font-bold text-sm">Gestão <span className="text-[var(--color-primary)]">REDE EXTERNA</span></div>
           {companyLogoUrl(user?.company) ? (
-            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
+            companyLogoNeedsWhiteBg(user?.company) ? (
+              <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
+            ) : (
+              <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover" />
+            )
           ) : (
             <div className="w-9 h-9 rounded-full bg-[var(--color-accent-dim)] flex items-center justify-center text-[var(--color-accent)] font-bold text-sm">
               {(user?.username || '?').charAt(0).toUpperCase()}
