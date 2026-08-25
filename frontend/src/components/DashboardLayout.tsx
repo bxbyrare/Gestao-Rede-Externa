@@ -55,9 +55,7 @@ export default function DashboardLayout() {
       >
         <div className="flex items-center justify-between px-5 h-20 border-b border-white/5">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-black text-[var(--color-primary)] shrink-0">
-              C
-            </div>
+            <img src="/claro-icon.png" alt="Claro" className="w-10 h-10 rounded-full shrink-0 object-cover" />
             <div className="min-w-0">
               <div className="font-extrabold text-sm truncate">Gestão <span className="text-[var(--color-primary)]">REDE EXTERNA</span></div>
               <div className="text-[10px] text-[var(--color-text-faint)] uppercase tracking-wider">Claro Brasil</div>

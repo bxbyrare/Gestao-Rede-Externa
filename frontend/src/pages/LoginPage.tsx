@@ -35,9 +35,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center text-center mb-8">
           <div className="relative mb-4">
             <div className="absolute inset-0 rounded-full bg-[var(--color-primary)] blur-xl opacity-40" />
-            <div className="relative w-16 h-16 rounded-full bg-white flex items-center justify-center font-black text-2xl text-[var(--color-primary)] shadow-lg">
-              C
-            </div>
+            <img src="/claro-icon.png" alt="Claro" className="relative w-16 h-16 rounded-full shadow-lg object-cover" />
             <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-[var(--color-success)] border-2 border-[var(--color-surface)] live-dot" />
           </div>
           <h1 className="text-xl font-extrabold tracking-tight">
