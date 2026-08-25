@@ -571,6 +571,19 @@ def init_db():
             );
         """)
 
+        # 18. Notifications Table (Notificações — Coordenadores Claro apenas)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                event_date DATE NOT NULL,
+                reason VARCHAR(200) NOT NULL,
+                description TEXT NOT NULL,
+                coordinator_name VARCHAR(150) NOT NULL,
+                created_by INT REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
         # Seed initial admin user if empty
         cur.execute("SELECT COUNT(*) AS count FROM users;")
         if cur.fetchone()['count'] == 0:
@@ -3422,6 +3435,109 @@ def api_export_finance():
             output.getvalue().encode('utf-8-sig'),
             mimetype='text/csv',
             headers={"Content-disposition": f"attachment; filename=relatorio_financeiro_custos_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
+        )
+        return response
+    except Exception as e:
+        print("Backend error log:", e)
+        return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
+# --- NOTIFICATIONS (Notificações — Coordenadores Claro apenas) ---
+@app.route('/api/notifications', methods=['GET', 'POST'])
+@login_required
+@coordenador_claro_required
+def api_notifications():
+    if request.method == 'GET':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM notifications ORDER BY id ASC;")
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            result = []
+            for idx, r in enumerate(rows, start=1):
+                result.append({
+                    "id": r['id'],
+                    "event_date": r['event_date'].strftime('%Y-%m-%d') if r['event_date'] else '',
+                    "reason": r['reason'],
+                    "description": r['description'],
+                    "coordinator_name": r['coordinator_name'],
+                    "count_label": f"Notificação {idx:03d}",
+                })
+            result.reverse()
+            return jsonify(result)
+        except Exception as e:
+            print("Backend error log:", e)
+            return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+    else:
+        try:
+            data = request.get_json(silent=True) or {}
+            event_date = (data.get('event_date') or '').strip()
+            reason = (data.get('reason') or '').strip()
+            description = (data.get('description') or '').strip()
+            coordinator_name = (data.get('coordinator_name') or '').strip()
+
+            if not event_date or not reason or not description or not coordinator_name:
+                return jsonify({"error": "Data, Porquê, Descritivo e Coordenador são obrigatórios."}), 400
+
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO notifications (event_date, reason, description, coordinator_name, created_by) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
+                (event_date, reason, description, coordinator_name, session['user_id'])
+            )
+            new_id = cur.fetchone()['id']
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session['user_id'], session['username'], f"Registrou notificação: {reason} ({coordinator_name})")
+            return jsonify({"success": True, "id": new_id}), 201
+        except Exception as e:
+            print("Backend error log:", e)
+            return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
+@app.route('/api/notifications/<int:notif_id>', methods=['DELETE'])
+@login_required
+@coordenador_claro_required
+def api_delete_notification(notif_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM notifications WHERE id = %s;", (notif_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        log_action(session['user_id'], session['username'], f"Excluiu notificação ID {notif_id}")
+        return jsonify({"success": True})
+    except Exception as e:
+        print("Backend error log:", e)
+        return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
+@app.route('/api/notifications/export', methods=['GET'])
+@login_required
+@coordenador_claro_required
+def api_export_notifications():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM notifications ORDER BY id ASC;")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=';')
+        writer.writerow(["Data", "Porquê", "Descritivo", "Contagem", "Coordenador"])
+        for idx, r in enumerate(rows, start=1):
+            event_date = r['event_date'].strftime('%d/%m/%Y') if r['event_date'] else ''
+            writer.writerow([event_date, r['reason'], r['description'], f"Notificação {idx:03d}", r['coordinator_name']])
+
+        response = app.response_class(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype='text/csv',
+            headers={"Content-disposition": f"attachment; filename=notificacoes_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
         )
         return response
     except Exception as e:

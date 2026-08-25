@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { ChevronRight, Download, File, FolderOpen, FolderPlus, Home, Pencil, Plus, Trash2, Upload, Route as RouteIcon } from 'lucide-react';
+import { ChevronRight, Download, File, FolderOpen, FolderPlus, Home, Pencil, Plus, Search, Trash2, Upload, Route as RouteIcon } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { RouteFile, RouteFolder, RouteItem, RouteLine } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
@@ -19,6 +19,7 @@ function formatBytes(n: number) {
 export default function RotasPage() {
   const [routes, setRoutes] = useState<RouteItem[] | null>(null);
   const [typeFilter, setTypeFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [selectedRoute, setSelectedRoute] = useState<RouteItem | null>(null);
 
   const [routeModalOpen, setRouteModalOpen] = useState(false);
@@ -71,6 +72,12 @@ export default function RotasPage() {
     return <RouteDetail route={selectedRoute} onBack={() => { setSelectedRoute(null); loadRoutes(); }} />;
   }
 
+  const filteredRoutes = (routes || []).filter((r) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return r.name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q);
+  });
+
   return (
     <div>
       <PageHeader
@@ -79,25 +86,31 @@ export default function RotasPage() {
         actions={<Button onClick={openCreateRoute}><Plus className="w-4 h-4" /> Nova Rota</Button>}
       />
 
-      <div className="flex gap-2 mb-6">
-        {['', 'Empresarial', 'Residencial'].map((t) => (
-          <button
-            key={t || 'all'}
-            onClick={() => setTypeFilter(t)}
-            className={`h-10 px-5 rounded-full text-sm font-bold transition-colors ${typeFilter === t ? 'bg-[var(--color-primary-dim)] text-[var(--color-primary)] border border-[var(--color-primary)]/30' : 'bg-white/[0.03] border border-white/10 text-[var(--color-text-muted)]'}`}
-          >
-            {t || 'Todas'}
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Pesquisar rota por nome ou descrição..." className="pl-11 rounded-full" />
+        </div>
+        <div className="flex gap-2">
+          {['', 'Empresarial', 'Residencial'].map((t) => (
+            <button
+              key={t || 'all'}
+              onClick={() => setTypeFilter(t)}
+              className={`h-10 px-5 rounded-full text-sm font-bold transition-colors ${typeFilter === t ? 'bg-[var(--color-primary-dim)] text-[var(--color-primary)] border border-[var(--color-primary)]/30' : 'bg-white/[0.03] border border-white/10 text-[var(--color-text-muted)]'}`}
+            >
+              {t || 'Todas'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {routes === null ? (
         <p className="text-sm text-[var(--color-text-muted)]">Carregando...</p>
-      ) : routes.length === 0 ? (
-        <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">Nenhuma rota cadastrada.</Card>
+      ) : filteredRoutes.length === 0 ? (
+        <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">{search ? 'Nenhuma rota encontrada para essa busca.' : 'Nenhuma rota cadastrada.'}</Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {routes.map((r) => (
+          {filteredRoutes.map((r) => (
             <Card key={r.id} className="p-5 flex flex-col gap-2 cursor-pointer animate-in hover:border-white/20 transition-colors" onClick={() => setSelectedRoute(r)}>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[var(--color-accent-dim)] text-[var(--color-accent)]">{r.type}</span>

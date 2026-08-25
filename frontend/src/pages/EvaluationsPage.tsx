@@ -47,6 +47,24 @@ export default function EvaluationsPage() {
     return sorted;
   }, [evaluations, search, sortOrder]);
 
+  const stats = useMemo(() => {
+    const list = evaluations || [];
+    const total = list.length;
+    const overallAvg = total ? list.reduce((s, e) => s + e.overall_score, 0) / total : 0;
+    const byCompany = new Map<string, { sum: number; count: number }>();
+    for (const e of list) {
+      const key = (e.company || 'Sem empresa').trim();
+      const entry = byCompany.get(key) || { sum: 0, count: 0 };
+      entry.sum += e.overall_score;
+      entry.count += 1;
+      byCompany.set(key, entry);
+    }
+    const companyAverages = Array.from(byCompany.entries())
+      .map(([company, { sum, count }]) => ({ company, avg: sum / count, count }))
+      .sort((a, b) => b.count - a.count);
+    return { total, overallAvg, companyAverages };
+  }, [evaluations]);
+
   function openCreate() {
     setForm(emptyForm);
     setError(null);
@@ -99,6 +117,25 @@ export default function EvaluationsPage() {
           </Button>
         }
       />
+
+      {evaluations !== null && evaluations.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+          <Card className="p-4">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--color-text-faint)]">Total Avaliações</div>
+            <div className="text-2xl font-extrabold mt-1">{stats.total}</div>
+          </Card>
+          <Card className="p-4 border-[var(--color-warning)]/20">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--color-text-faint)]">Média Geral (0-10)</div>
+            <div className={`text-2xl font-extrabold mt-1 ${scoreColor(stats.overallAvg)}`}>{stats.overallAvg.toFixed(1)}</div>
+          </Card>
+          {stats.companyAverages.map((c) => (
+            <Card key={c.company} className="p-4">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--color-text-faint)]">Média {c.company}</div>
+              <div className={`text-2xl font-extrabold mt-1 ${scoreColor(c.avg)}`}>{c.avg.toFixed(1)}</div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1 max-w-md">

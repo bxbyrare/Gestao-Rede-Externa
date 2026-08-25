@@ -3,9 +3,9 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, Boxes, FolderKanban, FileText, Route as RouteIcon, BarChart3,
-  Settings, Menu, X, LogOut,
+  Settings, Menu, X, LogOut, BellRing,
 } from 'lucide-react';
-import { useAuth, isCoordenador } from '../state/AuthContext';
+import { useAuth, isCoordenador, isCoordenadorClaro } from '../state/AuthContext';
 
 const COMPANY_LOGOS: Record<string, string> = {
   claro: '/claro-icon.png',
@@ -68,9 +68,12 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const items = user && isCoordenador(user)
+  let items = user && isCoordenador(user)
     ? [{ to: '/area-de-trabalho', label: 'Área de Trabalho', icon: Briefcase }, ...NAV_ITEMS]
     : NAV_ITEMS;
+  if (user && isCoordenadorClaro(user)) {
+    items = [...items, { to: '/notificacoes', label: 'Notificações', icon: BellRing }];
+  }
 
   async function handleLogout() {
     await logout();

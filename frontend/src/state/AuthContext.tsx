@@ -58,4 +58,11 @@ export function isCoordenador(user: User | null): boolean {
   return user.username.toLowerCase() === 'alexandre.candido' || ['Administrador', 'Admin', 'Coordenador', 'Supervisor'].includes(role);
 }
 
+export function isCoordenadorClaro(user: User | null): boolean {
+  if (!user) return false;
+  const role = user.role;
+  const isCoord = user.username.toLowerCase() === 'alexandre.candido' || ['Administrador', 'Admin', 'Coordenador'].includes(role);
+  return isCoord && (user.company || '').trim().toLowerCase() === 'claro';
+}
+
 export { ApiError };
