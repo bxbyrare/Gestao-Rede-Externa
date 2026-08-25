@@ -1,4 +1,5 @@
 DISPLAY_NAME=Gestao Rede Externa
+SUBDOMAIN=gestaoredeexterna
 LANGUAGE=python
 MEMORY=1024
 VERSION=recommended
