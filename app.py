@@ -104,11 +104,11 @@ def set_security_headers(response):
     # is dropped outright: nothing in this codebase calls eval()/new Function().
     response.headers['Content-Security-Policy'] = "; ".join([
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: https://*.basemaps.cartocdn.com",
-        "connect-src 'self'",
+        "connect-src 'self' https://cloudflareinsights.com",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
