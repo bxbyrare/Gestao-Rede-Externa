@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import { useAuth, isCoordenador } from '../state/AuthContext';
 
-// FFA and Procisa logos pending from the client — Claro is the only one wired up so far.
 const COMPANY_LOGOS: Record<string, string> = {
   claro: '/claro-icon.png',
+  ffa: '/ffa-icon.png',
+  procisa: '/procisa-icon.png',
 };
 
 function companyLogoUrl(company: string | null | undefined): string | null {
@@ -107,7 +108,7 @@ export default function DashboardLayout() {
         <div className="p-3 border-t border-white/5">
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
             {companyLogoUrl(user?.company) ? (
-              <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover shrink-0" />
+              <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1 shrink-0"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
             ) : (
               <div className="w-9 h-9 rounded-full bg-[var(--color-accent-dim)] flex items-center justify-center text-[var(--color-accent)] font-bold text-sm shrink-0">
                 {(user?.username || '?').charAt(0).toUpperCase()}
@@ -134,7 +135,7 @@ export default function DashboardLayout() {
           </button>
           <div className="font-bold text-sm">Gestão <span className="text-[var(--color-primary)]">REDE EXTERNA</span></div>
           {companyLogoUrl(user?.company) ? (
-            <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover" />
+            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
           ) : (
             <div className="w-9 h-9 rounded-full bg-[var(--color-accent-dim)] flex items-center justify-center text-[var(--color-accent)] font-bold text-sm">
               {(user?.username || '?').charAt(0).toUpperCase()}

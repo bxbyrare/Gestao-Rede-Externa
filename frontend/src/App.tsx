@@ -15,6 +15,8 @@ import FinancePage from './pages/FinancePage';
 import IndicatorsPage from './pages/IndicatorsPage';
 import ProjectsPage from './pages/ProjectsPage';
 import BuscadorPage from './pages/BuscadorPage';
+import FormulariosPage from './pages/FormulariosPage';
+import EscalaPage from './pages/EscalaPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 export default function App() {
@@ -37,11 +39,11 @@ export default function App() {
           <Route path="buscador" element={<BuscadorPage />} />
           <Route path="mapa-eventos" element={<MapaEventosPage />} />
           <Route path="financeiro" element={<FinancePage />} />
-          <Route path="escala" element={<PlaceholderPage title="Escala" />} />
+          <Route path="escala" element={<EscalaPage />} />
           <Route path="avaliacao" element={<EvaluationsPage />} />
           <Route path="inventario" element={<InventoryPage />} />
           <Route path="projetos" element={<ProjectsPage />} />
-          <Route path="formularios" element={<PlaceholderPage title="Formulários" />} />
+          <Route path="formularios" element={<FormulariosPage />} />
           <Route path="rotas" element={<PlaceholderPage title="Rotas" />} />
           <Route path="indicadores" element={<IndicatorsPage />} />
           <Route path="gerenciamento" element={<UsersPage />} />
