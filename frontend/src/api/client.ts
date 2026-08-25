@@ -69,6 +69,17 @@ async function requestForm<T>(path: string, method: string, fields: Record<strin
   return data as T;
 }
 
+async function requestFormData<T>(path: string, method: string, formData: FormData): Promise<T> {
+  const res = await fetch(buildUrl(path), { method, body: formData, credentials: 'include' });
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  const data = isJson ? await res.json() : undefined;
+  if (!res.ok) {
+    const message = (data && (data.error as string)) || `Erro ${res.status}`;
+    throw new ApiError(res.status, message);
+  }
+  return data as T;
+}
+
 export const api = {
   get: <T>(path: string, query?: RequestOptions['query']) => request<T>(path, { method: 'GET', query }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
@@ -77,6 +88,8 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   postForm: <T>(path: string, fields: Record<string, string | undefined>) => requestForm<T>(path, 'POST', fields),
   putForm: <T>(path: string, fields: Record<string, string | undefined>) => requestForm<T>(path, 'PUT', fields),
+  postFormData: <T>(path: string, formData: FormData) => requestFormData<T>(path, 'POST', formData),
+  putFormData: <T>(path: string, formData: FormData) => requestFormData<T>(path, 'PUT', formData),
 };
 
 export function assetUrl(path: string): string {

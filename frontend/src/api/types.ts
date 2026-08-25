@@ -129,6 +129,26 @@ export interface ConsumableFinanceRecord {
   created_at: string;
 }
 
+export interface ProjectFolder {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  created_at: string;
+  file_count: number;
+  folder_count: number;
+}
+
+export interface Project {
+  id: number;
+  name: string;
+  description: string | null;
+  area: string | null;
+  folder_id: number | null;
+  kmz_path: string | null;
+  pdf_path: string | null;
+  created_at: string;
+}
+
 export interface MapaEvento {
   id: number;
   lat: number;

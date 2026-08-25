@@ -1925,7 +1925,7 @@ def api_export_route_lines(route_id):
             csv_output += f"{s_name};{pop};{med};{obs};{addr}\n"
 
         from flask import Response
-        filename = f"medicoes_{route_name.lower().replace(' ', '_')}.csv"
+        filename = f"medicoes_{route_name.lower().replace(' ', '_')}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         return Response(
             csv_output,
             mimetype="text/csv",
@@ -2319,7 +2319,7 @@ def api_form_responses_export(form_id):
             writer.writerow([r['id'], sub_date, r['technician_name'] or '', r['technician_email'] or '', ans_str])
 
         output.seek(0)
-        filename = f"respostas_{form_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        filename = f"respostas_{form_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
         return Response(
             output.getvalue(),
             mimetype="text/csv",
@@ -2788,7 +2788,7 @@ def api_export_technicians():
         response = app.response_class(
             output.getvalue().encode('utf-8-sig'),
             mimetype='text/csv',
-            headers={"Content-disposition": "attachment; filename=tecnicos.csv"}
+            headers={"Content-disposition": f"attachment; filename=tecnicos_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
         )
         return response
     except Exception as e:
@@ -2933,7 +2933,7 @@ def api_export_vehicles():
         response = app.response_class(
             output.getvalue().encode('utf-8-sig'),
             mimetype='text/csv',
-            headers={"Content-disposition": "attachment; filename=veiculos.csv"}
+            headers={"Content-disposition": f"attachment; filename=veiculos_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
         )
         return response
     except Exception as e:
@@ -3400,7 +3400,7 @@ def api_export_finance():
         response = app.response_class(
             output.getvalue().encode('utf-8-sig'),
             mimetype='text/csv',
-            headers={"Content-disposition": "attachment; filename=relatorio_financeiro_custos.csv"}
+            headers={"Content-disposition": f"attachment; filename=relatorio_financeiro_custos_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
         )
         return response
     except Exception as e:
@@ -5364,7 +5364,7 @@ def api_export_evaluations():
             ])
 
         response = make_response(output.getvalue())
-        response.headers["Content-Disposition"] = "attachment; filename=avaliacoes_tecnicas.csv"
+        response.headers["Content-Disposition"] = f"attachment; filename=avaliacoes_tecnicas_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         response.headers["Content-type"] = "text/csv; charset=utf-8-sig"
         return response
     except Exception as e:

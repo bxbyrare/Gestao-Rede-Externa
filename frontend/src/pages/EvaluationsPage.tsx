@@ -24,6 +24,7 @@ export default function EvaluationsPage() {
   const [evaluations, setEvaluations] = useState<Evaluation[] | null>(null);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [search, setSearch] = useState('');
+  const [sortOrder, setSortOrder] = useState<'best' | 'worst'>('best');
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
@@ -41,9 +42,10 @@ export default function EvaluationsPage() {
   const filtered = useMemo(() => {
     if (!evaluations) return [];
     const q = search.trim().toLowerCase();
-    if (!q) return evaluations;
-    return evaluations.filter((e) => e.technician_name.toLowerCase().includes(q) || e.company.toLowerCase().includes(q));
-  }, [evaluations, search]);
+    const list = q ? evaluations.filter((e) => e.technician_name.toLowerCase().includes(q) || e.company.toLowerCase().includes(q)) : evaluations;
+    const sorted = [...list].sort((a, b) => (sortOrder === 'best' ? b.overall_score - a.overall_score : a.overall_score - b.overall_score));
+    return sorted;
+  }, [evaluations, search, sortOrder]);
 
   function openCreate() {
     setForm(emptyForm);
@@ -98,9 +100,15 @@ export default function EvaluationsPage() {
         }
       />
 
-      <div className="relative mb-6 max-w-md">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por colaborador ou empresa..." className="pl-11 rounded-full" />
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por colaborador ou empresa..." className="pl-11 rounded-full" />
+        </div>
+        <Select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'best' | 'worst')} className="sm:max-w-[220px]">
+          <option value="best">Mais bem avaliados</option>
+          <option value="worst">Piores avaliados</option>
+        </Select>
       </div>
 
       {evaluations === null ? (

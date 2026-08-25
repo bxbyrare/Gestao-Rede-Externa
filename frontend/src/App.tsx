@@ -13,6 +13,8 @@ import EvaluationsPage from './pages/EvaluationsPage';
 import WorkspacePage from './pages/WorkspacePage';
 import FinancePage from './pages/FinancePage';
 import IndicatorsPage from './pages/IndicatorsPage';
+import ProjectsPage from './pages/ProjectsPage';
+import BuscadorPage from './pages/BuscadorPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 export default function App() {
@@ -32,13 +34,13 @@ export default function App() {
           <Route path="area-de-trabalho" element={<WorkspacePage />} />
           <Route path="pessoas" element={<PessoasPage />} />
           <Route path="veiculos" element={<VehiclesPage />} />
-          <Route path="buscador" element={<PlaceholderPage title="Buscador" />} />
+          <Route path="buscador" element={<BuscadorPage />} />
           <Route path="mapa-eventos" element={<MapaEventosPage />} />
           <Route path="financeiro" element={<FinancePage />} />
           <Route path="escala" element={<PlaceholderPage title="Escala" />} />
           <Route path="avaliacao" element={<EvaluationsPage />} />
           <Route path="inventario" element={<InventoryPage />} />
-          <Route path="projetos" element={<PlaceholderPage title="Projetos" />} />
+          <Route path="projetos" element={<ProjectsPage />} />
           <Route path="formularios" element={<PlaceholderPage title="Formulários" />} />
           <Route path="rotas" element={<PlaceholderPage title="Rotas" />} />
           <Route path="indicadores" element={<IndicatorsPage />} />

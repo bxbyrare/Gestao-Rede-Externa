@@ -61,6 +61,17 @@ body {
   font-feature-settings: 'tnum';
 }
 
+/* Native <select> dropdowns render with the OS/browser's own popup, which
+   ignores our Tailwind classes on <option> — force dark bg + light text
+   explicitly or the open dropdown shows illegible white-on-white rows. */
+select {
+  color-scheme: dark;
+}
+select option {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
 /* Focus ring — always visible, never removed for a11y */
 :focus-visible {
   outline: 2px solid var(--color-accent);
