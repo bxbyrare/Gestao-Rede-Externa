@@ -76,7 +76,7 @@ def enforce_security_policies():
     RATE_LIMIT_STORE[client_ip].append(now)
     
     # 3. Strict Auth Rate Limiting (/login and password resets)
-    if request.path in ['/login', '/forgot-password', '/reset-password']:
+    if request.path in ['/login', '/api/auth/login', '/forgot-password', '/reset-password']:
         AUTH_RATE_LIMIT_STORE[client_ip] = [t for t in AUTH_RATE_LIMIT_STORE[client_ip] if now - t < 60]
         if len(AUTH_RATE_LIMIT_STORE[client_ip]) >= AUTH_RATE_LIMIT_MAX:
             if request.path.startswith('/api/') or request.is_json:
@@ -3660,7 +3660,7 @@ def api_create_user():
         conn.commit()
         cur.close()
         conn.close()
-        
+
         log_action(session['user_id'], session['username'], f"Criou o usuário de acesso: {username} (Pessoa: {tech['name']}, Cargo: {role})")
         return jsonify({"success": True, "id": new_id}), 201
     except Exception as e:

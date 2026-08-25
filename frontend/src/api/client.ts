@@ -22,6 +22,19 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return url.toString();
 }
 
+// A session can expire mid-use (12h lifetime, or the server restarting).
+// Without this, an expired session just makes every page's data fetch fail
+// silently (most callers do .catch(() => setX([]))), leaving the user
+// staring at an empty page with no indication they were logged out.
+// /api/auth/me is exempt so AuthContext's own check can see the 401 itself.
+function handleUnauthorized(path: string, status: number): boolean {
+  if (status === 401 && !path.startsWith('/api/auth/') && window.location.pathname !== '/login') {
+    window.location.href = '/login';
+    return true;
+  }
+  return false;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method || 'GET';
   const headers: Record<string, string> = {};
@@ -38,6 +51,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body,
     credentials: 'include',
   });
+
+  if (handleUnauthorized(path, res.status)) return new Promise(() => {});
 
   if (res.status === 204) return undefined as T;
 
@@ -60,6 +75,7 @@ async function requestForm<T>(path: string, method: string, fields: Record<strin
     if (value !== undefined) form.append(key, value);
   }
   const res = await fetch(buildUrl(path), { method, body: form, credentials: 'include' });
+  if (handleUnauthorized(path, res.status)) return new Promise(() => {});
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json() : undefined;
   if (!res.ok) {
@@ -71,6 +87,7 @@ async function requestForm<T>(path: string, method: string, fields: Record<strin
 
 async function requestFormData<T>(path: string, method: string, formData: FormData): Promise<T> {
   const res = await fetch(buildUrl(path), { method, body: formData, credentials: 'include' });
+  if (handleUnauthorized(path, res.status)) return new Promise(() => {});
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json() : undefined;
   if (!res.ok) {
