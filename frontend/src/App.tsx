@@ -17,7 +17,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import BuscadorPage from './pages/BuscadorPage';
 import FormulariosPage from './pages/FormulariosPage';
 import EscalaPage from './pages/EscalaPage';
-import PlaceholderPage from './pages/PlaceholderPage';
+import RotasPage from './pages/RotasPage';
 
 export default function App() {
   return (
@@ -44,7 +44,7 @@ export default function App() {
           <Route path="inventario" element={<InventoryPage />} />
           <Route path="projetos" element={<ProjectsPage />} />
           <Route path="formularios" element={<FormulariosPage />} />
-          <Route path="rotas" element={<PlaceholderPage title="Rotas" />} />
+          <Route path="rotas" element={<RotasPage />} />
           <Route path="indicadores" element={<IndicatorsPage />} />
           <Route path="gerenciamento" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

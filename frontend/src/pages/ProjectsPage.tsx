@@ -8,6 +8,17 @@ import { isCoordenador, useAuth } from '../state/AuthContext';
 
 interface Crumb { id: number | null; name: string }
 
+function sortFoldersByLeadingNumber(folders: ProjectFolder[]): ProjectFolder[] {
+  return [...folders].sort((a, b) => {
+    const na = parseInt(a.name.match(/^\d+/)?.[0] ?? '', 10);
+    const nb = parseInt(b.name.match(/^\d+/)?.[0] ?? '', 10);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na)) return -1;
+    if (!isNaN(nb)) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 const emptyProjectForm = { name: '', description: '', area: '' };
 
 export default function ProjectsPage() {
@@ -36,7 +47,7 @@ export default function ProjectsPage() {
   function load(folderId: number | null) {
     setLoading(true);
     api.get<{ folders: ProjectFolder[]; projects: Project[] }>('/api/folders', { parent_id: folderId ?? undefined })
-      .then((res) => { setFolders(res.folders); setProjects(res.projects); })
+      .then((res) => { setFolders(sortFoldersByLeadingNumber(res.folders)); setProjects(res.projects); })
       .finally(() => setLoading(false));
   }
 
@@ -166,16 +177,18 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {folders.map((f) => (
-            <Card key={`f-${f.id}`} className="p-4 flex items-center gap-3 animate-in group">
-              <button onClick={() => enterFolder(f)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                <FolderOpen className="w-8 h-8 text-[var(--color-accent)] shrink-0" />
+            <Card key={`f-${f.id}`} className="p-4 flex items-center gap-3.5 animate-in group hover:border-white/20 hover:-translate-y-0.5 transition-all">
+              <button onClick={() => enterFolder(f)} className="flex items-center gap-3.5 flex-1 min-w-0 text-left">
+                <div className="w-11 h-11 rounded-xl bg-[var(--color-accent-dim)] flex items-center justify-center shrink-0">
+                  <FolderOpen className="w-5 h-5 text-[var(--color-accent)]" />
+                </div>
                 <div className="min-w-0">
                   <div className="font-semibold text-sm truncate">{f.name}</div>
-                  <div className="text-[11px] text-[var(--color-text-faint)]">{f.folder_count} pastas · {f.file_count} projetos</div>
+                  <div className="text-[11px] text-[var(--color-text-faint)] mt-0.5">{f.folder_count} pasta(s) · {f.file_count} projeto(s)</div>
                 </div>
               </button>
               {canManage && (
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                   <button onClick={() => openRenameFolder(f)} aria-label="Renomear pasta" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-3.5 h-3.5" /></button>
                   <button onClick={() => deleteFolder(f)} aria-label="Excluir pasta" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>

@@ -150,6 +150,48 @@ export interface Project {
   created_at: string;
 }
 
+export interface RouteItem {
+  id: number;
+  name: string;
+  type: string;
+  description: string | null;
+  created_at: string;
+  created_at_fmt: string;
+  lines_count: number;
+}
+
+export interface RouteLine {
+  id: number;
+  route_id: number;
+  stretch_name: string;
+  pop_box: string | null;
+  cable_type: string | null;
+  notes: string | null;
+  address: string | null;
+  created_at: string;
+}
+
+export interface RouteFolder {
+  id: number;
+  route_id: number;
+  parent_id: number | null;
+  name: string;
+  created_at: string;
+  creator_name: string | null;
+}
+
+export interface RouteFile {
+  id: number;
+  route_id: number;
+  folder_id: number | null;
+  filename: string;
+  filepath: string;
+  filesize: number;
+  filetype: string;
+  uploaded_at: string;
+  uploader_name: string | null;
+}
+
 export interface MapaEvento {
   id: number;
   lat: number;

@@ -48,8 +48,8 @@ export function Button({
   );
 }
 
-export function Card({ children, className = '', style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
-  return <div className={`glass rounded-2xl ${className}`} style={style}>{children}</div>;
+export function Card({ children, className = '', style, onClick }: { children: ReactNode; className?: string; style?: CSSProperties; onClick?: () => void }) {
+  return <div className={`glass rounded-2xl ${className}`} style={style} onClick={onClick}>{children}</div>;
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
