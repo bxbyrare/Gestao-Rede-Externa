@@ -814,6 +814,11 @@ def parse_google_form(url):
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     from werkzeug.utils import safe_join
+    # Only project attachments are meant to be public — they're linked from
+    # the public project page (/p/project/<id>). Everything else (route
+    # files, etc.) is internal and requires an authenticated session.
+    if not filename.startswith('projetos/') and 'user_id' not in session:
+        return jsonify({"error": "Não autenticado."}), 401
     safe_path = safe_join(UPLOAD_FOLDER, filename)
     if not safe_path or not os.path.exists(safe_path):
         return "Arquivo não encontrado.", 404
