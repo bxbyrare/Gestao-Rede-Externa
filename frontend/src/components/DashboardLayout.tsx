@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, Boxes, FolderKanban, FileText, Route as RouteIcon, BarChart3,
@@ -16,6 +16,20 @@ const COMPANY_LOGOS: Record<string, string> = {
 function companyLogoUrl(company: string | null | undefined): string | null {
   if (!company) return null;
   return COMPANY_LOGOS[company.trim().toLowerCase()] || null;
+}
+
+// Keeps the address bar showing just the bare domain — routing still works
+// internally via react-router's own location state, this only overwrites
+// what the browser displays. Trade-off accepted: breaks back/forward and
+// refresh-to-same-page, since the real URL never actually changes.
+function UrlMasker() {
+  const location = useLocation();
+  useEffect(() => {
+    if (window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/');
+    }
+  }, [location]);
+  return null;
 }
 
 const NAV_ITEMS = [
@@ -51,6 +65,7 @@ export default function DashboardLayout() {
 
   return (
     <div className="app-shell-bg min-h-screen flex">
+      <UrlMasker />
       {/* Mobile overlay */}
       {mobileNavOpen && (
         <div
