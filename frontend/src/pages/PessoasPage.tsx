@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { Download, MessageCircle, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -99,15 +99,29 @@ export default function PessoasPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  function sendWhatsapp(p: Technician) {
+    const text = `*CADASTRO DE TÉCNICO - CLARO REDE EXTERNA*\n\n` +
+      `*Nome:* ${p.name || 'N/A'}\n` +
+      `*CPF:* ${p.cpf || 'N/A'}\n` +
+      `*Identidade:* ${p.identity || 'N/A'}\n` +
+      `*Telefone:* ${p.phone || 'N/A'}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  }
+
   return (
     <div>
       <PageHeader
         title="Pessoas"
         subtitle={people ? `${people.length} pessoas cadastradas` : 'Carregando...'}
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4" /> Cadastrar Técnico
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => { window.location.href = '/api/technicians/export'; }}>
+              <Download className="w-4 h-4" /> Exportar
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4" /> Cadastrar Técnico
+            </Button>
+          </div>
         }
       />
 
@@ -152,6 +166,9 @@ export default function PessoasPage() {
                     <td className="px-5 py-3 text-[var(--color-text-muted)]">{p.area || '—'}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
+                        <button onClick={() => sendWhatsapp(p)} aria-label="Enviar dados no WhatsApp" title="Enviar dados no WhatsApp" className="w-10 h-10 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-colors">
+                          <MessageCircle className="w-4 h-4" />
+                        </button>
                         <button onClick={() => openEdit(p)} aria-label="Editar" className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors">
                           <Pencil className="w-4 h-4" />
                         </button>

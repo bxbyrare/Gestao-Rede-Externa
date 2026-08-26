@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, Plus, Trash2 } from 'lucide-react';
+import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
@@ -27,6 +27,10 @@ export default function NotificacoesPage() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   function load() {
     api.get<Notification[]>('/api/notifications').then(setItems).catch(() => setItems([]));
@@ -64,6 +68,35 @@ export default function NotificacoesPage() {
     load();
   }
 
+  function openImport() {
+    setCsvText('');
+    setError(null);
+    setImportModalOpen(true);
+  }
+
+  async function submitImport() {
+    if (!csvText.trim()) {
+      setError('Suba um arquivo ou cole os dados para importar.');
+      return;
+    }
+    setError(null);
+    setIsImporting(true);
+    try {
+      const res = await api.post<{ imported: number; errors: string[] }>('/api/notifications/bulk', { csv_data: csvText });
+      if (res.errors?.length) {
+        alert(`${res.imported} notificação(ões) importada(s). ${res.errors.length} linha(s) com erro:\n${res.errors.join('\n')}`);
+      } else {
+        alert(`${res.imported} notificação(ões) importada(s) com sucesso!`);
+      }
+      setImportModalOpen(false);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erro ao importar.');
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -71,6 +104,9 @@ export default function NotificacoesPage() {
         subtitle="Registro de notificações — acesso restrito a Coordenadores Claro"
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" onClick={openImport}>
+              <Upload className="w-4 h-4" /> Subir Notificações
+            </Button>
             <Button variant="outline" onClick={() => { window.location.href = '/api/notifications/export'; }}>
               <Download className="w-4 h-4" /> Exportar Excel
             </Button>
@@ -138,6 +174,32 @@ export default function NotificacoesPage() {
         </Field>
         <Field label="Coordenador">
           <Input value={form.coordinator_name} onChange={(e) => setForm((f) => ({ ...f, coordinator_name: e.target.value }))} />
+        </Field>
+      </Modal>
+
+      <Modal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        title="Subir Notificações (CSV)"
+        footer={<><Button variant="ghost" onClick={() => setImportModalOpen(false)}>Cancelar</Button><Button onClick={submitImport} disabled={isImporting}>{isImporting ? 'Processando...' : 'Processar Importação'}</Button></>}
+      >
+        {error && <div className="mb-4 rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger-dim)] px-4 py-3 text-sm text-[var(--color-danger)]">{error}</div>}
+        <Field label="Subir arquivo (.csv)" hint="Colunas: Data;Porquê;Descritivo;Coordenador (separadas por ; ou ,). Data no formato DD/MM/AAAA.">
+          <input
+            type="file"
+            accept=".csv,.txt"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => setCsvText(String(reader.result || ''));
+              reader.readAsText(file, 'utf-8');
+            }}
+            className="w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:h-9 file:px-4 file:rounded-full file:border-0 file:bg-white/[0.06] file:text-[var(--color-text)] file:text-sm"
+          />
+        </Field>
+        <Field label="Ou cole os dados CSV">
+          <Textarea rows={6} value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder="10/08/2026;Férias;Descrição do ocorrido;Nome do Coordenador" />
         </Field>
       </Modal>
     </div>

@@ -3544,6 +3544,66 @@ def api_export_notifications():
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
+@app.route('/api/notifications/bulk', methods=['POST'])
+@login_required
+@coordenador_claro_required
+def api_bulk_notifications():
+    try:
+        data = request.get_json(silent=True) or {}
+        csv_text = data.get('csv_data', '').strip()
+        if not csv_text:
+            return jsonify({"error": "Nenhum dado informado para importação."}), 400
+
+        rows = [r for r in csv_text.splitlines() if r.strip()]
+        imported = 0
+        errors = []
+        conn = get_db()
+        cur = conn.cursor()
+
+        for idx, row in enumerate(rows):
+            parts = [p.strip() for p in row.split(';')]
+            if len(parts) < 2:
+                parts = [p.strip() for p in row.split(',')]
+
+            if idx == 0 and ('data' in parts[0].lower() or 'porqu' in parts[0].lower()):
+                continue
+
+            date_raw = parts[0] if len(parts) > 0 else ''
+            reason = parts[1] if len(parts) > 1 else ''
+            description = parts[2] if len(parts) > 2 else ''
+            coordinator_name = parts[4] if len(parts) > 4 else (parts[3] if len(parts) > 3 else '')
+
+            if not date_raw or not reason or not description or not coordinator_name:
+                errors.append(f"Linha {idx+1}: campos obrigatórios vazios.")
+                continue
+
+            event_date = None
+            for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%Y/%m/%d'):
+                try:
+                    event_date = datetime.datetime.strptime(date_raw, fmt).date()
+                    break
+                except ValueError:
+                    continue
+            if not event_date:
+                errors.append(f"Linha {idx+1}: data '{date_raw}' inválida. Use DD/MM/AAAA ou AAAA-MM-DD.")
+                continue
+
+            cur.execute(
+                "INSERT INTO notifications (event_date, reason, description, coordinator_name, created_by) VALUES (%s, %s, %s, %s, %s);",
+                (event_date, reason, description, coordinator_name, session['user_id'])
+            )
+            imported += 1
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(session['user_id'], session['username'], f"Importou em lote {imported} notificação(ões)")
+        return jsonify({"success": True, "imported": imported, "errors": errors})
+    except Exception as e:
+        print("Backend error log:", e)
+        return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
 # --- PHYSICAL INVENTORY ---
 @app.route('/api/inventory', methods=['GET', 'POST'])
 @login_required

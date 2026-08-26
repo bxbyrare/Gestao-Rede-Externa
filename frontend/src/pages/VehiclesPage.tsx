@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Download, MessageCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician, Vehicle } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -89,15 +89,29 @@ export default function VehiclesPage() {
     load();
   }
 
+  function sendWhatsapp(v: Vehicle) {
+    const text = `*CADASTRO DE VEÍCULO - CLARO REDE EXTERNA*\n\n` +
+      `*Placa:* ${v.plate || 'N/A'}\n` +
+      `*Modelo:* ${v.model || 'N/A'}\n` +
+      `*Responsável:* ${v.responsible_name || v.condutor_dia || 'N/A'}\n` +
+      `*Número do Ticket:* ${v.ticket_car || 'N/A'}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  }
+
   return (
     <div>
       <PageHeader
         title="Veículos"
         subtitle="Frota de veículos e equipamentos da operação"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4" /> Cadastrar Veículo
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => { window.location.href = '/api/vehicles/export'; }}>
+              <Download className="w-4 h-4" /> Exportar
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4" /> Cadastrar Veículo
+            </Button>
+          </div>
         }
       />
 
@@ -132,6 +146,14 @@ export default function VehiclesPage() {
                 {v.has_inverter && <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">Inversor</span>}
               </div>
               <div className="mt-auto flex items-center gap-2 pt-2">
+                <button
+                  onClick={() => sendWhatsapp(v)}
+                  aria-label="Enviar dados no WhatsApp"
+                  title="Enviar dados no WhatsApp"
+                  className="w-10 h-10 shrink-0 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </button>
                 <button
                   onClick={() => openEdit(v)}
                   className="flex-1 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors"

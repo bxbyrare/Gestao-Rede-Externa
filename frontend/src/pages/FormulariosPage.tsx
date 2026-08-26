@@ -239,7 +239,21 @@ export default function FormulariosPage() {
         footer={<><Button variant="ghost" onClick={() => setImportModalOpen(false)}>Cancelar</Button><Button onClick={submitImport} disabled={isImporting}>{isImporting ? 'Processando...' : 'Processar Importação'}</Button></>}
       >
         {error && <div className="mb-4 rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger-dim)] px-4 py-3 text-sm text-[var(--color-danger)]">{error}</div>}
-        <Field label="Dados CSV" hint="Cole aqui o CSV exportado do Excel ou do Google Forms (Respostas → planilha → Arquivo → Fazer download → CSV).">
+        <Field label="Subir arquivo (.csv)" hint="Google Forms: Respostas → planilha → Arquivo → Fazer download → Valores separados por vírgula (.csv). Preenche o campo abaixo automaticamente.">
+          <input
+            type="file"
+            accept=".csv,.txt"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => setCsvText(String(reader.result || ''));
+              reader.readAsText(file, 'utf-8');
+            }}
+            className="w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:h-9 file:px-4 file:rounded-full file:border-0 file:bg-white/[0.06] file:text-[var(--color-text)] file:text-sm"
+          />
+        </Field>
+        <Field label="Ou cole os dados CSV">
           <Textarea rows={8} value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder="Cabeçalho;Coluna2;Coluna3&#10;Valor1;Valor2;Valor3" />
         </Field>
       </Modal>

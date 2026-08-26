@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Star, Trash2 } from 'lucide-react';
+import { Download, Plus, Search, Star, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Evaluation, Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
@@ -112,9 +112,14 @@ export default function EvaluationsPage() {
         title="Avaliação"
         subtitle="Avaliação técnica de comportamento, produtividade, KPI e processos"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4" /> Nova Avaliação
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => { window.location.href = '/api/evaluations/export'; }}>
+              <Download className="w-4 h-4" /> Exportar
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4" /> Nova Avaliação
+            </Button>
+          </div>
         }
       />
 
