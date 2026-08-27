@@ -120,6 +120,9 @@ def set_security_headers(response):
 
 # Configuration for Database and Upload Directories
 DATABASE_URL = os.environ['DATABASE_URL']
+# Guard: strip accidental "DATABASE_URL=" prefix from the value
+if DATABASE_URL.upper().startswith("DATABASE_URL="):
+    DATABASE_URL = DATABASE_URL.split("=", 1)[1]
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
