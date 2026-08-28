@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ form.title }} - Claro Formulários</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #f4f5f8;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1e293b;
+      padding-bottom: 60px;
+    }
+    .banner-container {
+      width: 100%;
+      max-width: 640px;
+      margin: 20px auto 0 auto;
+      border-radius: 12px 12px 0 0;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      background: linear-gradient(135deg, #ee2c24 0%, #ff4438 100%);
+      text-align: center;
+      padding: 24px 16px;
+    }
+    .form-wrapper {
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 0 12px;
+    }
+    .form-card {
+      background-color: #ffffff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      border-top: 6px solid #ee2c24;
+    }
+    .question-card {
+      background-color: #ffffff;
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-top: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e2e8f0;
+    }
+    .question-title {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .required-star { color: #dc2626; }
+    .question-subtitle {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    .text-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      background-color: #f8fafc;
+      color: #0f172a;
+      font-family: inherit;
+    }
+    .text-input:focus {
+      border-color: #ee2c24;
+      background-color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(204, 29, 21, 0.12);
+    }
+    textarea.text-input { resize: vertical; min-height: 80px; }
+    .options-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: #334155;
+      cursor: pointer;
+      padding: 6px 4px;
+      border-radius: 6px;
+      user-select: none;
+    }
+    .option-item:hover { background-color: #f1f5f9; }
+    .option-item input[type="radio"],
+    .option-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #ee2c24;
+      cursor: pointer;
+    }
+    .file-upload-area {
+      border: 2px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background-color 0.2s ease;
+      background-color: #f8fafc;
+    }
+    .file-upload-area:hover { border-color: #ee2c24; background-color: #fef2f2; }
+    .file-upload-area input[type="file"] { display: none; }
+    .file-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .file-preview-item {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f1f5f9;
+      font-size: 0.65rem;
+      text-align: center;
+      padding: 4px;
+    }
+    .file-preview-item img { width: 100%; height: 100%; object-fit: cover; }
+    .btn-submit {
+      width: 100%;
+      background-color: #ee2c24;
+      color: #ffffff;
+      border: none;
+      padding: 14px 24px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 20px;
+      box-shadow: 0 4px 12px rgba(204, 29, 21, 0.25);
+      transition: background-color 0.2s ease, transform 0.1s ease;
+      font-family: inherit;
+    }
+    .btn-submit:hover { background-color: #c81f18; }
+    .btn-submit:active { transform: scale(0.99); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    .success-container {
+      display: none;
+      text-align: center;
+      padding: 40px 20px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      margin-top: 20px;
+      border-top: 6px solid #22c55e;
+    }
+    .success-icon { width: 64px; height: 64px; color: #22c55e; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="form-wrapper">
+    <div class="banner-container">
+      <svg width="150" height="50" viewBox="0 0 150 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <text x="10" y="38" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-weight="800" font-size="38" fill="#ffffff" letter-spacing="-1.5">Claro</text>
+        <circle cx="120" cy="14" r="3" fill="#ffffff"/>
+        <rect x="126" y="12" width="9" height="3" rx="1.5" fill="#ffffff"/>
+        <rect x="124" y="5" width="8" height="3" rx="1.5" fill="#ffffff" transform="rotate(-35 124 5)"/>
+        <rect x="119" y="2" width="3" height="7" rx="1.5" fill="#ffffff"/>
+      </svg>
+    </div>
+
+    <div class="form-card">
+      <h1 style="font-size: 1.6rem; font-weight: 800; color: #0f172a; margin-bottom: 6px;">{{ form.title }}</h1>
+      <p style="font-size: 0.92rem; color: #64748b; line-height: 1.5;">{{ form.description or 'Preencha as informações solicitadas abaixo.' }}</p>
+      <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #f1f5f9; font-size: 0.78rem; color: #dc2626; font-weight: 600;">
+        * Indica um campo obrigatório
+      </div>
+    </div>
+
+    <div id="success-screen" class="success-container">
+      <svg class="success-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <h2 style="font-size: 1.4rem; font-weight: 800; color: #0f172a; margin-bottom: 8px;">Sua resposta foi registrada com sucesso!</h2>
+      <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 20px;">Obrigado por enviar as informações. O relatório foi registrado no sistema Claro Gestão.</p>
+      <button onclick="window.location.reload();" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-family: inherit;">Enviar outra resposta</button>
+    </div>
+
+    <form id="public-form" style="display: block;">
+      <input type="hidden" name="form_slug" value="{{ form.slug }}">
+
+      {% for q in questions %}
+      <div class="question-card">
+        <div class="question-title">
+          {{ q.title }}
+          {% if q.required %}<span class="required-star">*</span>{% endif %}
+        </div>
+
+        {% if q.type == 'text' %}
+          <input type="text" name="{{ q.title }}" class="text-input" placeholder="Texto de resposta curta" {% if q.required %}required{% endif %}>
+
+        {% elif q.type == 'textarea' %}
+          <textarea name="{{ q.title }}" class="text-input" rows="3" placeholder="Texto de resposta longa" {% if q.required %}required{% endif %}></textarea>
+
+        {% elif q.type == 'radio' %}
+          <div class="options-list">
+            {% for opt in q.options %}
+            <label class="option-item">
+              <input type="radio" name="{{ q.title }}" value="{{ opt }}" {% if q.required and loop.first %}required{% endif %}>
+              {{ opt }}
+            </label>
+            {% endfor %}
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <label class="option-item"><input type="radio" name="{{ q.title }}" value="Outro"></label>
+              <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+              <input type="text" name="{{ q.title }}_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique...">
+            </div>
+          </div>
+
+        {% elif q.type == 'checkbox' %}
+          <div class="options-list">
+            {% for opt in q.options %}
+            <label class="option-item">
+              <input type="checkbox" name="{{ q.title }}" value="{{ opt }}">
+              {{ opt }}
+            </label>
+            {% endfor %}
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <span style="font-size: 0.88rem; color: #475569;">Outro:</span>
+              <input type="text" name="{{ q.title }}_other" class="text-input" style="padding: 8px 12px; font-size: 0.85rem;" placeholder="Especifique...">
+            </div>
+          </div>
+
+        {% elif q.type == 'select' %}
+          <select name="{{ q.title }}" class="text-input" {% if q.required %}required{% endif %}>
+            <option value="">Selecione uma opção</option>
+            {% for opt in q.options %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+          </select>
+
+        {% elif q.type == 'date' %}
+          <input type="date" name="{{ q.title }}" class="text-input" {% if q.required %}required{% endif %}>
+
+        {% elif q.type == 'time' %}
+          <input type="time" name="{{ q.title }}" class="text-input" {% if q.required %}required{% endif %}>
+
+        {% elif q.type == 'file' %}
+          <div class="file-upload-area" onclick="this.querySelector('input').click();">
+            <svg style="width:40px;height:40px;color:#94a3b8;margin:0 auto 8px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <p style="font-size: 0.88rem; color: #64748b; font-weight: 600;">Clique para adicionar arquivos</p>
+            <p style="font-size: 0.78rem; color: #94a3b8; margin-top: 4px;">Fotos ou documentos (até 10 arquivos)</p>
+            <input type="file" name="{{ q.title }}" multiple accept="image/*,.pdf,.doc,.docx">
+          </div>
+          <div class="file-preview"></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      <button type="submit" id="submit-btn" class="btn-submit">Enviar Resposta</button>
+    </form>
+  </div>
+
+  <script>
+    document.querySelectorAll('input[type="file"]').forEach(function(input) {
+      input.addEventListener('change', function() {
+        var container = this.closest('.question-card').querySelector('.file-preview');
+        if (!container) return;
+        container.innerHTML = '';
+        Array.from(this.files).forEach(function(file) {
+          var div = document.createElement('div');
+          div.className = 'file-preview-item';
+          if (file.type.startsWith('image/')) {
+            var img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            div.appendChild(img);
+          } else {
+            div.textContent = file.name.substring(0, 20);
+          }
+          container.appendChild(div);
+        });
+      });
+    });
+
+    document.getElementById('public-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+
+      var formData = new FormData(this);
+      var data = {};
+
+      formData.forEach(function(value, key) {
+        if (value instanceof File) return;
+        if (data[key]) {
+          if (!Array.isArray(data[key])) data[key] = [data[key]];
+          data[key].push(value);
+        } else {
+          data[key] = value;
+        }
+      });
+
+      Object.keys(data).forEach(function(key) {
+        if (key.endsWith('_other') && data[key]) {
+          var parentKey = key.replace('_other', '');
+          if (data[parentKey] === 'Outro' || !data[parentKey]) {
+            data[parentKey] = data[key];
+          } else if (Array.isArray(data[parentKey])) {
+            data[parentKey].push(data[key]);
+          }
+          delete data[key];
+        }
+      });
+
+      var slug = "{{ form.slug }}";
+      fetch('/f/' + slug + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(resData) {
+        if (resData.error) {
+          alert('Erro ao enviar: ' + resData.error);
+          btn.disabled = false;
+          btn.textContent = 'Enviar Resposta';
+        } else {
+          document.getElementById('public-form').style.display = 'none';
+          document.getElementById('success-screen').style.display = 'block';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      })
+      .catch(function(err) {
+        console.error('Erro:', err);
+        alert('Ocorreu um erro ao enviar sua resposta. Tente novamente.');
+        btn.disabled = false;
+        btn.textContent = 'Enviar Resposta';
+      });
+    });
+  </script>
+</body>
+</html>

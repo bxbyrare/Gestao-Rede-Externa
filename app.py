@@ -2191,6 +2191,14 @@ def public_form_view(slug):
         if f.get('link') and (f['link'].startswith('http://') or f['link'].startswith('https://')):
             return redirect(f['link'])
 
+        # If form has dynamic questions (JSONB), use the dynamic template
+        questions_data = f.get('questions')
+        if questions_data:
+            if isinstance(questions_data, str):
+                questions_data = json.loads(questions_data)
+            return render_template('public_form_dynamic.html', form=f, questions=questions_data)
+
+        # Fallback to legacy hardcoded template
         return render_template('public_form.html', form=f)
     except Exception as e:
         return f"Erro ao carregar formulário: {str(e)}", 500
