@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, Boxes, FolderKanban, FileText, Route as RouteIcon, BarChart3,
@@ -34,19 +34,7 @@ function companyLogoNeedsWhiteBg(company: string | null | undefined): boolean {
   return COMPANY_LOGO_NEEDS_WHITE_BG[company.trim().toLowerCase()] ?? false;
 }
 
-// Keeps the address bar showing just the bare domain — routing still works
-// internally via react-router's own location state, this only overwrites
-// what the browser displays. Trade-off accepted: breaks back/forward and
-// refresh-to-same-page, since the real URL never actually changes.
-function UrlMasker() {
-  const location = useLocation();
-  useEffect(() => {
-    if (window.location.pathname !== '/') {
-      window.history.replaceState(null, '', '/');
-    }
-  }, [location]);
-  return null;
-}
+
 
 const NAV_ITEMS = [
   { to: '/', label: 'Favoritos', icon: Star, end: true },
@@ -85,7 +73,6 @@ export default function DashboardLayout() {
   return (
     <div className="app-shell-bg min-h-screen flex relative">
       <LiquidEther />
-      <UrlMasker />
       {/* Mobile overlay */}
       {mobileNavOpen && (
         <div
@@ -171,7 +158,7 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col relative z-10">
         <header className="lg:hidden sticky top-0 z-30 glass flex items-center justify-between px-4 h-16 border-b border-white/5">
           <button onClick={() => setMobileNavOpen(true)} aria-label="Abrir menu" className="p-2 -ml-2">
             <Menu className="w-6 h-6" />
