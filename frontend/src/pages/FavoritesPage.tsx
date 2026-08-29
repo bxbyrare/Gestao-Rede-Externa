@@ -3,6 +3,7 @@ import { ExternalLink, Pencil, Plus, Search, Trash2, Eye } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Favorite } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
+import SpotlightCard from '../components/SpotlightCard';
 import Modal from '../components/Modal';
 
 const COLORS = [
@@ -110,7 +111,7 @@ export default function FavoritesPage() {
           {filtered.map((fav) => {
             const meta = colorMeta(fav.color);
             return (
-              <Card key={fav.id} className="p-5 flex flex-col gap-4 relative overflow-hidden group animate-in">
+              <SpotlightCard key={fav.id} spotlightColor="rgba(238, 44, 36, 0.18)" className="flex flex-col gap-4 relative overflow-hidden group animate-in">
                 <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: meta.dot }} />
                 <div className="flex items-center justify-between">
                   <span
@@ -143,7 +144,7 @@ export default function FavoritesPage() {
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
-              </Card>
+              </SpotlightCard>
             );
           })}
         </div>

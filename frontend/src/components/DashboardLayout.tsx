@@ -6,6 +6,8 @@ import {
   Settings, Menu, X, LogOut, BellRing,
 } from 'lucide-react';
 import { useAuth, isCoordenador, isCoordenadorClaro } from '../state/AuthContext';
+import PlasmaBackground from './PlasmaBackground';
+import GlassIcon from './GlassIcon';
 
 const COMPANY_LOGOS: Record<string, string> = {
   claro: '/claro-icon.png',
@@ -81,7 +83,8 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="app-shell-bg min-h-screen flex">
+    <div className="app-shell-bg min-h-screen flex relative">
+      <PlasmaBackground opacity={0.22} speed={0.0006} />
       <UrlMasker />
       {/* Mobile overlay */}
       {mobileNavOpen && (
@@ -123,15 +126,19 @@ export default function DashboardLayout() {
                 end={item.end}
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                  `group flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
                     isActive
-                      ? 'bg-[var(--color-primary-dim)] text-[var(--color-primary)]'
-                      : 'text-[var(--color-text-muted)] hover:bg-white/5 hover:text-[var(--color-text)]'
+                      ? 'bg-white/[0.08] text-[var(--color-primary)] shadow-[0_0_20px_rgba(238,44,36,0.15)] border border-white/10'
+                      : 'text-[var(--color-text-muted)] hover:bg-white/[0.04] hover:text-white border border-transparent'
                   }`
                 }
               >
-                <Icon className="w-[18px] h-[18px] shrink-0" />
-                <span className="truncate">{item.label}</span>
+                {({ isActive }) => (
+                  <>
+                    <GlassIcon icon={Icon} active={isActive} size={16} />
+                    <span className="truncate">{item.label}</span>
+                  </>
+                )}
               </NavLink>
             );
           })}
