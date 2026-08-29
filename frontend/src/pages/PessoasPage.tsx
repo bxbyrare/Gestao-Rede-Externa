@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Download, MessageCircle, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { ClipboardList, Download, MessageCircle, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -191,17 +191,34 @@ export default function PessoasPage() {
                     <td className="px-5 py-3 text-[var(--color-text-muted)]">{p.area || '—'}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
-                        <button onClick={() => copyWhatsapp(p)} aria-label="Copiar no formato do WhatsApp" title="Copiar no formato do WhatsApp (Zap)" className="h-10 px-3.5 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center gap-1.5 text-[#25d366] hover:bg-[#25d366]/20 transition-colors font-bold text-xs">
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Zap</span>
-                        </button>
-                        <button onClick={() => sendWhatsapp(p)} aria-label="Enviar dados no WhatsApp" title="Enviar dados no WhatsApp" className="w-10 h-10 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-colors">
+                        <button
+                          onClick={() => sendWhatsapp(p)}
+                          aria-label="Enviar dados no WhatsApp"
+                          title="Enviar dados no WhatsApp"
+                          className="w-10 h-10 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-colors"
+                        >
                           <MessageCircle className="w-4 h-4" />
                         </button>
-                        <button onClick={() => openEdit(p)} aria-label="Editar" className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors">
+                        <button
+                          onClick={() => copyWhatsapp(p)}
+                          aria-label="Copiar no formato do WhatsApp"
+                          title="Copiar dados no formato do WhatsApp (Prancheta)"
+                          className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors"
+                        >
+                          <ClipboardList className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => openEdit(p)}
+                          aria-label="Editar"
+                          className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors"
+                        >
                           <Pencil className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleDelete(p)} aria-label="Excluir" className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors">
+                        <button
+                          onClick={() => handleDelete(p)}
+                          aria-label="Excluir"
+                          className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
