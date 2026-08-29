@@ -6,7 +6,7 @@ import {
   Settings, Menu, X, LogOut, BellRing,
 } from 'lucide-react';
 import { useAuth, isCoordenador, isCoordenadorClaro } from '../state/AuthContext';
-import PlasmaBackground from './PlasmaBackground';
+import LiquidEther from './LiquidEther';
 import GlassIcon from './GlassIcon';
 
 const COMPANY_LOGOS: Record<string, string> = {
@@ -84,7 +84,7 @@ export default function DashboardLayout() {
 
   return (
     <div className="app-shell-bg min-h-screen flex relative">
-      <PlasmaBackground opacity={0.22} speed={0.0006} />
+      <LiquidEther speed={0.5} distortion={1.1} />
       <UrlMasker />
       {/* Mobile overlay */}
       {mobileNavOpen && (

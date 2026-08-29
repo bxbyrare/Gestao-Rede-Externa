@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, User as UserIcon, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import { ApiError } from '../api/client';
-import PlasmaBackground from '../components/PlasmaBackground';
+import LiquidEther from '../components/LiquidEther';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -30,7 +30,7 @@ export default function LoginPage() {
 
   return (
     <div className="app-shell-bg min-h-screen flex items-center justify-center p-5 relative overflow-hidden">
-      <PlasmaBackground opacity={0.38} speed={0.001} />
+      <LiquidEther speed={0.6} distortion={1.2} />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[var(--color-primary)]/15 blur-[120px] pointer-events-none" />
 
       <div className="glass animate-in relative w-full max-w-[420px] rounded-3xl p-9 shadow-2xl">
