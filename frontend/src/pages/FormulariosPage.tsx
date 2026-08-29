@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Download, FileText, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { Copy, Download, ExternalLink, FileText, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
@@ -219,12 +219,37 @@ export default function FormulariosPage() {
                   <span className="text-[11px] text-[var(--color-text-faint)]">{r.submitted_at}</span>
                 </div>
                 <div className="space-y-1">
-                  {Object.entries(r.answers).map(([k, v]) => (
-                    <div key={k} className="text-xs flex gap-2">
-                      <span className="text-[var(--color-text-faint)] shrink-0">{k}:</span>
-                      <span className="text-[var(--color-text-muted)]">{String(v)}</span>
-                    </div>
-                  ))}
+                  {Object.entries(r.answers).map(([k, v]) => {
+                    if (k.endsWith('_other')) return null;
+                    const isPhoto = (typeof v === 'string' && (v.startsWith('/uploads/') || v.match(/\.(png|jpg|jpeg|webp)$/i))) || (Array.isArray(v) && v.some(x => typeof x === 'string' && x.startsWith('/uploads/')));
+                    const photoList = Array.isArray(v) ? v : (typeof v === 'string' && v.includes('/uploads/') ? v.split(/\s*\|\s*|\s*,\s*/) : [v]);
+
+                    return (
+                      <div key={k} className="text-xs flex flex-col gap-1.5 py-1 border-b border-white/5 last:border-0">
+                        <span className="text-[var(--color-text-faint)] font-medium shrink-0">{k}:</span>
+                        {isPhoto ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-1">
+                            {photoList.map((pUrl, pIdx) => (
+                              <a
+                                key={pIdx}
+                                href={pUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="group relative rounded-lg border border-white/10 overflow-hidden bg-black/40 p-1 flex flex-col items-center gap-1 hover:border-[var(--color-primary)] transition-colors"
+                              >
+                                <img src={pUrl} alt={`Foto ${pIdx + 1}`} className="w-full h-20 object-cover rounded" />
+                                <span className="text-[10px] text-[var(--color-text-muted)] group-hover:text-white flex items-center gap-1">
+                                  <ExternalLink className="w-3 h-3" /> Ver Foto {pIdx + 1}
+                                </span>
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[var(--color-text-muted)] font-normal">{Array.isArray(v) ? v.join(', ') : String(v)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
             ))}

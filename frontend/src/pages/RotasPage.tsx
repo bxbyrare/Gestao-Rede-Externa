@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { ChevronRight, Download, File, FolderOpen, FolderPlus, Home, Pencil, Plus, Search, Trash2, Upload, Route as RouteIcon } from 'lucide-react';
+import { ChevronRight, Copy, Download, Eye, File, FolderOpen, FolderPlus, Home, Pencil, Plus, Search, Trash2, Upload, Route as RouteIcon } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { RouteFile, RouteFolder, RouteItem, RouteLine } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
@@ -23,6 +23,18 @@ export default function RotasPage() {
   const [selectedRoute, setSelectedRoute] = useState<RouteItem | null>(null);
 
   const [routeModalOpen, setRouteModalOpen] = useState(false);
+    const [viewingRoute, setViewingRoute] = useState<RouteItem | null>(null);
+
+  function openViewRoute(r: RouteItem, e: MouseEvent) {
+    e.stopPropagation();
+    setViewingRoute(r);
+  }
+
+  function copyRouteDesc(r: RouteItem) {
+    const text = `*ROTA: ${r.name}* (${r.type})\n\n${r.description || 'Sem descrição.'}`;
+    navigator.clipboard.writeText(text);
+    alert('Descrição copiada!');
+  }
   const [editingRoute, setEditingRoute] = useState<RouteItem | null>(null);
   const [routeForm, setRouteForm] = useState(emptyRouteForm);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +127,7 @@ export default function RotasPage() {
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[var(--color-accent-dim)] text-[var(--color-accent)]">{r.type}</span>
                 <div className="flex items-center gap-1">
+                  <button onClick={(e) => openViewRoute(r, e)} aria-label="Visualizar descrição" title="Visualizar descrição" className="w-8 h-8 rounded-full flex items-center justify-center text-[#60a5fa] bg-[#3b82f6]/10 border border-[#3b82f6]/30 hover:bg-[#3b82f6]/20 transition-colors"><Eye className="w-3.5 h-3.5" /></button>
                   <button onClick={(e) => openEditRoute(r, e)} aria-label="Editar rota" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-3.5 h-3.5" /></button>
                   <button onClick={(e) => deleteRoute(r, e)} aria-label="Excluir rota" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
@@ -126,6 +139,37 @@ export default function RotasPage() {
           ))}
         </div>
       )}
+
+      <Modal
+        open={!!viewingRoute}
+        onClose={() => setViewingRoute(null)}
+        title={viewingRoute ? `Rota: ${viewingRoute.name}` : ''}
+        footer={
+          <div className="flex items-center justify-between w-full">
+            {viewingRoute && (
+              <Button variant="outline" onClick={() => copyRouteDesc(viewingRoute)}>
+                <Copy className="w-4 h-4" /> Copiar Descrição
+              </Button>
+            )}
+            <Button onClick={() => setViewingRoute(null)}>Fechar</Button>
+          </div>
+        }
+      >
+        {viewingRoute && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-[var(--color-accent-dim)] text-[var(--color-accent)]">{viewingRoute.type}</span>
+              <span className="text-xs text-[var(--color-text-muted)]">{viewingRoute.lines_count} medição(ões)</span>
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-faint)] block mb-2">Descrição Técnica da Rota</label>
+              <div className="p-4 rounded-xl bg-[#111115] border border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                {viewingRoute.description || 'Nenhuma descrição detalhada informada para esta rota.'}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal
         open={routeModalOpen}

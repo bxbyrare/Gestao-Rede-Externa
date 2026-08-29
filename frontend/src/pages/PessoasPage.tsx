@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, MessageCircle, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { Copy, Download, MessageCircle, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -99,6 +99,31 @@ export default function PessoasPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+    function copyWhatsapp(p: Technician) {
+    const lines = [
+      `*DADOS DO COLABORADOR - CLARO REDE EXTERNA*`,
+      ``,
+      `👤 *Nome:* ${p.name || 'N/A'}`,
+      `🆔 *CPF:* ${p.cpf || 'N/A'}`,
+      `🪪 *RG / Identidade:* ${p.identity || 'N/A'}`,
+      `📞 *Telefone:* ${p.phone || 'N/A'}`,
+      `🏢 *Empresa:* ${p.company || 'FFA'}`,
+      `💼 *Cargo:* ${p.role || 'Técnico'}`,
+      `📍 *Área de Atuação:* ${p.area || 'N/A'}`,
+    ];
+    if (p.registration_claro) lines.push(`🏷️ *Matrícula Claro:* ${p.registration_claro}`);
+    if (p.registration_third) lines.push(`🏷️ *Matrícula Terceiro:* ${p.registration_third}`);
+    if (p.toa_login) lines.push(`🔑 *Login TOA:* ${p.toa_login}`);
+    if (p.phone_model) lines.push(`📱 *Modelo Telefone:* ${p.phone_model}`);
+    if (p.imei_1) lines.push(`🔢 *IMEI 1:* ${p.imei_1}`);
+    if (p.email) lines.push(`✉️ *E-mail:* ${p.email}`);
+    if (p.shirt_size || p.boot_size) lines.push(`👕 *Uniforme:* Camisa ${p.shirt_size || '-'} | Bota ${p.boot_size || '-'}`);
+
+    const fullText = lines.join('\n');
+    navigator.clipboard.writeText(fullText);
+    alert('Dados copiados no formato do WhatsApp!');
+  }
+
   function sendWhatsapp(p: Technician) {
     const text = `*CADASTRO DE TÉCNICO - CLARO REDE EXTERNA*\n\n` +
       `*Nome:* ${p.name || 'N/A'}\n` +
@@ -166,6 +191,10 @@ export default function PessoasPage() {
                     <td className="px-5 py-3 text-[var(--color-text-muted)]">{p.area || '—'}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
+                        <button onClick={() => copyWhatsapp(p)} aria-label="Copiar no formato do WhatsApp" title="Copiar no formato do WhatsApp (Zap)" className="h-10 px-3.5 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center gap-1.5 text-[#25d366] hover:bg-[#25d366]/20 transition-colors font-bold text-xs">
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Zap</span>
+                        </button>
                         <button onClick={() => sendWhatsapp(p)} aria-label="Enviar dados no WhatsApp" title="Enviar dados no WhatsApp" className="w-10 h-10 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-colors">
                           <MessageCircle className="w-4 h-4" />
                         </button>
