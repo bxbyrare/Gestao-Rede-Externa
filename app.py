@@ -2392,37 +2392,9 @@ def api_form_responses_export(form_id):
         if 'shardweb.app' in base_host and not base_host.startswith('https://'):
             base_host = 'https://' + base_host.split('://')[-1]
 
-        # Collect all dynamic question headers in order
-        all_keys = []
-        for r in rows:
-            ans = r['answers']
-            if isinstance(ans, str):
-                try:
-                    ans = json.loads(ans)
-                except Exception:
-                    ans = {}
-            if isinstance(ans, dict):
-                for k in ans.keys():
-                    if k not in all_keys and not k.endswith('_other'):
-                        all_keys.append(k)
-
-        output = io.StringIO()
-        output.write('﻿') # UTF-8 BOM for Excel
-        writer = csv.writer(output, delimiter=';')
-
-        # Header
-        base_headers = ['ID', 'Data/Hora Submissao', 'Tecnico', 'E-mail']
-        writer.writerow(base_headers + all_keys)
-
-        def format_cell_value(val):
-            if val is None:
-                return ''
-            if isinstance(val, list):
-                return ' | '.join(format_cell_value(v) for v in val)
-            val_str = str(val).strip()
-            if val_str.startswith('/uploads/'):
-                return f"{base_host}{val_str}"
-            return val_str
+        # Collect all dynamic question headers and determine if any fields contain lists (e.g. multiple photos)
+        parsed_rows_answers = []
+        key_max_counts = {}
 
         for r in rows:
             ans = r['answers']
@@ -2433,7 +2405,48 @@ def api_form_responses_export(form_id):
                     ans = {}
             if not isinstance(ans, dict):
                 ans = {}
+            parsed_rows_answers.append(ans)
 
+            for k, v in ans.items():
+                if k.endswith('_other'):
+                    continue
+                if isinstance(v, list):
+                    cnt = len(v)
+                elif isinstance(v, str) and (' | ' in v and '/uploads/' in v):
+                    cnt = len(v.split(' | '))
+                else:
+                    cnt = 1
+                key_max_counts[k] = max(key_max_counts.get(k, 1), cnt)
+
+        # Build column headers with individual columns for each photo/attachment
+        expanded_columns = []
+        # list of tuples: (original_key, index, column_title)
+        for k, max_cnt in key_max_counts.items():
+            if max_cnt > 1:
+                for i in range(max_cnt):
+                    expanded_columns.append((k, i, f"{k} - Foto {i+1}"))
+            else:
+                expanded_columns.append((k, 0, k))
+
+        output = io.StringIO()
+        output.write('﻿') # UTF-8 BOM for Excel
+        writer = csv.writer(output, delimiter=';')
+
+        # Header
+        base_headers = ['ID', 'Data/Hora Submissao', 'Tecnico', 'E-mail']
+        column_titles = [col[2] for col in expanded_columns]
+        writer.writerow(base_headers + column_titles)
+
+        def format_single_url(val_item):
+            if val_item is None:
+                return ''
+            s = str(val_item).strip()
+            if s.startswith('/uploads/'):
+                return f"{base_host}{s}"
+            return s
+
+        for r_idx, r in enumerate(rows):
+            ans = parsed_rows_answers[r_idx]
             sub_date = r['submitted_at'].strftime('%d/%m/%Y %H:%M') if r['submitted_at'] else ''
             row_data = [
                 r['id'],
@@ -2441,9 +2454,16 @@ def api_form_responses_export(form_id):
                 r['technician_name'] or '',
                 r['technician_email'] or ''
             ]
-            for k in all_keys:
-                cell_val = ans.get(k, '')
-                row_data.append(format_cell_value(cell_val))
+            for orig_k, item_idx, col_title in expanded_columns:
+                raw_val = ans.get(orig_k, '')
+                if isinstance(raw_val, list):
+                    cell_val = raw_val[item_idx] if item_idx < len(raw_val) else ''
+                elif isinstance(raw_val, str) and ' | ' in raw_val and '/uploads/' in raw_val:
+                    parts = raw_val.split(' | ')
+                    cell_val = parts[item_idx] if item_idx < len(parts) else ''
+                else:
+                    cell_val = raw_val if item_idx == 0 else ''
+                row_data.append(format_single_url(cell_val))
 
             writer.writerow(row_data)
 

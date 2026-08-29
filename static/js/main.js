@@ -3432,15 +3432,52 @@ window.openSingleResponseModal = function(idx) {
     </thead>
     <tbody>`;
   Object.entries(ans).forEach(([k, v]) => {
-    if (k === 'form_slug') return; 
+    if (k === 'form_slug' || k.endsWith('_other')) return; 
     const label = FORM_FIELD_LABELS[k] || k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    let valStr = Array.isArray(v) ? v.join(', ') : String(v || '-');
-    if (!valStr.trim()) valStr = '-';
+    
+    // Check if value contains images/photos
+    let isPhotoField = false;
+    let photoUrls = [];
+    
+    if (Array.isArray(v)) {
+      photoUrls = v.filter(item => typeof item === 'string' && (item.startsWith('/uploads/') || item.match(/\.(png|jpg|jpeg|webp|gif)$/i)));
+      if (photoUrls.length > 0) isPhotoField = true;
+    } else if (typeof v === 'string' && (v.startsWith('/uploads/') || v.match(/\.(png|jpg|jpeg|webp|gif)$/i))) {
+      isPhotoField = true;
+      photoUrls = [v];
+    } else if (typeof v === 'string' && v.includes('/uploads/')) {
+      isPhotoField = true;
+      photoUrls = v.split(/\s*\|\s*|\s*,\s*/).filter(item => item.startsWith('/uploads/'));
+    }
+
+    let cellContent = '';
+    if (isPhotoField && photoUrls.length > 0) {
+      cellContent = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 4px;">
+          ${photoUrls.map((pUrl, pIdx) => `
+            <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; padding: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+              <span style="font-size: 0.72rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Foto ${pIdx + 1}</span>
+              <a href="${pUrl}" target="_blank" style="width: 100%; height: 90px; border-radius: 6px; overflow: hidden; display: block; border: 1px solid rgba(255,255,255,0.1); background: #000;">
+                <img src="${pUrl}" alt="Foto ${pIdx + 1}" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+              </a>
+              <a href="${pUrl}" target="_blank" class="btn btn-outline" style="font-size: 0.72rem; padding: 3px 8px; width: 100%; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
+                👁️ Ver Foto ${pIdx + 1}
+              </a>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      let valStr = Array.isArray(v) ? v.join(', ') : String(v || '-');
+      if (!valStr.trim()) valStr = '-';
+      cellContent = valStr === '-' ? '<span style="color: var(--text-muted);">-</span>' : escapeHtml(valStr);
+    }
+
     html += `
-      <tr>
-        <td style="font-weight: 600; color: #e2e8f0; font-size: 0.85rem; padding: 10px 12px;">${escapeHtml(label)}</td>
-        <td style="color: #ffffff; font-size: 0.88rem; font-weight: 500; padding: 10px 12px;">
-          ${valStr === '-' ? '<span style="color: var(--text-muted);">-</span>' : escapeHtml(valStr)}
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="font-weight: 600; color: #e2e8f0; font-size: 0.85rem; padding: 12px 14px; vertical-align: top;">${escapeHtml(label)}</td>
+        <td style="color: #ffffff; font-size: 0.88rem; font-weight: 500; padding: 12px 14px;">
+          ${cellContent}
         </td>
       </tr>
     `;
