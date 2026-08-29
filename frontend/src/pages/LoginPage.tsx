@@ -30,7 +30,7 @@ export default function LoginPage() {
 
   return (
     <div className="app-shell-bg min-h-screen flex items-center justify-center p-5 relative overflow-hidden">
-      <LiquidEther speed={0.6} distortion={1.2} />
+      <LiquidEther />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[var(--color-primary)]/15 blur-[120px] pointer-events-none" />
 
       <div className="glass animate-in relative w-full max-w-[420px] rounded-3xl p-9 shadow-2xl">

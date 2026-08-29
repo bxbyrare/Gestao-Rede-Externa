@@ -3,15 +3,14 @@ import { ExternalLink, Pencil, Plus, Search, Trash2, Eye } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Favorite } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
-import SpotlightCard from '../components/SpotlightCard';
 import Modal from '../components/Modal';
 
 const COLORS = [
-  { value: 'Vermelho', dot: '#ef4444', chipBg: 'rgba(239,68,68,0.18)', chipText: '#fca5a5', spotlight: 'rgba(239,68,68,0.22)', border: 'rgba(239,68,68,0.35)', btnClass: 'bg-red-500/15 text-red-300 border-red-500/40 hover:bg-red-500/25 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)]' },
-  { value: 'Amarelo', dot: '#eab308', chipBg: 'rgba(234,179,8,0.18)', chipText: '#fde047', spotlight: 'rgba(234,179,8,0.22)', border: 'rgba(234,179,8,0.35)', btnClass: 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25 hover:shadow-[0_0_20px_rgba(234,179,8,0.3)]' },
-  { value: 'Verde', dot: '#22c55e', chipBg: 'rgba(34,197,94,0.18)', chipText: '#86efac', spotlight: 'rgba(34,197,94,0.22)', border: 'rgba(34,197,94,0.35)', btnClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25 hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]' },
-  { value: 'Roxo', dot: '#a855f7', chipBg: 'rgba(168,85,247,0.18)', chipText: '#d8b4fe', spotlight: 'rgba(168,85,247,0.22)', border: 'rgba(168,85,247,0.35)', btnClass: 'bg-purple-500/15 text-purple-300 border-purple-500/40 hover:bg-purple-500/25 hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]' },
-  { value: 'Azul', dot: '#3b82f6', chipBg: 'rgba(59,130,246,0.18)', chipText: '#93c5fd', spotlight: 'rgba(59,130,246,0.22)', border: 'rgba(59,130,246,0.35)', btnClass: 'bg-blue-500/15 text-blue-300 border-blue-500/40 hover:bg-blue-500/25 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]' },
+  { value: 'Vermelho', dot: '#ef4444', chipBg: 'rgba(239,68,68,0.10)', chipText: '#fca5a5', border: 'rgba(239,68,68,0.25)' },
+  { value: 'Amarelo', dot: '#f59e0b', chipBg: 'rgba(245,158,11,0.10)', chipText: '#fde68a', border: 'rgba(245,158,11,0.25)' },
+  { value: 'Verde', dot: '#10b981', chipBg: 'rgba(16,185,129,0.10)', chipText: '#a7f3d0', border: 'rgba(16,185,129,0.25)' },
+  { value: 'Roxo', dot: '#8b5cf6', chipBg: 'rgba(139,92,246,0.10)', chipText: '#ddd6fe', border: 'rgba(139,92,246,0.25)' },
+  { value: 'Azul', dot: '#3b82f6', chipBg: 'rgba(59,130,246,0.10)', chipText: '#bfdbfe', border: 'rgba(59,130,246,0.25)' },
 ];
 
 function colorMeta(value: string) {
@@ -91,7 +90,7 @@ export default function FavoritesPage() {
         title="Favoritos"
         subtitle="Links e ferramentas de uso frequente da operação"
         actions={
-          <Button onClick={openCreate}>
+          <Button onClick={openCreate} className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white shadow-sm font-semibold rounded-xl">
             <Plus className="w-4 h-4" /> Cadastrar Favorito
           </Button>
         }
@@ -99,7 +98,7 @@ export default function FavoritesPage() {
 
       <div className="relative mb-6 max-w-md">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou link..." className="pl-11 rounded-full" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou link..." className="pl-11 rounded-xl bg-white/[0.03] border-white/10" />
       </div>
 
       {favorites === null ? (
@@ -111,59 +110,55 @@ export default function FavoritesPage() {
           {filtered.map((fav) => {
             const meta = colorMeta(fav.color);
             return (
-              <SpotlightCard
+              <div
                 key={fav.id}
-                spotlightColor={meta.spotlight}
-                className="flex flex-col gap-4 relative overflow-hidden group animate-in border border-white/10 hover:border-white/20 transition-all duration-300 shadow-lg bg-[#0e0e12]/80 backdrop-blur-md"
+                className="group relative flex flex-col justify-between rounded-2xl p-5 bg-[#111116]/90 border border-white/[0.08] hover:border-white/20 transition-all duration-200 shadow-sm hover:shadow-lg backdrop-blur-sm"
               >
-                {/* Glowing neon top accent strip */}
-                <div
-                  className="absolute top-0 left-0 right-0 h-[3.5px]"
-                  style={{
-                    background: `linear-gradient(90deg, transparent, ${meta.dot}, transparent)`,
-                    boxShadow: `0 0 12px ${meta.dot}`
-                  }}
-                />
-                
-                <div className="flex items-center justify-between">
-                  <span
-                    className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-white/10"
-                    style={{ background: meta.chipBg, color: meta.chipText }}
-                  >
-                    {fav.color}
-                  </span>
-                  <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-faint)] bg-white/[0.03] px-2 py-0.5 rounded-full border border-white/5">
-                    <Eye className="w-3 h-3 text-[var(--color-text-muted)]" /> {fav.access_count}x
-                  </span>
+                <div>
+                  {/* Top Bar with Status Tag & Counter */}
+                  <div className="flex items-center justify-between mb-3">
+                    <span
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wide border"
+                      style={{ background: meta.chipBg, color: meta.chipText, borderColor: meta.border }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
+                      {fav.color}
+                    </span>
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-zinc-500">
+                      <Eye className="w-3 h-3 text-zinc-500" /> {fav.access_count}x
+                    </span>
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="font-semibold text-[15px] leading-snug text-zinc-100 group-hover:text-white transition-colors mb-4 line-clamp-2">
+                    {fav.title}
+                  </h3>
                 </div>
 
-                <h3 className="font-bold text-base leading-snug tracking-tight text-white/90 group-hover:text-white transition-colors">
-                  {fav.title}
-                </h3>
-
-                <div className="mt-auto flex items-center gap-2 pt-2 border-t border-white/5">
+                {/* Actions Footer */}
+                <div className="flex items-center gap-2 pt-3 border-t border-white/[0.06]">
                   <button
                     onClick={() => handleAccess(fav)}
-                    className={`flex-1 h-10 px-4 rounded-xl border text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all duration-200 ${meta.btnClass}`}
+                    className="flex-1 h-9 px-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.12] text-zinc-200 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                   >
-                    <ExternalLink className="w-3.5 h-3.5" /> Acessar Link
+                    <ExternalLink className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200" /> Acessar Link
                   </button>
                   <button
                     onClick={() => openEdit(fav)}
                     aria-label="Editar favorito"
-                    className="w-10 h-10 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
+                    className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(fav)}
                     aria-label="Excluir favorito"
-                    className="w-10 h-10 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
+                    className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </SpotlightCard>
+              </div>
             );
           })}
         </div>

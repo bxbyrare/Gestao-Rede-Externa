@@ -84,7 +84,7 @@ export default function DashboardLayout() {
 
   return (
     <div className="app-shell-bg min-h-screen flex relative">
-      <LiquidEther speed={0.5} distortion={1.1} />
+      <LiquidEther />
       <UrlMasker />
       {/* Mobile overlay */}
       {mobileNavOpen && (
