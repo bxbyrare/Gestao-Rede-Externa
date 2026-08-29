@@ -7,11 +7,11 @@ import SpotlightCard from '../components/SpotlightCard';
 import Modal from '../components/Modal';
 
 const COLORS = [
-  { value: 'Vermelho', dot: '#ef4444', chipBg: 'rgba(239,68,68,0.14)', chipText: '#fca5a5' },
-  { value: 'Amarelo', dot: '#eab308', chipBg: 'rgba(234,179,8,0.14)', chipText: '#fde047' },
-  { value: 'Verde', dot: '#22c55e', chipBg: 'rgba(34,197,94,0.14)', chipText: '#86efac' },
-  { value: 'Roxo', dot: '#a855f7', chipBg: 'rgba(168,85,247,0.14)', chipText: '#d8b4fe' },
-  { value: 'Azul', dot: '#3b82f6', chipBg: 'rgba(59,130,246,0.14)', chipText: '#93c5fd' },
+  { value: 'Vermelho', dot: '#ef4444', chipBg: 'rgba(239,68,68,0.18)', chipText: '#fca5a5', spotlight: 'rgba(239,68,68,0.22)', border: 'rgba(239,68,68,0.35)', btnClass: 'bg-red-500/15 text-red-300 border-red-500/40 hover:bg-red-500/25 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)]' },
+  { value: 'Amarelo', dot: '#eab308', chipBg: 'rgba(234,179,8,0.18)', chipText: '#fde047', spotlight: 'rgba(234,179,8,0.22)', border: 'rgba(234,179,8,0.35)', btnClass: 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25 hover:shadow-[0_0_20px_rgba(234,179,8,0.3)]' },
+  { value: 'Verde', dot: '#22c55e', chipBg: 'rgba(34,197,94,0.18)', chipText: '#86efac', spotlight: 'rgba(34,197,94,0.22)', border: 'rgba(34,197,94,0.35)', btnClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25 hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]' },
+  { value: 'Roxo', dot: '#a855f7', chipBg: 'rgba(168,85,247,0.18)', chipText: '#d8b4fe', spotlight: 'rgba(168,85,247,0.22)', border: 'rgba(168,85,247,0.35)', btnClass: 'bg-purple-500/15 text-purple-300 border-purple-500/40 hover:bg-purple-500/25 hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]' },
+  { value: 'Azul', dot: '#3b82f6', chipBg: 'rgba(59,130,246,0.18)', chipText: '#93c5fd', spotlight: 'rgba(59,130,246,0.22)', border: 'rgba(59,130,246,0.35)', btnClass: 'bg-blue-500/15 text-blue-300 border-blue-500/40 hover:bg-blue-500/25 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]' },
 ];
 
 function colorMeta(value: string) {
@@ -111,37 +111,56 @@ export default function FavoritesPage() {
           {filtered.map((fav) => {
             const meta = colorMeta(fav.color);
             return (
-              <SpotlightCard key={fav.id} spotlightColor="rgba(238, 44, 36, 0.18)" className="flex flex-col gap-4 relative overflow-hidden group animate-in">
-                <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: meta.dot }} />
+              <SpotlightCard
+                key={fav.id}
+                spotlightColor={meta.spotlight}
+                className="flex flex-col gap-4 relative overflow-hidden group animate-in border border-white/10 hover:border-white/20 transition-all duration-300 shadow-lg bg-[#0e0e12]/80 backdrop-blur-md"
+              >
+                {/* Glowing neon top accent strip */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-[3.5px]"
+                  style={{
+                    background: `linear-gradient(90deg, transparent, ${meta.dot}, transparent)`,
+                    boxShadow: `0 0 12px ${meta.dot}`
+                  }}
+                />
+                
                 <div className="flex items-center justify-between">
                   <span
-                    className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
+                    className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-white/10"
                     style={{ background: meta.chipBg, color: meta.chipText }}
                   >
                     {fav.color}
                   </span>
-                  <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-faint)]">
-                    <Eye className="w-3 h-3" /> {fav.access_count}x
+                  <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-faint)] bg-white/[0.03] px-2 py-0.5 rounded-full border border-white/5">
+                    <Eye className="w-3 h-3 text-[var(--color-text-muted)]" /> {fav.access_count}x
                   </span>
                 </div>
-                <h3 className="font-bold text-base leading-snug">{fav.title}</h3>
-                <div className="mt-auto flex items-center gap-2">
-                  <Button onClick={() => handleAccess(fav)} className="flex-1">
-                    <ExternalLink className="w-4 h-4" /> Acessar Link
-                  </Button>
+
+                <h3 className="font-bold text-base leading-snug tracking-tight text-white/90 group-hover:text-white transition-colors">
+                  {fav.title}
+                </h3>
+
+                <div className="mt-auto flex items-center gap-2 pt-2 border-t border-white/5">
+                  <button
+                    onClick={() => handleAccess(fav)}
+                    className={`flex-1 h-10 px-4 rounded-xl border text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all duration-200 ${meta.btnClass}`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Acessar Link
+                  </button>
                   <button
                     onClick={() => openEdit(fav)}
                     aria-label="Editar favorito"
-                    className="w-11 h-11 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors"
+                    className="w-10 h-10 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
                   >
-                    <Pencil className="w-4 h-4" />
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(fav)}
                     aria-label="Excluir favorito"
-                    className="w-11 h-11 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
+                    className="w-10 h-10 shrink-0 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </SpotlightCard>

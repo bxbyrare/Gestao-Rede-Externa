@@ -10,10 +10,12 @@ const emptyLineForm = { stretch_name: '', pop_box: '', cable_type: '', notes: ''
 
 interface Crumb { id: number | null; name: string }
 
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+function formatBytes(n?: number | null) {
+  if (!n || isNaN(Number(n))) return '0 B';
+  const num = Number(n);
+  if (num < 1024) return `${num} B`;
+  if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+  return `${(num / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function RotasPage() {
@@ -208,18 +210,34 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
   const [isSaving, setIsSaving] = useState(false);
 
   const [crumbs, setCrumbs] = useState<Crumb[]>([{ id: null, name: 'Arquivos' }]);
+  const [loadingContents, setLoadingContents] = useState(false);
   const [folders, setFolders] = useState<RouteFolder[]>([]);
   const [files, setFiles] = useState<RouteFile[]>([]);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
-  const currentFolderId = crumbs[crumbs.length - 1].id;
+  const currentFolderId = crumbs[crumbs.length - 1]?.id ?? null;
 
   function loadLines() {
-    api.get<{ route: RouteItem; lines: RouteLine[] }>(`/api/routes/${route.id}`).then((res) => setLines(res.lines)).catch(() => setLines([]));
+    api.get<{ route: RouteItem; lines: RouteLine[] }>(`/api/routes/${route.id}`)
+      .then((res) => setLines(Array.isArray(res?.lines) ? res.lines : []))
+      .catch(() => setLines([]));
   }
+
   function loadContents() {
-    api.get<{ folders: RouteFolder[]; files: RouteFile[] }>(`/api/routes/${route.id}/contents`, { folder_id: currentFolderId ?? undefined })
-      .then((res) => { setFolders(res.folders); setFiles(res.files); });
+    setLoadingContents(true);
+    api.get<{ folders?: RouteFolder[]; files?: RouteFile[] }>(`/api/routes/${route.id}/contents`, { folder_id: currentFolderId ?? undefined })
+      .then((res) => {
+        setFolders(Array.isArray(res?.folders) ? res.folders : []);
+        setFiles(Array.isArray(res?.files) ? res.files : []);
+      })
+      .catch((err) => {
+        console.error('Erro ao carregar conteúdos da rota:', err);
+        setFolders([]);
+        setFiles([]);
+      })
+      .finally(() => {
+        setLoadingContents(false);
+      });
   }
 
   useEffect(() => { if (tab === 'medicoes') loadLines(); }, [tab]);
@@ -389,12 +407,16 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
               </span>
             ))}
           </div>
-          {folders.length === 0 && files.length === 0 ? (
-            <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">Pasta vazia.</Card>
+          {loadingContents ? (
+            <Card className="p-10 text-center text-sm text-[var(--color-text-muted)] animate-pulse">
+              Carregando pastas e arquivos...
+            </Card>
+          ) : (folders.length === 0 && files.length === 0) ? (
+            <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">Pasta vazia. Nenhum arquivo ou subpasta encontrado.</Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {folders.map((f) => (
-                <Card key={`f-${f.id}`} className="p-4 flex items-center gap-3 animate-in group">
+                <Card key={`f-${f.id}`} className="p-4 flex items-center gap-3 animate-in group hover:border-white/20 transition-all">
                   <button onClick={() => enterFolder(f)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                     <FolderOpen className="w-8 h-8 text-[var(--color-accent)] shrink-0" />
                     <div className="min-w-0"><div className="font-semibold text-sm truncate">{f.name}</div></div>
@@ -403,14 +425,14 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
                 </Card>
               ))}
               {files.map((f) => (
-                <Card key={`file-${f.id}`} className="p-4 flex items-center gap-3">
+                <Card key={`file-${f.id}`} className="p-4 flex items-center gap-3 hover:border-white/20 transition-all">
                   <File className="w-8 h-8 text-[var(--color-text-faint)] shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-sm truncate">{f.filename}</div>
-                    <div className="text-[11px] text-[var(--color-text-faint)]">{formatBytes(f.filesize)} · {f.uploaded_at}</div>
+                    <div className="text-[11px] text-[var(--color-text-faint)]">{formatBytes(f.filesize)} · {f.uploaded_at || ''}</div>
                   </div>
-                  <a href={`/uploads/${f.filepath}`} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Download className="w-3.5 h-3.5" /></a>
-                  <button onClick={() => deleteFile(f)} className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-3.5 h-3.5" /></button>
+                  <a href={`/uploads/${f.filepath}`} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors"><Download className="w-3.5 h-3.5" /></a>
+                  <button onClick={() => deleteFile(f)} className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                 </Card>
               ))}
             </div>
