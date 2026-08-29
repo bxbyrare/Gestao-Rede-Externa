@@ -158,11 +158,13 @@ function initDashboard() {
       }
       if (targetTab === 'metrics-tab') loadMetrics();
       if (targetTab === 'favorites-tab') loadFavorites();
+      if (targetTab === 'notificacoes-tab') loadNotifications();
       if (targetTab === 'forms-tab') loadForms();
       if (targetTab === 'rotas-tab') loadRoutes();
     });
   });
   initFavoritesEvents();
+  initNotificationsEvents();
   initFormsEvents();
   initRoutesEvents();
   initBuscadorEvents();
@@ -908,7 +910,11 @@ function loadTechnicians() {
             <td><span class="text-muted" style="font-size:0.8rem;">Camisa: ${t.shirt_size || '-'} | Bota: ${t.boot_size || '-'}</span></td>
             <td>
               <div class="action-buttons">
-                <button class="action-btn" onclick="sendTechnicianWhatsapp(${t.id})" title="Enviar Dados no WhatsApp (Nome, CPF, RG, Telefone)" style="background: rgba(37, 211, 102, 0.15); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.3);">
+                <button class="action-btn" onclick="copyTechnicianWhatsapp(${t.id})" title="Copiar no Formato do WhatsApp (Zap)" style="background: rgba(37, 211, 102, 0.12); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.3); font-weight: 700; gap: 4px; padding: 4px 8px;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span style="font-size: 0.72rem;">Zap</span>
+                </button>
+                <button class="action-btn" onclick="sendTechnicianWhatsapp(${t.id})" title="Abrir Conversa Direta no WhatsApp" style="background: rgba(37, 211, 102, 0.15); color: #25d366; border: 1px solid rgba(37, 211, 102, 0.3);">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
                 </button>
                 <button class="action-btn edit-btn" onclick="editTechnician(${t.id})" title="Editar Técnico">
@@ -928,6 +934,60 @@ function loadTechnicians() {
       tableBody.innerHTML = `<tr><td colspan="8" class="text-center text-error">Erro crítico de comunicação.</td></tr>`;
     });
 }
+
+window.copyTechnicianWhatsapp = function(techId) {
+  const techs = window.loadedTechniciansData || [];
+  const t = techs.find(item => item.id === techId);
+  if (!t) return;
+  
+  let lines = [
+    `*DADOS DO COLABORADOR - CLARO REDE EXTERNA*`,
+    ``,
+    `👤 *Nome:* ${t.name || 'N/A'}`,
+    `🆔 *CPF:* ${t.cpf || 'N/A'}`,
+    `🪪 *RG / Identidade:* ${t.identity || 'N/A'}`,
+    `📞 *Telefone:* ${t.phone || 'N/A'}`,
+    `🏢 *Empresa:* ${t.company || 'FFA'}`,
+    `💼 *Cargo:* ${t.role || 'Técnico'}`,
+    `📍 *Área de Atuação:* ${t.area || 'N/A'}`
+  ];
+  
+  if (t.registration_claro) lines.push(`🏷️ *Matrícula Claro:* ${t.registration_claro}`);
+  if (t.registration_third) lines.push(`🏷️ *Matrícula Terceiro:* ${t.registration_third}`);
+  if (t.toa_login) lines.push(`🔑 *Login TOA:* ${t.toa_login}`);
+  if (t.phone_model) lines.push(`📱 *Modelo Telefone:* ${t.phone_model}`);
+  if (t.imei_1) lines.push(`🔢 *IMEI 1:* ${t.imei_1}`);
+  if (t.imei_2) lines.push(`🔢 *IMEI 2:* ${t.imei_2}`);
+  if (t.email) lines.push(`✉️ *E-mail:* ${t.email}`);
+  if (t.shirt_size || t.boot_size) lines.push(`👕 *Uniforme:* Camisa ${t.shirt_size || '-'} | Bota ${t.boot_size || '-'}`);
+
+  const fullText = lines.join('\n');
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(fullText).then(() => {
+      showToast('Dados copiados no formato do WhatsApp com sucesso!', 'success');
+    }).catch(() => fallbackCopyText(fullText));
+  } else {
+    fallbackCopyText(fullText);
+  }
+};
+
+function fallbackCopyText(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-999999px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('Dados copiados no formato do WhatsApp!', 'success');
+  } catch (err) {
+    showToast('Não foi possível copiar automaticamente.', 'error');
+  }
+  document.body.removeChild(ta);
+}
+
 window.sendTechnicianWhatsapp = function(techId) {
   const techs = window.loadedTechniciansData || [];
   const t = techs.find(item => item.id === techId);
@@ -5667,3 +5727,301 @@ function initRouteFolderEvents() {
     }
   });
 }
+
+let currentViewRouteId = null;
+let currentViewRouteData = null;
+
+window.openRouteViewModal = function(id) {
+  const item = (globalRoutes || []).find(r => r.id === id);
+  if (!item) return;
+  currentViewRouteId = id;
+  currentViewRouteData = item;
+  
+  const modal = document.getElementById('route-view-modal');
+  const titleEl = document.getElementById('route-view-title');
+  const badgeEl = document.getElementById('route-view-badge');
+  const descEl = document.getElementById('route-view-description');
+  const linesEl = document.getElementById('route-view-lines-count');
+  
+  if (titleEl) titleEl.textContent = item.name;
+  if (badgeEl) {
+    badgeEl.textContent = item.type;
+    badgeEl.className = item.type === 'Empresarial' ? 'route-badge route-badge-empresarial' : 'route-badge route-badge-residencial';
+  }
+  const linesCount = item.lines_count || (item.lines ? item.lines.length : 0);
+  if (linesEl) linesEl.textContent = `${linesCount} medição(ões) cadastrada(s)`;
+  
+  if (descEl) {
+    descEl.textContent = item.description ? item.description.trim() : 'Nenhuma descrição detalhada informada para esta rota.';
+  }
+  
+  if (modal) modal.classList.add('active');
+};
+
+window.closeRouteViewModal = function() {
+  const modal = document.getElementById('route-view-modal');
+  if (modal) modal.classList.remove('active');
+};
+
+window.copyRouteDescription = function() {
+  if (!currentViewRouteData) return;
+  const desc = currentViewRouteData.description || '';
+  if (!desc) {
+    showToast('Esta rota não possui descrição para copiar.', 'info');
+    return;
+  }
+  const fullText = `*ROTA: ${currentViewRouteData.name}* (${currentViewRouteData.type})\n\n${desc}`;
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(fullText).then(() => {
+      showToast('Descrição da rota copiada!', 'success');
+    }).catch(() => fallbackCopyText(fullText));
+  } else {
+    fallbackCopyText(fullText);
+  }
+};
+
+window.openRouteFromViewModal = function() {
+  if (!currentViewRouteId) return;
+  closeRouteViewModal();
+  openRouteSubpage(currentViewRouteId);
+};
+
+
+// ==============================================================================
+// CONTROLE DE NOTIFICAÇÕES OPERACIONAIS (JAVASCRIPT)
+// ==============================================================================
+let globalNotifications = [];
+let notifSearchTimeout = null;
+
+function initNotificationsEvents() {
+  const searchInput = document.getElementById('notif-search-input');
+  const reasonFilter = document.getElementById('notif-reason-filter');
+  const form = document.getElementById('notification-form');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      clearTimeout(notifSearchTimeout);
+      notifSearchTimeout = setTimeout(() => {
+        loadNotifications();
+      }, 250);
+    });
+  }
+
+  if (reasonFilter) {
+    reasonFilter.addEventListener('change', () => {
+      loadNotifications();
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveNotification();
+    });
+  }
+}
+
+function loadNotifications() {
+  const searchInput = document.getElementById('notif-search-input');
+  const reasonFilter = document.getElementById('notif-reason-filter');
+  const tableBody = document.getElementById('notificacoes-table-body');
+  if (!tableBody) return;
+
+  const searchVal = searchInput ? searchInput.value.trim() : '';
+  const reasonVal = reasonFilter ? reasonFilter.value.trim() : '';
+
+  let params = new URLSearchParams();
+  if (searchVal) params.append('search', searchVal);
+  if (reasonVal) params.append('reason', reasonVal);
+
+  fetch(`/api/notifications?${params.toString()}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-error" style="padding: 24px;">Erro ao carregar notificações: ${escapeHtml(data.error)}</td></tr>`;
+        return;
+      }
+      globalNotifications = data || [];
+      renderNotificationsTable(globalNotifications);
+    })
+    .catch(err => {
+      console.error('Error loading notifications:', err);
+      tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-error" style="padding: 24px;">Falha de comunicação ao carregar notificações.</td></tr>`;
+    });
+}
+
+function renderNotificationsTable(list) {
+  const tableBody = document.getElementById('notificacoes-table-body');
+  if (!tableBody) return;
+
+  if (!list || list.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 48px 20px; color: var(--text-muted); font-size: 0.95rem;">
+          Nenhuma notificação registrada.<br>
+          Clique no botão <strong>"+ Incluir"</strong> acima para registrar a primeira ocorrência.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = list.map(n => {
+    let reasonBadgeColor = 'background: rgba(255,255,255,0.06); color: #ffffff;';
+    const rLower = (n.reason || '').toLowerCase();
+    if (rLower.includes('férias') || rLower.includes('ferias')) {
+      reasonBadgeColor = 'background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);';
+    } else if (rLower.includes('infra')) {
+      reasonBadgeColor = 'background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);';
+    } else if (rLower.includes('material')) {
+      reasonBadgeColor = 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);';
+    }
+
+    return `
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+        <td style="padding: 14px 14px; font-weight: 700; color: #ffffff; font-size: 0.88rem; white-space: nowrap;">
+          ${escapeHtml(n.date)}
+        </td>
+        <td style="padding: 14px 14px;">
+          <span style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; ${reasonBadgeColor}">
+            ${escapeHtml(n.reason)}
+          </span>
+        </td>
+        <td style="padding: 14px 14px; color: #e2e8f0; font-size: 0.88rem; line-height: 1.55; font-weight: 500;">
+          ${escapeHtml(n.description)}
+        </td>
+        <td style="padding: 14px 14px; color: #a1a1aa; font-weight: 700; font-size: 0.84rem; white-space: nowrap;">
+          ${escapeHtml(n.count_label)}
+        </td>
+        <td style="padding: 14px 14px; color: #ffffff; font-weight: 700; font-size: 0.86rem;">
+          ${escapeHtml(n.coordinator)}
+        </td>
+        <td style="padding: 14px 14px; text-align: center;">
+          <div class="action-buttons" style="display: flex; gap: 6px; justify-content: center;">
+            <button class="action-btn edit-btn" onclick="openEditNotificationModal(${n.id})" title="Editar Notificação">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="action-btn delete-btn" onclick="deleteNotification(${n.id})" title="Excluir Notificação">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+window.openNotificationModal = function() {
+  const modal = document.getElementById('notification-modal');
+  const title = document.getElementById('notification-modal-title');
+  const form = document.getElementById('notification-form');
+  
+  if (title) title.textContent = 'Incluir Nova Notificação';
+  if (form) form.reset();
+  
+  document.getElementById('notif-id').value = '';
+  const dateInput = document.getElementById('notif-date');
+  if (dateInput) {
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.value = today;
+  }
+  
+  if (modal) modal.classList.add('active');
+};
+
+window.openEditNotificationModal = function(id) {
+  const item = (globalNotifications || []).find(n => n.id === id);
+  if (!item) return;
+
+  const modal = document.getElementById('notification-modal');
+  const title = document.getElementById('notification-modal-title');
+  if (title) title.textContent = 'Editar Notificação';
+
+  document.getElementById('notif-id').value = item.id;
+  document.getElementById('notif-date').value = item.date_iso || '';
+  document.getElementById('notif-reason').value = item.reason || '';
+  document.getElementById('notif-description').value = item.description || '';
+  document.getElementById('notif-coordinator').value = item.coordinator || '';
+  document.getElementById('notif-count-label').value = item.count_label || '';
+
+  if (modal) modal.classList.add('active');
+};
+
+window.closeNotificationModal = function() {
+  const modal = document.getElementById('notification-modal');
+  if (modal) modal.classList.remove('active');
+};
+
+function saveNotification() {
+  const id = document.getElementById('notif-id').value;
+  const date = document.getElementById('notif-date').value;
+  const reason = document.getElementById('notif-reason').value.trim();
+  const description = document.getElementById('notif-description').value.trim();
+  const coordinator = document.getElementById('notif-coordinator').value.trim();
+  const count_label = document.getElementById('notif-count-label').value.trim();
+
+  if (!reason || !description) {
+    showToast('Preencha os campos obrigatórios (Porque e Descritivo).', 'error');
+    return;
+  }
+
+  const payload = { date, reason, description, coordinator, count_label };
+  const url = id ? `/api/notifications/${id}` : '/api/notifications';
+  const method = id ? 'PUT' : 'POST';
+
+  const saveBtn = document.getElementById('btn-save-notif');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Salvando...';
+  }
+
+  fetch(url, {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Salvar Notificação';
+    }
+    if (data.error) {
+      showToast(data.error, 'error');
+      return;
+    }
+    showToast(id ? 'Notificação atualizada com sucesso!' : 'Notificação incluída com sucesso!', 'success');
+    closeNotificationModal();
+    loadNotifications();
+  })
+  .catch(err => {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Salvar Notificação';
+    }
+    console.error('Error saving notification:', err);
+    showToast('Erro ao salvar notificação.', 'error');
+  });
+}
+
+window.deleteNotification = function(id) {
+  if (!confirm('Deseja realmente excluir esta notificação?')) return;
+  fetch(`/api/notifications/${id}`, { method: 'DELETE' })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        showToast(data.error, 'error');
+        return;
+      }
+      showToast('Notificação excluída com sucesso!', 'success');
+      loadNotifications();
+    })
+    .catch(err => {
+      console.error('Error deleting notification:', err);
+      showToast('Erro ao excluir notificação.', 'error');
+    });
+};
+
+window.exportNotificationsExcel = function() {
+  window.location.href = '/api/notifications/export';
+};

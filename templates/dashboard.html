@@ -143,6 +143,14 @@
             <span>Projetos</span>
           </button>
         </li>
+                <li>
+          <button class="menu-btn" data-tab="notificacoes-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
+            <span>Notificação</span>
+          </button>
+        </li>
         <li>
           <button class="menu-btn" data-tab="forms-tab">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1008,6 +1016,72 @@
       <!-- ==========================================================================
            TAB: FORMULÁRIOS (ENTRE PROJETOS E ROTAS)
            ========================================================================== -->
+      
+      <!-- ==========================================================================
+           TAB: NOTIFICAÇÃO (CONTROLE DE OCORRÊNCIAS E PENDÊNCIAS OPERACIONAIS)
+           ========================================================================== -->
+      <section class="tab-pane" id="notificacoes-tab">
+        <div class="section-header-flex gx-18">
+          <div>
+            <h3 class="gx-41" style="display: flex; align-items: center; gap: 10px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 24px; height: 24px; color: #30d158;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+              Controle de Notificações
+            </h3>
+            <p class="gx-11">Registro de pendências operacionais, férias, gestão de infraestrutura e alinhamentos</p>
+          </div>
+          <div class="u2-flex-37">
+            <button class="btn btn-outline gx-34" id="btn-export-notifs" onclick="exportNotificationsExcel()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="u-icon-16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Exportar Excel
+            </button>
+            <button class="btn btn-primary u2-font-26" id="btn-open-notif-modal" onclick="openNotificationModal()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="u-icon-18"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              + Incluir
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div class="filter-inputs" style="display: flex; gap: 12px; align-items: center; flex: 1; flex-wrap: wrap;">
+            <div class="search-input-wrapper" style="max-width: 420px; flex: 1;">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input type="text" id="notif-search-input" placeholder="Buscar por descritivo, coordenador ou motivo...">
+            </div>
+            <select id="notif-reason-filter" style="padding: 8px 12px; background: #1f1f24; border: 1px solid var(--border); border-radius: var(--radius-md); color: #ffffff; font-size: 0.88rem; outline: none;">
+              <option value="">Todos os Motivos</option>
+              <option value="Férias">Férias</option>
+              <option value="Gestão de Infra">Gestão de Infra</option>
+              <option value="Falta de Material">Falta de Material</option>
+              <option value="Operação">Operação</option>
+              <option value="Alinhamento">Alinhamento</option>
+              <option value="Outros">Outros</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Notificações Table matching user's green header style -->
+        <div class="table-container" style="background: rgba(22, 22, 26, 0.7); backdrop-filter: blur(12px); border-radius: 14px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto;">
+          <table class="data-table" id="notificacoes-table" style="width: 100%;">
+            <thead>
+              <tr style="background: #5b9b3e; color: #ffffff; font-weight: 800; text-transform: uppercase; font-size: 0.82rem; letter-spacing: 0.5px;">
+                <th style="padding: 12px 14px; color: #ffffff; border-right: 1px solid rgba(255,255,255,0.2); width: 110px;">Data</th>
+                <th style="padding: 12px 14px; color: #ffffff; border-right: 1px solid rgba(255,255,255,0.2); width: 150px;">Porque</th>
+                <th style="padding: 12px 14px; color: #ffffff; border-right: 1px solid rgba(255,255,255,0.2);">Descritivo</th>
+                <th style="padding: 12px 14px; color: #ffffff; border-right: 1px solid rgba(255,255,255,0.2); width: 140px;">Contagem</th>
+                <th style="padding: 12px 14px; color: #ffffff; border-right: 1px solid rgba(255,255,255,0.2); width: 220px;">Coordenador</th>
+                <th style="padding: 12px 14px; color: #ffffff; text-align: center; width: 100px;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="notificacoes-table-body">
+              <!-- Loaded via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="tab-pane" id="forms-tab">
         <div class="filter-bar">
           <div class="filter-inputs">
@@ -2875,5 +2949,97 @@
       });
     });
   </script>
+
+  <!-- ==========================================================================
+       MODAL: INCLUIR / EDITAR NOTIFICAÇÃO
+       ========================================================================== -->
+  <div class="modal-overlay" id="notification-modal">
+    <div class="modal-card" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 id="notification-modal-title">Incluir Nova Notificação</h3>
+        <button class="btn-close-modal" onclick="closeNotificationModal()">&times;</button>
+      </div>
+      <form id="notification-form" class="modal-form">
+        <input type="hidden" id="notif-id" name="id">
+
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label for="notif-date">Data da Ocorrência *</label>
+            <input type="date" id="notif-date" name="date" required style="width: 100%; padding: 10px 12px; background: #1a1a1e; border: 1px solid var(--border); border-radius: 8px; color: #ffffff;">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label for="notif-reason">Porque (Motivo) *</label>
+            <input type="text" id="notif-reason" name="reason" list="reasons-list" required placeholder="Ex: Férias, Gestão de Infra..." style="width: 100%; padding: 10px 12px; background: #1a1a1e; border: 1px solid var(--border); border-radius: 8px; color: #ffffff;">
+            <datalist id="reasons-list">
+              <option value="Férias">
+              <option value="Gestão de Infra">
+              <option value="Falta de Material">
+              <option value="Operação">
+              <option value="Alinhamento">
+            </datalist>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label for="notif-description">Descritivo Detalhado *</label>
+          <textarea id="notif-description" name="description" required rows="4" placeholder="Descreva aqui o motivo detalhado da notificação..." style="width: 100%; padding: 12px; background: #1a1a1e; border: 1px solid var(--border); border-radius: 8px; color: #ffffff; font-family: inherit; font-size: 0.9rem; resize: vertical;"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label for="notif-coordinator">Coordenador Responsável</label>
+            <input type="text" id="notif-coordinator" name="coordinator" placeholder="Ex: Alexandre Candido Teixeira" style="width: 100%; padding: 10px 12px; background: #1a1a1e; border: 1px solid var(--border); border-radius: 8px; color: #ffffff;">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label for="notif-count-label">Contagem (Opcional)</label>
+            <input type="text" id="notif-count-label" name="count_label" placeholder="Ex: Notificação 001 (Automático)" style="width: 100%; padding: 10px 12px; background: #1a1a1e; border: 1px solid var(--border); border-radius: 8px; color: #ffffff;">
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+          <button type="button" class="btn btn-outline" onclick="closeNotificationModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-notif">Salvar Notificação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL: VISUALIZAR ROTA (DESCRIÇÃO NÍTIDA & DETALHADA)
+       ========================================================================== -->
+  <div class="modal-overlay" id="route-view-modal">
+    <div class="modal-card" style="max-width: 640px;">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 24px; height: 24px; color: #3b82f6;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <h3 id="route-view-title" style="font-size: 1.25rem; font-weight: 800; color: #ffffff; margin: 0;">Nome da Rota</h3>
+        </div>
+        <button class="btn-close-modal" onclick="closeRouteViewModal()">&times;</button>
+      </div>
+      <div style="padding: 20px 0;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <span id="route-view-badge" class="route-badge" style="font-size: 0.8rem; padding: 4px 12px;">Empresarial</span>
+          <span id="route-view-lines-count" style="font-size: 0.82rem; color: var(--text-muted);">0 medições</span>
+        </div>
+
+        <div style="margin-bottom: 8px;">
+          <label style="font-size: 0.78rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Descrição Técnica da Rota</label>
+        </div>
+        <div id="route-view-description" style="background: #111115; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 18px 20px; color: #f8fafc; font-size: 1.05rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; min-height: 100px; box-shadow: inset 0 2px 6px rgba(0,0,0,0.4); font-weight: 500;">
+          Carregando...
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 16px;">
+        <button type="button" class="btn btn-outline" id="btn-copy-route-desc" onclick="copyRouteDescription()">
+          📋 Copiar Descrição
+        </button>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn btn-outline" onclick="closeRouteViewModal()">Fechar</button>
+          <button type="button" class="btn btn-primary" id="btn-route-view-open-subpage" onclick="openRouteFromViewModal()">Abrir Sub-Página &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

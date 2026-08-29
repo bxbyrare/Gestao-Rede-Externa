@@ -833,7 +833,7 @@ def serve_upload(filename):
     # Only project attachments are meant to be public — they're linked from
     # the public project page (/p/project/<id>). Everything else (route
     # files, etc.) is internal and requires an authenticated session.
-    if not filename.startswith('projetos/') and 'user_id' not in session:
+    if not filename.startswith('projetos/') and not filename.startswith('formularios/') and 'user_id' not in session:
         return jsonify({"error": "Não autenticado."}), 401
     safe_path = safe_join(UPLOAD_FOLDER, filename)
     if not safe_path or not os.path.exists(safe_path):
@@ -2206,10 +2206,6 @@ def public_form_view(slug):
 @app.route('/f/<slug>/submit', methods=['POST'], strict_slashes=False)
 def public_form_submit(slug):
     try:
-        data = request.get_json(silent=True) or request.form.to_dict()
-        if not data:
-            return jsonify({"error": "Nenhum dado recebido."}), 400
-
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT id FROM forms WHERE slug = %s;", (slug,))
@@ -2224,11 +2220,49 @@ def public_form_submit(slug):
             return jsonify({"error": "Formulário não encontrado."}), 404
 
         form_id = f['id']
-        email = data.get('email', '').strip()
-        technician = data.get('technician', data.get('email', 'Técnico')).strip()
+        
+        # Parse data from JSON or multipart form
+        data = {}
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        else:
+            for k in request.form.keys():
+                vals = request.form.getlist(k)
+                data[k] = vals[0] if len(vals) == 1 else vals
 
-        # Convert dictionary data to JSON string for Postgres storage
-        import json
+        # Process uploaded files (photos, pdfs, etc.)
+        if request.files:
+            upload_dir = os.path.join(UPLOAD_FOLDER, 'formularios')
+            os.makedirs(upload_dir, exist_ok=True)
+            for file_key in request.files.keys():
+                files = request.files.getlist(file_key)
+                file_urls = []
+                for file in files:
+                    if file and file.filename:
+                        safe_name = secure_filename(file.filename)
+                        timestamp = int(time.time() * 1000)
+                        saved_name = f"{timestamp}_{safe_name}"
+                        file_path = os.path.join(upload_dir, saved_name)
+                        file.save(file_path)
+                        rel_url = f"/uploads/formularios/{saved_name}"
+                        file_urls.append(rel_url)
+                if file_urls:
+                    data[file_key] = file_urls[0] if len(file_urls) == 1 else file_urls
+
+        if not data:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Nenhum dado recebido."}), 400
+
+        email = ''
+        technician = 'Técnico'
+        for k, v in data.items():
+            k_lower = str(k).lower()
+            if ('email' in k_lower or 'e-mail' in k_lower) and isinstance(v, str) and v:
+                email = v
+            if ('técnico' in k_lower or 'tecnico' in k_lower or 'nome' in k_lower) and isinstance(v, str) and v:
+                technician = v
+
         cur.execute(
             "INSERT INTO form_responses (form_id, technician_name, technician_email, answers) VALUES (%s, %s, %s, %s);",
             (form_id, technician, email, json.dumps(data, ensure_ascii=False))
@@ -2239,7 +2273,8 @@ def public_form_submit(slug):
 
         return jsonify({"success": True, "message": "Resposta registrada com sucesso!"})
     except Exception as e:
-        print("Backend error log:", e)
+        print("Backend error log in public_form_submit:", e)
+        traceback.print_exc()
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
 # --- FORM RESPONSES ADMIN API ---
@@ -2352,26 +2387,77 @@ def api_form_responses_export(form_id):
         cur.close()
         conn.close()
 
+        # Build dynamic base url for full image/attachment links
+        base_host = request.host_url.rstrip('/')
+        if 'shardweb.app' in base_host and not base_host.startswith('https://'):
+            base_host = 'https://' + base_host.split('://')[-1]
+
+        # Collect all dynamic question headers in order
+        all_keys = []
+        for r in rows:
+            ans = r['answers']
+            if isinstance(ans, str):
+                try:
+                    ans = json.loads(ans)
+                except Exception:
+                    ans = {}
+            if isinstance(ans, dict):
+                for k in ans.keys():
+                    if k not in all_keys and not k.endswith('_other'):
+                        all_keys.append(k)
+
         output = io.StringIO()
+        output.write('﻿') # UTF-8 BOM for Excel
         writer = csv.writer(output, delimiter=';')
 
         # Header
-        writer.writerow(['ID', 'Data/Hora Submissao', 'Tecnico', 'E-mail', 'Respostas Detalhadas'])
+        base_headers = ['ID', 'Data/Hora Submissao', 'Tecnico', 'E-mail']
+        writer.writerow(base_headers + all_keys)
+
+        def format_cell_value(val):
+            if val is None:
+                return ''
+            if isinstance(val, list):
+                return ' | '.join(format_cell_value(v) for v in val)
+            val_str = str(val).strip()
+            if val_str.startswith('/uploads/'):
+                return f"{base_host}{val_str}"
+            return val_str
 
         for r in rows:
-            ans_str = json.dumps(r['answers'], ensure_ascii=False) if isinstance(r['answers'], dict) else str(r['answers'] or '')
+            ans = r['answers']
+            if isinstance(ans, str):
+                try:
+                    ans = json.loads(ans)
+                except Exception:
+                    ans = {}
+            if not isinstance(ans, dict):
+                ans = {}
+
             sub_date = r['submitted_at'].strftime('%d/%m/%Y %H:%M') if r['submitted_at'] else ''
-            writer.writerow([r['id'], sub_date, r['technician_name'] or '', r['technician_email'] or '', ans_str])
+            row_data = [
+                r['id'],
+                sub_date,
+                r['technician_name'] or '',
+                r['technician_email'] or ''
+            ]
+            for k in all_keys:
+                cell_val = ans.get(k, '')
+                row_data.append(format_cell_value(cell_val))
+
+            writer.writerow(row_data)
 
         output.seek(0)
-        filename = f"respostas_{form_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        clean_title = re.sub(r'[^a-zA-Z0-9_-]+', '_', title)[:30]
+        filename = f"respostas_{clean_title}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
         return Response(
-            output.getvalue(),
-            mimetype="text/csv",
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv; charset=utf-8",
             headers={"Content-Disposition": f"attachment;filename={filename}"}
         )
     except Exception as e:
-        print("Backend error log:", e)
+        print("Backend error log in api_form_responses_export:", e)
+        traceback.print_exc()
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
 @app.route('/api/forms/<int:form_id>/responses/import', methods=['POST'], strict_slashes=False)
@@ -5853,3 +5939,187 @@ def api_move_route_file(file_id):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
+
+# --------------------------------------------------------------------------
+# NOTIFICAÇÕES OPERACIONAIS API
+# --------------------------------------------------------------------------
+@app.route('/api/notifications', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_notifications():
+    if request.method == 'GET':
+        try:
+            search = request.args.get('search', '').strip()
+            reason_filter = request.args.get('reason', '').strip()
+            conn = get_db()
+            cur = conn.cursor()
+            
+            query = "SELECT id, date, reason, description, count_label, coordinator, created_at FROM notifications"
+            params = []
+            conditions = []
+            if search:
+                conditions.append("(description ILIKE %s OR coordinator ILIKE %s OR reason ILIKE %s OR count_label ILIKE %s)")
+                p = f"%{search}%"
+                params.extend([p, p, p, p])
+            if reason_filter:
+                conditions.append("reason = %s")
+                params.append(reason_filter)
+                
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY date DESC, id DESC;"
+            
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            
+            result = []
+            for r in rows:
+                result.append({
+                    'id': r['id'],
+                    'date': r['date'].strftime('%d/%m/%Y') if r['date'] else '',
+                    'date_iso': r['date'].strftime('%Y-%m-%d') if r['date'] else '',
+                    'reason': r['reason'],
+                    'description': r['description'],
+                    'count_label': r['count_label'] or f"Notificação {r['id']:03d}",
+                    'coordinator': r['coordinator'] or 'Não informado',
+                    'created_at': r['created_at'].strftime('%d/%m/%Y %H:%M') if r['created_at'] else ''
+                })
+            return jsonify(result)
+        except Exception as e:
+            print("Error listing notifications:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao listar notificações."}), 500
+
+    if request.method == 'POST':
+        try:
+            data = request.get_json(silent=True) or request.form.to_dict()
+            date_val = data.get('date', '').strip() or datetime.date.today().strftime('%Y-%m-%d')
+            reason = data.get('reason', '').strip()
+            description = data.get('description', '').strip()
+            coordinator = data.get('coordinator', '').strip()
+            count_label = data.get('count_label', '').strip()
+
+            if not reason or not description:
+                return jsonify({"error": "Os campos 'Porque (Motivo)' e 'Descritivo' são obrigatórios."}), 400
+
+            conn = get_db()
+            cur = conn.cursor()
+
+            # Generate count_label if not provided
+            if not count_label:
+                cur.execute("SELECT COUNT(*) AS total FROM notifications;")
+                total_cnt = (cur.fetchone()['total'] or 0) + 1
+                count_label = f"Notificação {total_cnt:03d}"
+
+            cur.execute("""
+                INSERT INTO notifications (date, reason, description, count_label, coordinator, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id;
+            """, (date_val, reason, description, count_label, coordinator, session.get('user_id')))
+            new_id = cur.fetchone()['id']
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Cadastrou nova notificação: {count_label} ({reason})")
+            return jsonify({"success": True, "id": new_id, "count_label": count_label}), 201
+        except Exception as e:
+            print("Error creating notification:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao salvar notificação."}), 500
+
+@app.route('/api/notifications/<int:notif_id>', methods=['PUT', 'DELETE'], strict_slashes=False)
+@login_required
+def api_notification_detail(notif_id):
+    if request.method == 'PUT':
+        try:
+            data = request.get_json(silent=True) or request.form.to_dict()
+            date_val = data.get('date', '').strip()
+            reason = data.get('reason', '').strip()
+            description = data.get('description', '').strip()
+            coordinator = data.get('coordinator', '').strip()
+            count_label = data.get('count_label', '').strip()
+
+            if not reason or not description:
+                return jsonify({"error": "Os campos 'Porque (Motivo)' e 'Descritivo' são obrigatórios."}), 400
+
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE notifications
+                SET date = COALESCE(NULLIF(%s, '')::DATE, date),
+                    reason = %s,
+                    description = %s,
+                    count_label = COALESCE(NULLIF(%s, ''), count_label),
+                    coordinator = %s
+                WHERE id = %s;
+            """, (date_val, reason, description, count_label, coordinator, notif_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Atualizou notificação ID {notif_id}")
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            print("Error updating notification:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao atualizar notificação."}), 500
+
+    if request.method == 'DELETE':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM notifications WHERE id = %s;", (notif_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Excluiu notificação ID {notif_id}")
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            print("Error deleting notification:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao excluir notificação."}), 500
+
+@app.route('/api/notifications/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_notifications_export():
+    try:
+        import io, csv
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT date, reason, description, count_label, coordinator FROM notifications ORDER BY date ASC, id ASC;")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        output = io.StringIO()
+        output.write('﻿') # UTF-8 BOM
+        writer = csv.writer(output, delimiter=';')
+
+        # Header matching the user's Excel sheet
+        writer.writerow(['Data', 'Porque', 'Descritivo', 'Contagem', 'Coordenador'])
+
+        for r in rows:
+            d_str = r['date'].strftime('%d/%m/%Y') if r['date'] else ''
+            writer.writerow([
+                d_str,
+                r['reason'] or '',
+                r['description'] or '',
+                r['count_label'] or '',
+                r['coordinator'] or ''
+            ])
+
+        output.seek(0)
+        filename = f"notificacoes_rede_externa_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+    except Exception as e:
+        print("Error exporting notifications:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao exportar notificações."}), 500

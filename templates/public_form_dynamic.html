@@ -303,35 +303,27 @@
       btn.textContent = 'Enviando...';
 
       var formData = new FormData(this);
-      var data = {};
 
+      // Handle _other inputs
+      var otherKeys = [];
       formData.forEach(function(value, key) {
-        if (value instanceof File) return;
-        if (data[key]) {
-          if (!Array.isArray(data[key])) data[key] = [data[key]];
-          data[key].push(value);
-        } else {
-          data[key] = value;
+        if (key.endsWith('_other') && value) {
+          otherKeys.push(key);
         }
       });
-
-      Object.keys(data).forEach(function(key) {
-        if (key.endsWith('_other') && data[key]) {
-          var parentKey = key.replace('_other', '');
-          if (data[parentKey] === 'Outro' || !data[parentKey]) {
-            data[parentKey] = data[key];
-          } else if (Array.isArray(data[parentKey])) {
-            data[parentKey].push(data[key]);
-          }
-          delete data[key];
+      otherKeys.forEach(function(key) {
+        var parentKey = key.replace('_other', '');
+        var val = formData.get(key);
+        if (formData.get(parentKey) === 'Outro' || !formData.get(parentKey)) {
+          formData.set(parentKey, val);
         }
+        formData.delete(key);
       });
 
       var slug = "{{ form.slug }}";
       fetch('/f/' + slug + '/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: formData
       })
       .then(function(res) { return res.json(); })
       .then(function(resData) {
