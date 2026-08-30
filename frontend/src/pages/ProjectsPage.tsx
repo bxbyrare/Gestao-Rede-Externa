@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ExternalLink, File, FolderOpen, FolderPlus, Home, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ChevronRight, ExternalLink, File, FolderOpen, FolderPlus, Home, Paperclip, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Project, ProjectFolder } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Textarea } from '../components/ui';
@@ -27,6 +27,7 @@ export default function ProjectsPage() {
   const [crumbs, setCrumbs] = useState<Crumb[]>([{ id: null, name: 'Projetos' }]);
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
   const [folderModalOpen, setFolderModalOpen] = useState(false);
@@ -143,6 +144,22 @@ export default function ProjectsPage() {
     return kmz + pdf;
   }, []);
 
+  const filteredFolders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return folders;
+    return folders.filter((f) => f.name.toLowerCase().includes(q));
+  }, [folders, search]);
+
+  const filteredProjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) =>
+      p.name.toLowerCase().includes(q) ||
+      (p.description || '').toLowerCase().includes(q) ||
+      (p.area || '').toLowerCase().includes(q)
+    );
+  }, [projects, search]);
+
   return (
     <div>
       <PageHeader
@@ -155,6 +172,16 @@ export default function ProjectsPage() {
           </div>
         }
       />
+
+      <div className="relative mb-6 max-w-md">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar pastas ou projetos por nome, área..."
+          className="pl-11 rounded-full"
+        />
+      </div>
 
       <div className="flex items-center gap-1.5 mb-6 text-sm flex-wrap">
         {crumbs.map((c, idx) => (
@@ -172,11 +199,11 @@ export default function ProjectsPage() {
 
       {loading ? (
         <p className="text-sm text-[var(--color-text-muted)]">Carregando...</p>
-      ) : folders.length === 0 && projects.length === 0 ? (
-        <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">Pasta vazia.</Card>
+      ) : filteredFolders.length === 0 && filteredProjects.length === 0 ? (
+        <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">{search ? 'Nenhum projeto ou pasta encontrado para essa busca.' : 'Pasta vazia.'}</Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {folders.map((f) => (
+          {filteredFolders.map((f) => (
             <Card key={`f-${f.id}`} className="p-4 flex items-center gap-3.5 animate-in group hover:border-white/20 hover:-translate-y-0.5 transition-all">
               <button onClick={() => enterFolder(f)} className="flex items-center gap-3.5 flex-1 min-w-0 text-left">
                 <div className="w-11 h-11 rounded-xl bg-[var(--color-accent-dim)] flex items-center justify-center shrink-0">
@@ -195,7 +222,7 @@ export default function ProjectsPage() {
               )}
             </Card>
           ))}
-          {projects.map((p) => (
+          {filteredProjects.map((p) => (
             <Card key={`p-${p.id}`} className="p-4 flex flex-col gap-2 animate-in">
               <div className="flex items-start justify-between gap-2">
                 <h4 className="font-semibold text-sm leading-snug">{p.name}</h4>

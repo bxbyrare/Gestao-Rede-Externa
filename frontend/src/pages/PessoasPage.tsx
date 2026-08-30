@@ -111,13 +111,16 @@ export default function PessoasPage() {
       `💼 *Cargo:* ${p.role || 'Técnico'}`,
       `📍 *Área de Atuação:* ${p.area || 'N/A'}`,
     ];
+    if (p.team || p.team_type) lines.push(`👥 *Equipe:* ${p.team || 'N/A'} (${p.team_type || 'Geral'})`);
     if (p.registration_claro) lines.push(`🏷️ *Matrícula Claro:* ${p.registration_claro}`);
     if (p.registration_third) lines.push(`🏷️ *Matrícula Terceiro:* ${p.registration_third}`);
     if (p.toa_login) lines.push(`🔑 *Login TOA:* ${p.toa_login}`);
     if (p.phone_model) lines.push(`📱 *Modelo Telefone:* ${p.phone_model}`);
     if (p.imei_1) lines.push(`🔢 *IMEI 1:* ${p.imei_1}`);
     if (p.email) lines.push(`✉️ *E-mail:* ${p.email}`);
-    if (p.shirt_size || p.boot_size) lines.push(`👕 *Uniforme:* Camisa ${p.shirt_size || '-'} | Bota ${p.boot_size || '-'}`);
+    if (p.shirt_size || p.boot_size || p.pants_size || p.jacket_size) {
+      lines.push(`👕 *Uniforme:* Camisa ${p.shirt_size || '-'} | Bota ${p.boot_size || '-'} | Calça ${p.pants_size || '-'} | Casaco ${p.jacket_size || '-'}`);
+    }
 
     const fullText = lines.join('\n');
     navigator.clipboard.writeText(fullText);
@@ -270,6 +273,9 @@ export default function PessoasPage() {
               {TEAM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </Select>
           </Field>
+          <Field label="Equipe" hint="Ex: Equipe de Vassouras, Cobertura de férias...">
+            <Input value={form.team} onChange={(e) => set('team', e.target.value)} placeholder="Nome ou número da equipe" />
+          </Field>
           <Field label="Matrícula Claro"><Input value={form.registration_claro} onChange={(e) => set('registration_claro', e.target.value)} placeholder="Ex: C123456" /></Field>
           <Field label="Matrícula Terceira"><Input value={form.registration_third} onChange={(e) => set('registration_third', e.target.value)} placeholder="Ex: T998877" /></Field>
           <Field label="Login TOA"><Input value={form.toa_login} onChange={(e) => set('toa_login', e.target.value)} placeholder="Ex: usr.toa.123" /></Field>
@@ -277,7 +283,9 @@ export default function PessoasPage() {
           <Field label="IMEI 1"><Input value={form.imei_1} onChange={(e) => set('imei_1', e.target.value)} placeholder="351234567890123" /></Field>
           <Field label="IMEI 2"><Input value={form.imei_2} onChange={(e) => set('imei_2', e.target.value)} placeholder="Opcional" /></Field>
           <Field label="Camisa"><Input value={form.shirt_size} onChange={(e) => set('shirt_size', e.target.value)} placeholder="P / M / G / GG" /></Field>
-          <Field label="Bota"><Input value={form.boot_size} onChange={(e) => set('boot_size', e.target.value)} placeholder="Número" /></Field>
+          <Field label="Bota"><Input value={form.boot_size} onChange={(e) => set('boot_size', e.target.value)} placeholder="Número (ex: 41, 42)" /></Field>
+          <Field label="Calça"><Input value={form.pants_size} onChange={(e) => set('pants_size', e.target.value)} placeholder="Tamanho (ex: 40, 42, G)" /></Field>
+          <Field label="Casaco"><Input value={form.jacket_size} onChange={(e) => set('jacket_size', e.target.value)} placeholder="P / M / G / GG" /></Field>
         </div>
       </Modal>
     </div>
