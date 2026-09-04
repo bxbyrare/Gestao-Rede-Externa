@@ -10,7 +10,8 @@ import {
   Car,
   Layers,
   Flame,
-  UserCheck
+  UserCheck,
+  CheckCircle2
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician, Vehicle } from '../api/types';
@@ -18,8 +19,6 @@ import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui
 import Modal from '../components/Modal';
 import VehiclePreview from '../components/VehiclePreview';
 import { isCoordenador, useAuth } from '../state/AuthContext';
-
-const VEHICLE_TYPES = ['Todos', 'Utilitário', 'Passeio', 'Van', 'Moto', 'Caminhão'];
 
 const emptyForm = {
   plate: '',
@@ -40,13 +39,52 @@ const emptyForm = {
   subclus: '',
 };
 
+// Calcula a pontuação de completude das informações (mais completo = pontuação maior)
+function getVehicleCompletenessScore(v: Vehicle): number {
+  let score = 0;
+  if (v.plate?.trim()) score += 2;
+  if (v.model?.trim()) score += 2;
+  if (v.responsible_name?.trim() || v.condutor_dia?.trim()) score += 4;
+  if (v.subclus?.trim()) score += 2;
+  if (v.base?.trim()) score += 2;
+  if (v.setor?.trim()) score += 1;
+  if (v.ticket_car?.trim()) score += 2;
+  if (v.area_rede?.trim()) score += 1;
+  if (v.condutor_tarde?.trim() || v.condutor_madrugada?.trim()) score += 1;
+  if (v.has_rack || v.has_basket || v.has_giroflex || v.has_inverter) score += 1;
+  return score;
+}
+
+// Normaliza e agrupa pelo modelo do veículo
+function getNormalizedModel(v: Vehicle): string {
+  const m = (v.model || '').trim().toUpperCase();
+  const t = (v.type || '').trim().toUpperCase();
+
+  if (m.includes('GOL')) return 'Volkswagen Gol';
+  if (m.includes('FIORINO')) return 'Fiat Fiorino';
+  if (m.includes('KWID')) return 'Renault Kwid';
+  if (m.includes('DUCATO')) return 'Fiat Ducato';
+  if (m.includes('STRADA')) return 'Fiat Strada';
+  if (m.includes('SAVEIRO')) return 'Volkswagen Saveiro';
+  if (m.includes('MASTER')) return 'Renault Master';
+  if (m.includes('MOBI')) return 'Fiat Mobi';
+  if (m.includes('ARGO')) return 'Fiat Argo';
+  if (m.includes('ONIX')) return 'Chevrolet Onix';
+  if (m.includes('MOTO') || t.includes('MOTO') || m.includes('CG')) return 'Motocicletas & Apoio';
+  if (m.includes('CAMINH') || t.includes('CAMINH') || m.includes('HR') || m.includes('DAILY')) return 'Caminhões & VUCs';
+
+  if (m) return m;
+  if (t) return t;
+  return 'Outros Veículos';
+}
+
 export default function VehiclesPage() {
   const { user } = useAuth();
   const canDelete = isCoordenador(user);
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('Todos');
+  const [selectedModel, setSelectedModel] = useState('Todos');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
@@ -69,31 +107,85 @@ export default function VehiclesPage() {
       .catch(() => setTechnicians([]));
   }, []);
 
-  const filtered = useMemo(() => {
+  // Filtra por busca e agrupa ordenado por completude
+  const groupedVehicles = useMemo(() => {
     if (!vehicles) return [];
-    let list = [...vehicles];
-
-    if (typeFilter !== 'Todos') {
-      list = list.filter((v) => (v.type || '').toLowerCase() === typeFilter.toLowerCase());
-    }
-
     const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (v) =>
-          v.plate.toLowerCase().includes(q) ||
-          v.type.toLowerCase().includes(q) ||
-          (v.model || '').toLowerCase().includes(q) ||
-          (v.responsible_name || '').toLowerCase().includes(q) ||
-          (v.subclus || '').toLowerCase().includes(q) ||
-          (v.ticket_car || '').toLowerCase().includes(q)
+
+    // 1. Filtragem por busca
+    const filtered = vehicles.filter((v) => {
+      if (!q) return true;
+      return (
+        v.plate.toLowerCase().includes(q) ||
+        v.type.toLowerCase().includes(q) ||
+        (v.model || '').toLowerCase().includes(q) ||
+        (v.responsible_name || '').toLowerCase().includes(q) ||
+        (v.subclus || '').toLowerCase().includes(q) ||
+        (v.ticket_car || '').toLowerCase().includes(q)
       );
+    });
+
+    // 2. Agrupamento por Modelo
+    const groupsMap = new Map<string, Vehicle[]>();
+    filtered.forEach((v) => {
+      const modelGroup = getNormalizedModel(v);
+      if (!groupsMap.has(modelGroup)) {
+        groupsMap.set(modelGroup, []);
+      }
+      groupsMap.get(modelGroup)!.push(v);
+    });
+
+    // 3. Ordenação dentro de cada grupo: Mais completos primeiro (maior score no topo)
+    const groups: { model: string; vehicles: Vehicle[]; total: number }[] = [];
+    groupsMap.forEach((vList, modelName) => {
+      vList.sort((a, b) => getVehicleCompletenessScore(b) - getVehicleCompletenessScore(a));
+      groups.push({
+        model: modelName,
+        vehicles: vList,
+        total: vList.length,
+      });
+    });
+
+    // 4. Ordenação dos grupos: Gol primeiro, depois Fiorino, Kwid, Ducato, etc.
+    const priorityOrder = [
+      'Volkswagen Gol',
+      'Fiat Fiorino',
+      'Renault Kwid',
+      'Fiat Ducato',
+      'Fiat Strada',
+      'Volkswagen Saveiro',
+      'Renault Master',
+      'Fiat Mobi',
+      'Fiat Argo',
+      'Chevrolet Onix',
+    ];
+
+    groups.sort((a, b) => {
+      const idxA = priorityOrder.indexOf(a.model);
+      const idxB = priorityOrder.indexOf(b.model);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return b.total - a.total;
+    });
+
+    // Se houver filtro de modelo específico selecionado
+    if (selectedModel !== 'Todos') {
+      return groups.filter((g) => g.model === selectedModel);
     }
 
-    return list;
-  }, [vehicles, search, typeFilter]);
+    return groups;
+  }, [vehicles, search, selectedModel]);
 
-  // Estatísticas da Frota
+  // Lista de modelos disponíveis para o seletor de topo
+  const availableModels = useMemo(() => {
+    if (!vehicles) return ['Todos'];
+    const setM = new Set<string>();
+    vehicles.forEach((v) => setM.add(getNormalizedModel(v)));
+    return ['Todos', ...Array.from(setM)];
+  }, [vehicles]);
+
+  // Estatísticas Gerais da Frota
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, utilitarios: 0, carros: 0, vans: 0, racks: 0 };
     let utilitarios = 0;
@@ -190,8 +282,10 @@ export default function VehiclesPage() {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
   }
 
+  const totalFilteredCount = groupedVehicles.reduce((acc, g) => acc + g.vehicles.length, 0);
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Veículos & Frota"
         subtitle="Gerenciamento operacional da frota Claro, condutores e acessórios de campo"
@@ -213,7 +307,7 @@ export default function VehiclesPage() {
       />
 
       {/* PAINEL DE ESTATÍSTICAS DA FROTA */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-4 rounded-2xl glass flex items-center gap-3 border border-white/5">
           <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-dim)] text-[var(--color-primary)] flex items-center justify-center font-bold">
             <Truck className="w-5 h-5" />
@@ -256,7 +350,7 @@ export default function VehiclesPage() {
       </div>
 
       {/* BARRA DE FILTROS & BUSCA */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
           <Input
@@ -267,152 +361,206 @@ export default function VehiclesPage() {
           />
         </div>
 
-        {/* Pílulas de Categoria */}
+        {/* Pílulas de Seleção por Modelo */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-          {VEHICLE_TYPES.map((t) => {
-            const active = typeFilter === t;
+          {availableModels.map((m) => {
+            const active = selectedModel === m;
             return (
               <button
-                key={t}
+                key={m}
                 type="button"
-                onClick={() => setTypeFilter(t)}
+                onClick={() => setSelectedModel(m)}
                 className={`h-9 px-3.5 rounded-full text-xs font-semibold transition-all shrink-0 ${
                   active
                     ? 'bg-[var(--color-primary)] text-white shadow-lg shadow-[var(--color-primary)]/25'
                     : 'bg-white/[0.03] hover:bg-white/[0.07] text-[var(--color-text-muted)] border border-white/10'
                 }`}
               >
-                {t}
+                {m}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* GRADE DE VEÍCULOS — DESIGN LIMPO & OBJETIVO */}
+      {/* EXIBIÇÃO AGRUPADA POR MODELO COM ORDENAÇÃO DE COMPLETUDE */}
       {vehicles === null ? (
         <div className="py-16 text-center text-sm text-[var(--color-text-muted)] flex flex-col items-center gap-2">
           <div className="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
           <span>Carregando frota de veículos...</span>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : totalFilteredCount === 0 ? (
         <Card className="p-12 text-center text-sm text-[var(--color-text-muted)]">
           Nenhum veículo encontrado com os filtros atuais.
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map((v) => {
-            const hasTech = Boolean(v.responsible_name || v.condutor_dia);
+        <div className="space-y-10">
+          {groupedVehicles.map((group) => {
+            const withTechCount = group.vehicles.filter((v) => v.responsible_name || v.condutor_dia).length;
+            const withRackCount = group.vehicles.filter((v) => v.has_rack).length;
 
             return (
-              <Card
-                key={v.id}
-                className="p-4 flex flex-col gap-3.5 animate-in hover:border-white/20 transition-all rounded-2xl bg-black/40 border border-white/10 shadow-lg group"
-              >
-                {/* CABEÇALHO DO CARD: PLACA MERCOSUL & BADGES */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center rounded-md overflow-hidden border border-white/20 bg-white text-black font-bold shadow-sm">
-                    <div className="bg-[#003399] text-white text-[9px] px-1.5 py-0.5 flex items-center font-black">
-                      BR
+              <section key={group.model} className="space-y-4">
+                {/* CABEÇALHO DA CATEGORIA / MODELO */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-white/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-[var(--color-primary)] font-bold">
+                      <Car className="w-4 h-4" />
                     </div>
-                    <div className="px-2 py-0.5 text-xs font-mono font-bold tracking-wider text-slate-900">
-                      {v.plate}
+                    <div>
+                      <h2 className="text-lg font-black text-white tracking-tight">{group.model}</h2>
+                      <p className="text-xs text-[var(--color-text-faint)]">
+                        {group.total} veículo{group.total > 1 ? 's' : ''} nesta categoria · Ordenados por completude cadastral
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/5 text-[var(--color-text-muted)] uppercase">
-                      {v.type || 'Passeio'}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">
+                      {withTechCount} com condutor
                     </span>
-                    {v.subclus && (
-                      <span className="text-[10px] text-[var(--color-text-faint)]">
-                        {v.subclus}
+                    {withRackCount > 0 && (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 font-medium">
+                        {withRackCount} com Rack
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* PRÉ-VISUALIZAÇÃO VETORIAL MINIMALISTA */}
-                <VehiclePreview
-                  type={v.type}
-                  model={v.model || v.type}
-                  hasRack={v.has_rack}
-                  hasBasket={v.has_basket}
-                  hasGiroflex={v.has_giroflex}
-                  hasInverter={v.has_inverter}
-                  plate={v.plate}
-                />
+                {/* GRADE DE VEÍCULOS DESTA CATEGORIA */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {group.vehicles.map((v) => {
+                    const hasTech = Boolean(v.responsible_name || v.condutor_dia);
+                    const isComplete = Boolean(v.model && v.plate && (v.responsible_name || v.condutor_dia) && (v.base || v.subclus));
 
-                {/* DADOS DO VEÍCULO */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base text-white">
-                      {v.model || v.type}
-                    </h3>
-                    {v.ticket_car && (
-                      <span className="text-[10px] font-mono text-[var(--color-text-faint)]">
-                        Ticket: {v.ticket_car}
-                      </span>
-                    )}
-                  </div>
+                    return (
+                      <Card
+                        key={v.id}
+                        className="p-4 flex flex-col gap-3.5 animate-in hover:border-white/20 transition-all rounded-2xl bg-black/40 border border-white/10 shadow-lg group"
+                      >
+                        {/* CABEÇALHO DO CARD: PLACA MERCOSUL & BADGES */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center rounded-md overflow-hidden border border-white/20 bg-white text-black font-bold shadow-sm">
+                            <div className="bg-[#003399] text-white text-[9px] px-1.5 py-0.5 flex items-center font-black">
+                              BR
+                            </div>
+                            <div className="px-2 py-0.5 text-xs font-mono font-bold tracking-wider text-slate-900">
+                              {v.plate}
+                            </div>
+                          </div>
 
-                  {/* Condutor / Responsável */}
-                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.02] border border-white/5">
-                    <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                        hasTech
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-white/5 text-[var(--color-text-faint)]'
-                      }`}
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[9px] uppercase font-bold text-[var(--color-text-faint)]">
-                        Responsável Atual
-                      </p>
-                      <p className="text-xs font-semibold text-white/90 truncate">
-                        {v.responsible_name || v.condutor_dia || 'Não atribuído'}
-                      </p>
-                    </div>
-                  </div>
+                          <div className="flex items-center gap-1.5">
+                            {isComplete ? (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Ficha Completa
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/5 text-[var(--color-text-faint)]">
+                                Cadastro Básico
+                              </span>
+                            )}
+                            {v.subclus && (
+                              <span className="text-[10px] text-[var(--color-text-faint)]">
+                                {v.subclus}
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-                  {/* Base Operacional */}
-                  {v.base && (
-                    <p className="text-[11px] text-[var(--color-text-muted)]">
-                      <span className="text-[var(--color-text-faint)]">Base:</span> {v.base}
-                    </p>
-                  )}
+                        {/* PRÉ-VISUALIZAÇÃO VETORIAL MINIMALISTA */}
+                        <VehiclePreview
+                          type={v.type}
+                          model={v.model || v.type}
+                          hasRack={v.has_rack}
+                          hasBasket={v.has_basket}
+                          hasGiroflex={v.has_giroflex}
+                          hasInverter={v.has_inverter}
+                          plate={v.plate}
+                        />
+
+                        {/* DADOS DO VEÍCULO */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-bold text-base text-white">
+                              {v.model || v.type}
+                            </h3>
+                            {v.ticket_car && (
+                              <span className="text-[10px] font-mono text-[var(--color-text-faint)]">
+                                Ticket: {v.ticket_car}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Condutor / Responsável */}
+                          <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.02] border border-white/5">
+                            <div
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+                                hasTech
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : 'bg-white/5 text-[var(--color-text-faint)]'
+                              }`}
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[9px] uppercase font-bold text-[var(--color-text-faint)]">
+                                Responsável Atual
+                              </p>
+                              <p className="text-xs font-semibold text-white/90 truncate">
+                                {v.responsible_name || v.condutor_dia || 'Não atribuído'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Base Operacional e Subcluster */}
+                          <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)]">
+                            {v.base ? (
+                              <span>
+                                <span className="text-[var(--color-text-faint)]">Base:</span> {v.base}
+                              </span>
+                            ) : (
+                              <span className="text-[var(--color-text-faint)] italic">Sem base vinculada</span>
+                            )}
+                            {v.area_rede && (
+                              <span>
+                                <span className="text-[var(--color-text-faint)]">Área:</span> {v.area_rede}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* AÇÕES */}
+                        <div className="mt-auto flex items-center gap-2 pt-2 border-t border-white/5">
+                          <button
+                            onClick={() => sendWhatsapp(v)}
+                            aria-label="Compartilhar dados no WhatsApp"
+                            title="Enviar dados no WhatsApp"
+                            className="w-9 h-9 shrink-0 rounded-full bg-[#25d366]/10 border border-[#25d366]/20 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-all active:scale-95"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openEdit(v)}
+                            className="flex-1 h-9 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-semibold text-white/80 hover:text-white hover:bg-white/[0.07] transition-all active:scale-95"
+                          >
+                            <Pencil className="w-3 h-3" /> Editar Veículo
+                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDelete(v)}
+                              aria-label="Excluir veículo"
+                              title="Excluir veículo"
+                              className="w-9 h-9 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-all active:scale-95"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
-
-                {/* AÇÕES */}
-                <div className="mt-auto flex items-center gap-2 pt-2 border-t border-white/5">
-                  <button
-                    onClick={() => sendWhatsapp(v)}
-                    aria-label="Compartilhar dados no WhatsApp"
-                    title="Enviar dados no WhatsApp"
-                    className="w-9 h-9 shrink-0 rounded-full bg-[#25d366]/10 border border-[#25d366]/20 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-all active:scale-95"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => openEdit(v)}
-                    className="flex-1 h-9 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-semibold text-white/80 hover:text-white hover:bg-white/[0.07] transition-all active:scale-95"
-                  >
-                    <Pencil className="w-3 h-3" /> Editar Veículo
-                  </button>
-                  {canDelete && (
-                    <button
-                      onClick={() => handleDelete(v)}
-                      aria-label="Excluir veículo"
-                      title="Excluir veículo"
-                      className="w-9 h-9 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-all active:scale-95"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </Card>
+              </section>
             );
           })}
         </div>
@@ -453,7 +601,7 @@ export default function VehiclesPage() {
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
             >
-              {VEHICLE_TYPES.filter((t) => t !== 'Todos').map((t) => (
+              {['Utilitário', 'Passeio', 'Van', 'Moto', 'Caminhão'].map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
