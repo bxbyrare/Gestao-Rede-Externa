@@ -15,8 +15,7 @@ import {
   CheckCircle2,
   Layers,
   Sparkles,
-  ArrowUpDown,
-  Filter
+  ArrowUpDown
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
@@ -65,7 +64,6 @@ function formatSubmissionDate(dateStr: string): string {
 // Utilitário para limpar e humanizar os rótulos de perguntas
 function cleanLabel(rawKey: string): string {
   let k = rawKey.trim().replace(/[:?]+$/g, '').trim();
-  // Se for tudo maiúsculo, converte para Title Case agradável
   if (k === k.toUpperCase() && k.length > 3) {
     k = k
       .toLowerCase()
@@ -81,7 +79,7 @@ function isPhotoField(value: unknown): boolean {
   if (typeof value === 'string') {
     return (
       value.startsWith('/uploads/') ||
-      value.startsWith('http') && value.match(/\.(png|jpg|jpeg|webp|gif)$/i) !== null ||
+      (value.startsWith('http') && value.match(/\.(png|jpg|jpeg|webp|gif)$/i) !== null) ||
       value.includes('/uploads/')
     );
   }
@@ -561,7 +559,7 @@ export default function FormulariosPage() {
                   Nenhum registro encontrado para a busca "{responseSearch}".
                 </div>
               ) : (
-                filteredResponses.map((r, rIdx) => {
+                filteredResponses.map((r) => {
                   // Separar perguntas em: Fotos, Informações Principais, Textos/Observações
                   const photoSections: { key: string; label: string; urls: string[] }[] = [];
                   const textSections: { key: string; label: string; value: string }[] = [];
@@ -644,7 +642,6 @@ export default function FormulariosPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                           {textSections.map(({ key, label, value }) => {
                             const isAddress = label.toLowerCase().includes('endereço') || label.toLowerCase().includes('rua');
-                            const isCity = label.toLowerCase().includes('cidade') || label.toLowerCase().includes('cluster') || label.toLowerCase().includes('bairro');
 
                             return (
                               <div
@@ -684,7 +681,7 @@ export default function FormulariosPage() {
                               url,
                               title: `${sec.label} · Foto ${uIdx + 1}`,
                               subtitle: `${r.technician_name || 'Técnico'} — ${formatSubmissionDate(r.submitted_at)}`,
-                              description: `Evidência registrada no formulário ${responsesModal.title}`,
+                              description: `Evidência registrada no formulário ${responsesModal?.title || 'Inspeção'}`,
                             }))}
                             height="h-56 sm:h-64"
                           />

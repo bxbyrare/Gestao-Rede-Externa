@@ -1,4 +1,4 @@
-import os
+﻿import os
 import time
 import csv
 import json
@@ -895,6 +895,83 @@ def logout():
 @app.route('/login', endpoint='login')
 def login():
     return serve_react_app()
+
+@app.route('/robots.txt')
+def serve_robots_txt():
+    robots_path = os.path.join(REACT_DIST, 'robots.txt')
+    if os.path.isfile(robots_path):
+        return send_from_directory(REACT_DIST, 'robots.txt', mimetype='text/plain')
+    host = request.host_url.rstrip('/')
+    content = f"User-agent: *\nAllow: /\nAllow: /login\nAllow: /f/\nAllow: /p/\nDisallow: /api/\nDisallow: /uploads/\n\nSitemap: {host}/sitemap.xml\n"
+    return Response(content, mimetype='text/plain')
+
+@app.route('/sitemap.xml')
+def serve_sitemap_xml():
+    try:
+        host = request.host_url.rstrip('/')
+        today = datetime.date.today().isoformat()
+        
+        # Static & Portal Routes
+        routes = [
+            {"loc": f"{host}/", "changefreq": "daily", "priority": "1.0"},
+            {"loc": f"{host}/login", "changefreq": "monthly", "priority": "0.8"},
+            {"loc": f"{host}/formularios", "changefreq": "daily", "priority": "0.9"},
+            {"loc": f"{host}/veiculos", "changefreq": "daily", "priority": "0.8"},
+            {"loc": f"{host}/escala", "changefreq": "daily", "priority": "0.8"},
+            {"loc": f"{host}/indicadores", "changefreq": "daily", "priority": "0.8"},
+            {"loc": f"{host}/projetos", "changefreq": "weekly", "priority": "0.8"},
+            {"loc": f"{host}/rotas", "changefreq": "weekly", "priority": "0.7"},
+            {"loc": f"{host}/pessoas", "changefreq": "weekly", "priority": "0.7"},
+        ]
+        
+        # Dynamic Public Forms & Projects from Database
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT slug, created_at FROM forms WHERE slug IS NOT NULL AND slug != '';")
+            for r in cur.fetchall():
+                slug = r['slug']
+                dt = r['created_at'].strftime('%Y-%m-%d') if r['created_at'] else today
+                routes.append({
+                    "loc": f"{host}/f/{slug}",
+                    "lastmod": dt,
+                    "changefreq": "weekly",
+                    "priority": "0.9"
+                })
+            
+            cur.execute("SELECT slug, created_at FROM projects WHERE slug IS NOT NULL AND slug != '';")
+            for r in cur.fetchall():
+                slug = r['slug']
+                dt = r['created_at'].strftime('%Y-%m-%d') if r['created_at'] else today
+                routes.append({
+                    "loc": f"{host}/p/{slug}",
+                    "lastmod": dt,
+                    "changefreq": "weekly",
+                    "priority": "0.8"
+                })
+            cur.close()
+            conn.close()
+        except Exception as db_err:
+            print("Notice: Error fetching dynamic sitemap items:", db_err)
+
+        # Build XML
+        xml_lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        ]
+        for item in routes:
+            xml_lines.append('  <url>')
+            xml_lines.append(f"    <loc>{item['loc']}</loc>")
+            xml_lines.append(f"    <lastmod>{item.get('lastmod', today)}</lastmod>")
+            xml_lines.append(f"    <changefreq>{item.get('changefreq', 'weekly')}</changefreq>")
+            xml_lines.append(f"    <priority>{item.get('priority', '0.7')}</priority>")
+            xml_lines.append('  </url>')
+        xml_lines.append('</urlset>')
+        
+        return Response('\n'.join(xml_lines), mimetype='application/xml')
+    except Exception as e:
+        traceback.print_exc()
+        return Response(f"<!-- Error generating sitemap: {e} -->", mimetype='application/xml', status=500)
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

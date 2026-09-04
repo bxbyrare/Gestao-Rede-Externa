@@ -1,5 +1,4 @@
-import React from 'react';
-import { Truck, Car, Bike, Shield, Zap, Sparkles, Navigation, Flame } from 'lucide-react';
+import { Zap, Flame, Navigation } from 'lucide-react';
 
 interface VehiclePreviewProps {
   type: string;
@@ -106,11 +105,11 @@ export default function VehiclePreview({
 
         {/* Vector Vehicle Art */}
         <div className="relative transform transition-all duration-500 ease-out group-hover/preview:scale-105 group-hover/preview:-translate-y-1">
-          {isFiorino && <FiorinoVector hasRack={hasRack} hasGiroflex={hasGiroflex} accentColor={accentColor} />}
-          {isVan && <VanVector hasRack={hasRack} hasGiroflex={hasGiroflex} accentColor={accentColor} />}
-          {isCaminhao && <CaminhaoVector hasBasket={hasBasket} accentColor={accentColor} />}
-          {isMoto && <MotoVector accentColor={accentColor} />}
-          {isCarro && <CarroVector hasRack={hasRack} accentColor={accentColor} />}
+          {isFiorino && <FiorinoVector hasRack={hasRack} hasGiroflex={hasGiroflex} />}
+          {isVan && <VanVector hasGiroflex={hasGiroflex} />}
+          {isCaminhao && <CaminhaoVector hasBasket={hasBasket} />}
+          {isMoto && <MotoVector />}
+          {isCarro && <CarroVector hasRack={hasRack} />}
         </div>
       </div>
 
@@ -130,10 +129,10 @@ export default function VehiclePreview({
 }
 
 // -----------------------------------------------------------------------------
-// VECTOR SILHOUETTE COMPONENTS (High Tech Clean Glass Vectors)
+// VECTOR SILHOUETTE COMPONENTS
 // -----------------------------------------------------------------------------
 
-function FiorinoVector({ hasRack, hasGiroflex, accentColor }: { hasRack?: boolean; hasGiroflex?: boolean; accentColor: string }) {
+function FiorinoVector({ hasRack, hasGiroflex }: { hasRack?: boolean; hasGiroflex?: boolean }) {
   return (
     <div className="relative w-44 h-20 flex items-center justify-center">
       {hasGiroflex && (
@@ -179,7 +178,7 @@ function FiorinoVector({ hasRack, hasGiroflex, accentColor }: { hasRack?: boolea
   );
 }
 
-function VanVector({ hasRack, hasGiroflex, accentColor }: { hasRack?: boolean; hasGiroflex?: boolean; accentColor: string }) {
+function VanVector({ hasGiroflex }: { hasGiroflex?: boolean }) {
   return (
     <div className="relative w-48 h-20 flex items-center justify-center">
       {hasGiroflex && (
@@ -204,7 +203,7 @@ function VanVector({ hasRack, hasGiroflex, accentColor }: { hasRack?: boolean; h
   );
 }
 
-function CarroVector({ hasRack, accentColor }: { hasRack?: boolean; accentColor: string }) {
+function CarroVector({ hasRack }: { hasRack?: boolean }) {
   return (
     <div className="relative w-44 h-20 flex items-center justify-center">
       {hasRack && (
@@ -228,7 +227,7 @@ function CarroVector({ hasRack, accentColor }: { hasRack?: boolean; accentColor:
   );
 }
 
-function CaminhaoVector({ hasBasket, accentColor }: { hasBasket?: boolean; accentColor: string }) {
+function CaminhaoVector({ hasBasket }: { hasBasket?: boolean }) {
   return (
     <div className="relative w-48 h-20 flex items-center justify-center">
       {hasBasket && (
@@ -250,7 +249,7 @@ function CaminhaoVector({ hasBasket, accentColor }: { hasBasket?: boolean; accen
   );
 }
 
-function MotoVector({ accentColor }: { accentColor: string }) {
+function MotoVector() {
   return (
     <div className="relative w-36 h-20 flex items-center justify-center">
       <svg viewBox="0 0 180 90" className="w-full h-full drop-shadow-[0_10px_15px_rgba(0,0,0,0.5)]">

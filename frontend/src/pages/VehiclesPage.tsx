@@ -8,15 +8,8 @@ import {
   Trash2,
   Truck,
   Car,
-  Bike,
   Layers,
-  Sparkles,
-  Zap,
   Flame,
-  Shield,
-  Filter,
-  CheckCircle2,
-  Navigation,
   UserCheck
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
@@ -318,7 +311,6 @@ export default function VehiclesPage() {
               >
                 {/* TOPO DO CARD: PLACA ESTILO MERCOSUL & BADGE */}
                 <div className="flex items-center justify-between">
-                  {/* Placa Mercosul Estilizada */}
                   <div className="flex items-center rounded-lg overflow-hidden border border-white/20 shadow-md bg-white text-black font-bold">
                     <div className="bg-[#003399] text-white text-[9px] px-1.5 py-0.5 flex items-center font-black tracking-tighter">
                       BR
@@ -328,7 +320,6 @@ export default function VehiclesPage() {
                     </div>
                   </div>
 
-                  {/* Badge Tipo & Status */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/10 text-[var(--color-text-muted)] uppercase tracking-wider">
                       {v.type || 'Veículo'}
