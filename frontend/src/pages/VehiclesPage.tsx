@@ -193,8 +193,8 @@ export default function VehiclesPage() {
   return (
     <div>
       <PageHeader
-        title="Veículos & Equipamentos"
-        subtitle="Gerenciamento visual da frota operacional, condutores e acessórios de campo"
+        title="Veículos & Frota"
+        subtitle="Gerenciamento operacional da frota Claro, condutores e acessórios de campo"
         actions={
           <div className="flex gap-2">
             <Button
@@ -267,7 +267,7 @@ export default function VehiclesPage() {
           />
         </div>
 
-        {/* Categoria Selector Pills */}
+        {/* Pílulas de Categoria */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           {VEHICLE_TYPES.map((t) => {
             const active = typeFilter === t;
@@ -289,7 +289,7 @@ export default function VehiclesPage() {
         </div>
       </div>
 
-      {/* GRADE DE VEÍCULOS COM PRÉ-VISUALIZAÇÃO MODERNA */}
+      {/* GRADE DE VEÍCULOS — DESIGN LIMPO & OBJETIVO */}
       {vehicles === null ? (
         <div className="py-16 text-center text-sm text-[var(--color-text-muted)] flex flex-col items-center gap-2">
           <div className="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
@@ -307,27 +307,32 @@ export default function VehiclesPage() {
             return (
               <Card
                 key={v.id}
-                className="p-4 flex flex-col gap-3.5 animate-in hover:border-white/20 transition-all rounded-3xl bg-black/40 border border-white/10 shadow-xl group"
+                className="p-4 flex flex-col gap-3.5 animate-in hover:border-white/20 transition-all rounded-2xl bg-black/40 border border-white/10 shadow-lg group"
               >
-                {/* TOPO DO CARD: PLACA ESTILO MERCOSUL & BADGE */}
+                {/* CABEÇALHO DO CARD: PLACA MERCOSUL & BADGES */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center rounded-lg overflow-hidden border border-white/20 shadow-md bg-white text-black font-bold">
-                    <div className="bg-[#003399] text-white text-[9px] px-1.5 py-0.5 flex items-center font-black tracking-tighter">
+                  <div className="flex items-center rounded-md overflow-hidden border border-white/20 bg-white text-black font-bold shadow-sm">
+                    <div className="bg-[#003399] text-white text-[9px] px-1.5 py-0.5 flex items-center font-black">
                       BR
                     </div>
-                    <div className="px-2.5 py-0.5 text-xs font-mono font-black tracking-wider text-slate-900">
+                    <div className="px-2 py-0.5 text-xs font-mono font-bold tracking-wider text-slate-900">
                       {v.plate}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/10 text-[var(--color-text-muted)] uppercase tracking-wider">
-                      {v.type || 'Veículo'}
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/5 text-[var(--color-text-muted)] uppercase">
+                      {v.type || 'Passeio'}
                     </span>
+                    {v.subclus && (
+                      <span className="text-[10px] text-[var(--color-text-faint)]">
+                        {v.subclus}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* PRÉ-VISUALIZAÇÃO DINÂMICA & ANIMAÇÃO DO VEÍCULO */}
+                {/* PRÉ-VISUALIZAÇÃO VETORIAL MINIMALISTA */}
                 <VehiclePreview
                   type={v.type}
                   model={v.model || v.type}
@@ -338,23 +343,23 @@ export default function VehiclesPage() {
                   plate={v.plate}
                 />
 
-                {/* DADOS DO VEÍCULO & OPERAÇÃO */}
-                <div className="space-y-1.5 px-1">
-                  <div className="flex items-baseline justify-between">
-                    <h3 className="font-extrabold text-base text-white group-hover:text-[var(--color-primary)] transition-colors">
+                {/* DADOS DO VEÍCULO */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-base text-white">
                       {v.model || v.type}
                     </h3>
-                    {v.subclus && (
-                      <span className="text-[10px] font-semibold text-[var(--color-text-faint)]">
-                        {v.subclus}
+                    {v.ticket_car && (
+                      <span className="text-[10px] font-mono text-[var(--color-text-faint)]">
+                        Ticket: {v.ticket_car}
                       </span>
                     )}
                   </div>
 
-                  {/* Responsável / Condutor */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/5">
+                  {/* Condutor / Responsável */}
+                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.02] border border-white/5">
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
                         hasTech
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           : 'bg-white/5 text-[var(--color-text-faint)]'
@@ -366,52 +371,44 @@ export default function VehiclesPage() {
                       <p className="text-[9px] uppercase font-bold text-[var(--color-text-faint)]">
                         Responsável Atual
                       </p>
-                      <p className="text-xs font-semibold text-white truncate">
+                      <p className="text-xs font-semibold text-white/90 truncate">
                         {v.responsible_name || v.condutor_dia || 'Não atribuído'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Informações Complementares (Base / Setor / Ticket) */}
-                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                    {v.base && (
-                      <div className="text-[var(--color-text-muted)] truncate">
-                        <span className="text-[var(--color-text-faint)]">Base:</span> {v.base}
-                      </div>
-                    )}
-                    {v.ticket_car && (
-                      <div className="text-[var(--color-text-muted)] truncate text-right">
-                        <span className="text-[var(--color-text-faint)]">Ticket:</span>{' '}
-                        <span className="font-mono text-white/90">{v.ticket_car}</span>
-                      </div>
-                    )}
-                  </div>
+                  {/* Base Operacional */}
+                  {v.base && (
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      <span className="text-[var(--color-text-faint)]">Base:</span> {v.base}
+                    </p>
+                  )}
                 </div>
 
-                {/* BOTÕES DE AÇÃO */}
+                {/* AÇÕES */}
                 <div className="mt-auto flex items-center gap-2 pt-2 border-t border-white/5">
                   <button
                     onClick={() => sendWhatsapp(v)}
                     aria-label="Compartilhar dados no WhatsApp"
                     title="Enviar dados no WhatsApp"
-                    className="w-10 h-10 shrink-0 rounded-full bg-[#25d366]/10 border border-[#25d366]/30 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-all active:scale-95"
+                    className="w-9 h-9 shrink-0 rounded-full bg-[#25d366]/10 border border-[#25d366]/20 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-all active:scale-95"
                   >
                     <MessageCircle className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => openEdit(v)}
-                    className="flex-1 h-10 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-2 text-xs font-semibold text-white hover:bg-white/[0.08] hover:border-white/20 transition-all active:scale-95"
+                    className="flex-1 h-9 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-semibold text-white/80 hover:text-white hover:bg-white/[0.07] transition-all active:scale-95"
                   >
-                    <Pencil className="w-3.5 h-3.5" /> Editar Veículo
+                    <Pencil className="w-3 h-3" /> Editar Veículo
                   </button>
                   {canDelete && (
                     <button
                       onClick={() => handleDelete(v)}
                       aria-label="Excluir veículo"
                       title="Excluir veículo"
-                      className="w-10 h-10 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] hover:border-[var(--color-danger)]/30 transition-all active:scale-95"
+                      className="w-9 h-9 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-all active:scale-95"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -421,7 +418,7 @@ export default function VehiclesPage() {
         </div>
       )}
 
-      {/* MODAL DE CADASTRO / EDIÇÃO DE VEÍCULO */}
+      {/* MODAL DE CADASTRO / EDIÇÃO */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
