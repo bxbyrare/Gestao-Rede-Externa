@@ -143,6 +143,24 @@ def allowed_file(filename, extensions):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in extensions
 
 # Database Initialization Script
+
+def emit_live_alert(category, title, message, target_user_id=None, target_username=None, source_user_id=None, source_username=None, link=None):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        s_uid = source_user_id or (session.get('user_id') if 'user_id' in session else None)
+        s_uname = source_username or (session.get('username') if 'username' in session else None)
+        cur.execute("""
+            INSERT INTO system_live_alerts (
+                category, title, message, target_user_id, target_username, source_user_id, source_username, link
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+        """, (category, title, message, target_user_id, target_username, s_uid, s_uname, link))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("Error emitting live alert:", e)
+
 def init_db():
     try:
         conn = get_db()
@@ -608,6 +626,27 @@ def init_db():
         """)
 
         # Seed initial admin user if empty
+        
+        # 20. System Live Alerts Table (Notificações em Tempo Real com Som & Toasts)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS system_live_alerts (
+                id SERIAL PRIMARY KEY,
+                category VARCHAR(50) NOT NULL, -- 'auditoria', 'avaliacao', 'indicadores', 'sistema'
+                title VARCHAR(150) NOT NULL,
+                message TEXT NOT NULL,
+                target_user_id INT,
+                target_username VARCHAR(100),
+                source_user_id INT,
+                source_username VARCHAR(100),
+                link VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        try:
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_live_alerts_created ON system_live_alerts(id DESC);")
+        except Exception:
+            conn.rollback()
+
         cur.execute("SELECT COUNT(*) AS count FROM users;")
         if cur.fetchone()['count'] == 0:
             seed_username = os.environ.get('ADMIN_SEED_USERNAME')
@@ -5696,6 +5735,8 @@ def api_create_evaluation():
     conn.commit()
     cur.close()
     conn.close()
+    emit_live_alert('avaliacao', 'Nova Avaliação Técnica', f'O colaborador {technician_name} recebeu uma avaliação técnica (Nota Geral: {overall}). Avaliador: {evaluator_username}.', link='/avaliacao')
+    emit_live_alert('avaliacao', 'Avaliação Confirmada', f'Sua avaliação para {technician_name} foi gravada com sucesso (Nota: {overall}).', target_username=evaluator_username, link='/avaliacao')
     return jsonify({'id': new_id, 'overall_score': overall, 'message': 'Avaliação técnica salva com sucesso!'}), 201
 
 @app.route('/api/evaluations/<int:eval_id>', methods=['DELETE'])
@@ -6365,6 +6406,7 @@ def api_auditorias():
             conn.close()
 
             log_action(session.get('user_id'), session.get('username'), f"Criou auditoria para OS {os_name} (ID {new_id})")
+            emit_live_alert('auditoria', 'Nova Auditoria de OS', f'OS {os_name} acionada para o técnico {responsible} por {created_by}.', link='/auditoria')
             return jsonify({"success": True, "id": new_id}), 201
         except Exception as e:
             print("Error creating auditoria:", e)
@@ -6450,6 +6492,12 @@ def api_auditoria_detail(auditoria_id):
             conn.close()
 
             log_action(session.get('user_id'), session.get('username'), f"Atualizou relatório da auditoria ID {auditoria_id} (Status: {status})")
+            if status == 'Aprovado':
+                emit_live_alert('auditoria', 'Auditoria Aprovada', f'Auditoria #{auditoria_id} foi APROVADA com sucesso.', link='/auditoria')
+            elif status == 'Reprovado':
+                emit_live_alert('auditoria', 'Auditoria Reprovada', f'Auditoria #{auditoria_id} foi REPROVADA. Necessita atenção técnica.', link='/auditoria')
+            elif status == 'Reclassificado':
+                emit_live_alert('auditoria', 'OS Reclassificada', f'Auditoria #{auditoria_id} foi reclassificada.', link='/auditoria')
             return jsonify({"success": True}), 200
         except Exception as e:
             print("Error updating auditoria:", e)
@@ -6565,3 +6613,45 @@ def api_auditorias_export():
         print("Error exporting auditorias:", e)
         traceback.print_exc()
         return jsonify({"error": "Erro ao exportar dados da auditoria."}), 500
+
+@app.route('/api/live-alerts', methods=['GET'], strict_slashes=False)
+@login_required
+def api_get_live_alerts():
+    since_id = request.args.get('since_id', type=int, default=0)
+    current_username = (session.get('username') or '').strip().lower()
+    current_user_id = session.get('user_id')
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, category, title, message, target_username, source_username, link,
+                   TO_CHAR(created_at, 'HH24:MI:SS') as time_str,
+                   created_at
+            FROM system_live_alerts
+            WHERE id > %s
+              AND (target_username IS NULL OR target_username = '' OR LOWER(target_username) = %s OR target_user_id = %s)
+            ORDER BY id ASC
+            LIMIT 30;
+        """, (since_id, current_username, current_user_id))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        alerts = []
+        for r in rows:
+            alerts.append({
+                "id": r['id'],
+                "category": r['category'],
+                "title": r['title'],
+                "message": r['message'],
+                "link": r['link'] or '',
+                "source_username": r['source_username'] or '',
+                "time": r['time_str'] or '',
+                "created_at": r['created_at'].isoformat() if r['created_at'] else ''
+            })
+
+        max_id = max([a['id'] for a in alerts], default=since_id)
+        return jsonify({"alerts": alerts, "latest_id": max_id}), 200
+    except Exception as e:
+        print("Error in live-alerts:", e)
+        return jsonify({"alerts": [], "latest_id": since_id}), 200

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './state/AuthContext';
+import { NotificationProvider } from './state/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
 import LoginPage from './pages/LoginPage';
@@ -24,36 +25,38 @@ import NotificacoesPage from './pages/NotificacoesPage';
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <DashboardLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<FavoritesPage />} />
-          <Route path="area-de-trabalho" element={<WorkspacePage />} />
-          <Route path="pessoas" element={<PessoasPage />} />
-          <Route path="veiculos" element={<VehiclesPage />} />
-          <Route path="buscador" element={<BuscadorPage />} />
-          <Route path="auditoria" element={<AuditoriaPage />} />
-          <Route path="mapa-eventos" element={<MapaEventosPage />} />
-          <Route path="financeiro" element={<FinancePage />} />
-          <Route path="escala" element={<EscalaPage />} />
-          <Route path="avaliacao" element={<EvaluationsPage />} />
-          <Route path="inventario" element={<InventoryPage />} />
-          <Route path="projetos" element={<ProjectsPage />} />
-          <Route path="formularios" element={<FormulariosPage />} />
-          <Route path="rotas" element={<RotasPage />} />
-          <Route path="indicadores" element={<IndicatorsPage />} />
-          <Route path="gerenciamento" element={<UsersPage />} />
-          <Route path="notificacoes" element={<NotificacoesPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+      <NotificationProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<FavoritesPage />} />
+            <Route path="area-de-trabalho" element={<WorkspacePage />} />
+            <Route path="pessoas" element={<PessoasPage />} />
+            <Route path="veiculos" element={<VehiclesPage />} />
+            <Route path="buscador" element={<BuscadorPage />} />
+            <Route path="auditoria" element={<AuditoriaPage />} />
+            <Route path="mapa-eventos" element={<MapaEventosPage />} />
+            <Route path="financeiro" element={<FinancePage />} />
+            <Route path="escala" element={<EscalaPage />} />
+            <Route path="avaliacao" element={<EvaluationsPage />} />
+            <Route path="inventario" element={<InventoryPage />} />
+            <Route path="projetos" element={<ProjectsPage />} />
+            <Route path="formularios" element={<FormulariosPage />} />
+            <Route path="rotas" element={<RotasPage />} />
+            <Route path="indicadores" element={<IndicatorsPage />} />
+            <Route path="gerenciamento" element={<UsersPage />} />
+            <Route path="notificacoes" element={<NotificacoesPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </NotificationProvider>
     </AuthProvider>
   );
 }
