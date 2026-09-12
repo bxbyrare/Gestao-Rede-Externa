@@ -613,9 +613,9 @@ def init_db():
                 os VARCHAR(150) NOT NULL,
                 created_date DATE NOT NULL DEFAULT CURRENT_DATE,
                 created_by VARCHAR(150) NOT NULL,
-                created_by_id INT REFERENCES users(id) ON DELETE SET NULL,
+                created_by_id INT,
                 responsible VARCHAR(150) NOT NULL,
-                responsible_id INT REFERENCES technicians(id) ON DELETE SET NULL,
+                responsible_id INT,
                 status VARCHAR(50) NOT NULL DEFAULT 'Acionado',
                 audit_date DATE,
                 observations TEXT,
@@ -624,6 +624,31 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # Ensure foreign keys are not blocking assignments from CRM users or technicians
+        try:
+            cur.execute("ALTER TABLE auditorias DROP CONSTRAINT IF EXISTS auditorias_responsible_id_fkey;")
+            cur.execute("ALTER TABLE auditorias DROP CONSTRAINT IF EXISTS auditorias_created_by_id_fkey;")
+        except Exception:
+            conn.rollback()
+
+        for col, coltype in [
+            ('os', 'VARCHAR(150)'),
+            ('created_date', 'DATE DEFAULT CURRENT_DATE'),
+            ('created_by', 'VARCHAR(150)'),
+            ('created_by_id', 'INT'),
+            ('responsible', 'VARCHAR(150)'),
+            ('responsible_id', 'INT'),
+            ('status', "VARCHAR(50) DEFAULT 'Acionado'"),
+            ('audit_date', 'DATE'),
+            ('observations', 'TEXT'),
+            ('photos', "JSONB DEFAULT '[]'::jsonb"),
+            ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+            ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
 
         # Seed initial admin user if empty
         
@@ -6416,7 +6441,20 @@ def api_auditorias():
                 return jsonify({"error": "O campo Responsável é obrigatório."}), 400
 
             created_by = session.get('user_name') or session.get('username') or 'Usuário'
-            created_by_id = session.get('user_id')
+            raw_creator_id = session.get('user_id')
+            clean_creator_id = None
+            if raw_creator_id:
+                try:
+                    clean_creator_id = int(raw_creator_id)
+                except Exception:
+                    clean_creator_id = None
+
+            clean_resp_id = None
+            if responsible_id not in (None, '', 'null', 0, '0'):
+                try:
+                    clean_resp_id = int(responsible_id)
+                except Exception:
+                    clean_resp_id = None
 
             if created_date_str:
                 try:
@@ -6440,10 +6478,10 @@ def api_auditorias():
             # Insert new record with status 'Acionado'
             cur.execute("""
                 INSERT INTO auditorias (
-                    os, created_date, created_by, created_by_id, responsible, responsible_id, status
-                ) VALUES (%s, %s, %s, %s, %s, %s, 'Acionado')
+                    os, created_date, created_by, created_by_id, responsible, responsible_id, status, photos
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'Acionado', '[]'::jsonb)
                 RETURNING id;
-            """, (os_name, c_date, created_by, created_by_id, responsible, responsible_id))
+            """, (os_name, c_date, created_by, clean_creator_id, responsible, clean_resp_id))
             
             new_id = cur.fetchone()['id']
             conn.commit()
@@ -6451,7 +6489,10 @@ def api_auditorias():
             conn.close()
 
             log_action(session.get('user_id'), session.get('username'), f"Criou auditoria para OS {os_name} (ID {new_id})")
-            emit_live_alert('auditoria', 'Nova Auditoria de OS', f'OS {os_name} acionada para o técnico {responsible} por {created_by}.', link='/auditoria')
+            try:
+                emit_live_alert('auditoria', 'Nova Auditoria de OS', f'OS {os_name} acionada para {responsible} por {created_by}.', link='/auditoria')
+            except Exception:
+                pass
             return jsonify({"success": True, "id": new_id}), 201
         except Exception as e:
             if conn:
@@ -6461,7 +6502,7 @@ def api_auditorias():
                 except Exception: pass
             print("Error creating auditoria:", e)
             traceback.print_exc()
-            return jsonify({"error": "Erro ao criar auditoria no banco de dados."}), 500
+            return jsonify({"error": f"Erro ao criar auditoria: {str(e)}"}), 500
 
 
 @app.route('/api/auditorias/<int:auditoria_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)

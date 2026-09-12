@@ -111,11 +111,14 @@ export default function AuditoriaPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newOs.trim()) {
+    const cleanOs = newOs.trim();
+    const cleanResp = newResponsible.trim();
+
+    if (!cleanOs) {
       setCreateError('Informe a Ordem de Serviço (OS)');
       return;
     }
-    if (!newResponsible.trim()) {
+    if (!cleanResp) {
       setCreateError('Selecione o responsável técnico');
       return;
     }
@@ -123,15 +126,18 @@ export default function AuditoriaPage() {
     setCreating(true);
     setCreateError('');
     try {
+      const selectedResp = responsibles.find((r) => r.name === cleanResp);
       await api.post('/api/auditorias', {
-        os: newOs.trim(),
-        responsible: newResponsible.trim(),
+        os: cleanOs,
+        responsible: cleanResp,
+        responsible_id: selectedResp ? selectedResp.id : null,
         status: 'Acionado',
       });
       setCreateModalOpen(false);
       await loadData();
     } catch (err: any) {
-      setCreateError(err.message || 'Erro ao criar auditoria');
+      console.error('Erro ao criar auditoria:', err);
+      setCreateError(err.message || 'Erro ao criar auditoria. Verifique os dados e tente novamente.');
     } finally {
       setCreating(false);
     }
