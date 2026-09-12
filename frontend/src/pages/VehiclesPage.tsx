@@ -436,38 +436,38 @@ export default function VehiclesPage() {
                     return (
                       <Card
                         key={v.id}
-                        className="p-4 flex flex-col gap-3.5 animate-in hover:border-white/20 transition-all rounded-2xl bg-black/40 border border-white/10 shadow-lg group"
+                        className="p-4 flex flex-col gap-3 animate-in hover:border-white/20 transition-all duration-300 rounded-3xl bg-gradient-to-b from-[#141923]/90 via-[#0e121a]/95 to-[#090c12] border border-white/10 shadow-2xl hover:shadow-[0_12px_32px_rgba(0,0,0,0.6)] group"
                       >
-                        {/* CABEÇALHO DO CARD: PLACA MERCOSUL & BADGES */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center rounded-md overflow-hidden border border-white/20 bg-white text-black font-bold shadow-sm">
-                            <div className="bg-[#003399] text-white text-[9px] px-1.5 py-0.5 flex items-center font-black">
-                              BR
+                        {/* CABEÇALHO DO CARD: PLACA MERCOSUL ESTILIZADA & STATUS */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center rounded-lg overflow-hidden border border-white/30 bg-slate-100 text-black font-bold shadow-md">
+                            <div className="bg-[#003399] text-white text-[9px] px-2 py-1 flex items-center font-black tracking-wider">
+                              BRASIL
                             </div>
-                            <div className="px-2 py-0.5 text-xs font-mono font-bold tracking-wider text-slate-900">
+                            <div className="px-2.5 py-1 text-xs font-mono font-black tracking-widest text-slate-900 bg-white">
                               {v.plate}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
                             {isComplete ? (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" /> Ficha Completa
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center gap-1 shadow-sm">
+                                <CheckCircle2 className="w-3 h-3" /> Completo
                               </span>
                             ) : (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/5 text-[var(--color-text-faint)]">
-                                Cadastro Básico
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[var(--color-text-faint)]">
+                                Parcial
                               </span>
                             )}
                             {v.subclus && (
-                              <span className="text-[10px] text-[var(--color-text-faint)]">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-300">
                                 {v.subclus}
                               </span>
                             )}
                           </div>
                         </div>
 
-                        {/* PRÉ-VISUALIZAÇÃO VETORIAL MINIMALISTA */}
+                        {/* STUDIO VEHICLE SHOWCASE */}
                         <VehiclePreview
                           type={v.type}
                           model={v.model || v.type}
@@ -478,79 +478,94 @@ export default function VehiclesPage() {
                           plate={v.plate}
                         />
 
-                        {/* DADOS DO VEÍCULO */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-base text-white">
-                              {v.model || v.type}
-                            </h3>
-                            {v.ticket_car && (
-                              <span className="text-[10px] font-mono text-[var(--color-text-faint)]">
-                                Ticket: {v.ticket_car}
-                              </span>
-                            )}
+                        {/* CONDUTOR / RESPONSÁVEL PRINCIPAL */}
+                        <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-colors">
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 shadow-sm ${
+                              hasTech
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-white/5 text-[var(--color-text-faint)] border border-white/5'
+                            }`}
+                          >
+                            <UserCheck className="w-4 h-4" />
                           </div>
-
-                          {/* Condutor / Responsável */}
-                          <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.02] border border-white/5">
-                            <div
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                                hasTech
-                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : 'bg-white/5 text-[var(--color-text-faint)]'
-                              }`}
-                            >
-                              <UserCheck className="w-3.5 h-3.5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[9px] uppercase font-bold text-[var(--color-text-faint)]">
-                                Responsável Atual
-                              </p>
-                              <p className="text-xs font-semibold text-white/90 truncate">
-                                {v.responsible_name || v.condutor_dia || 'Não atribuído'}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Base Operacional e Subcluster */}
-                          <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)]">
-                            {v.base ? (
-                              <span>
-                                <span className="text-[var(--color-text-faint)]">Base:</span> {v.base}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[9px] uppercase font-extrabold text-[var(--color-text-faint)] tracking-wider">
+                                Condutor Titular
                               </span>
-                            ) : (
-                              <span className="text-[var(--color-text-faint)] italic">Sem base vinculada</span>
-                            )}
-                            {v.area_rede && (
-                              <span>
-                                <span className="text-[var(--color-text-faint)]">Área:</span> {v.area_rede}
-                              </span>
-                            )}
+                              {hasTech && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              )}
+                            </div>
+                            <p className="text-xs font-bold text-white truncate">
+                              {v.responsible_name || v.condutor_dia || 'Sem condutor fixado'}
+                            </p>
                           </div>
                         </div>
 
-                        {/* AÇÕES */}
+                        {/* GRID DE ESPECIFICAÇÕES OPERACIONAIS */}
+                        <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-black/30 border border-white/5 text-[11px]">
+                          <div className="min-w-0">
+                            <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Base</span>
+                            <span className="font-semibold text-white/90 truncate block">{v.base || '-'}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Área</span>
+                            <span className="font-semibold text-white/90 truncate block">{v.area_rede || '-'}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Setor</span>
+                            <span className="font-semibold text-white/90 truncate block">{v.setor || '-'}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Ticket Car</span>
+                            <span className="font-mono font-bold text-sky-300 truncate block">{v.ticket_car || '-'}</span>
+                          </div>
+                        </div>
+
+                        {/* CONDUTORES POR TURNO ADICIONAIS (SE HOUVER) */}
+                        {(v.condutor_tarde || v.condutor_madrugada) && (
+                          <div className="px-2.5 py-1.5 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] space-y-0.5">
+                            {v.condutor_tarde && (
+                              <div className="flex items-center justify-between text-[var(--color-text-faint)]">
+                                <span>Tarde:</span>
+                                <span className="text-white/80 font-medium truncate max-w-[180px]">{v.condutor_tarde}</span>
+                              </div>
+                            )}
+                            {v.condutor_madrugada && (
+                              <div className="flex items-center justify-between text-[var(--color-text-faint)]">
+                                <span>Madrugada:</span>
+                                <span className="text-white/80 font-medium truncate max-w-[180px]">{v.condutor_madrugada}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* RODAPÉ DE AÇÕES */}
                         <div className="mt-auto flex items-center gap-2 pt-2 border-t border-white/5">
                           <button
                             onClick={() => sendWhatsapp(v)}
                             aria-label="Compartilhar dados no WhatsApp"
-                            title="Enviar dados no WhatsApp"
-                            className="w-9 h-9 shrink-0 rounded-full bg-[#25d366]/10 border border-[#25d366]/20 flex items-center justify-center text-[#25d366] hover:bg-[#25d366]/20 transition-all active:scale-95"
+                            title="Compartilhar ficha no WhatsApp"
+                            className="h-9 px-3 rounded-full bg-[#25d366]/10 border border-[#25d366]/20 flex items-center justify-center gap-1.5 text-[#25d366] hover:bg-[#25d366]/20 transition-all active:scale-95 text-xs font-bold"
                           >
-                            <MessageCircle className="w-4 h-4" />
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>WhatsApp</span>
                           </button>
                           <button
                             onClick={() => openEdit(v)}
-                            className="flex-1 h-9 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-semibold text-white/80 hover:text-white hover:bg-white/[0.07] transition-all active:scale-95"
+                            className="flex-1 h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-bold text-white hover:bg-white/[0.09] transition-all active:scale-95"
                           >
-                            <Pencil className="w-3 h-3" /> Editar Veículo
+                            <Pencil className="w-3 h-3 text-[var(--color-primary)]" />
+                            <span>Editar</span>
                           </button>
                           {canDelete && (
                             <button
                               onClick={() => handleDelete(v)}
                               aria-label="Excluir veículo"
                               title="Excluir veículo"
-                              className="w-9 h-9 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-all active:scale-95"
+                              className="w-9 h-9 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-all active:scale-95"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
