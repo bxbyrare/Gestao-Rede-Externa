@@ -5,7 +5,7 @@ import {
   Upload, Image as ImageIcon, User
 } from 'lucide-react';
 import { api, assetUrl } from '../api/client';
-import type { Auditoria, Technician } from '../api/types';
+import type { Auditoria } from '../api/types';
 import { useAuth } from '../state/AuthContext';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
@@ -27,10 +27,19 @@ function getTodayISO(): string {
   return `${year}-${month}-${day}`;
 }
 
+export interface ResponsibleOption {
+  id: number;
+  name: string;
+  username?: string;
+  role: string;
+  company?: string;
+  type: 'user' | 'tech';
+}
+
 export default function AuditoriaPage() {
   const { user } = useAuth();
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [responsibles, setResponsibles] = useState<ResponsibleOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -63,12 +72,29 @@ export default function AuditoriaPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [auditData, techData] = await Promise.all([
+      const [auditData, usersListData] = await Promise.all([
         api.get<Auditoria[]>('/api/auditorias'),
-        api.get<Technician[]>('/api/technicians').catch(() => []),
+        api.get<{ users: ResponsibleOption[]; technicians: ResponsibleOption[] }>('/api/auditorias/users-list').catch(() => ({ users: [], technicians: [] })),
       ]);
       setAuditorias(auditData || []);
-      setTechnicians(techData || []);
+
+      const combined: ResponsibleOption[] = [
+        ...(usersListData?.users || []),
+        ...(usersListData?.technicians || []),
+      ];
+
+      const uniqueMap = new Map<string, ResponsibleOption>();
+      combined.forEach((item) => {
+        if (item && item.name) {
+          const key = item.name.toLowerCase().trim();
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, item);
+          }
+        }
+      });
+
+      const sortedList = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      setResponsibles(sortedList);
     } catch (err) {
       console.error('Erro ao carregar auditorias:', err);
     } finally {
@@ -78,7 +104,7 @@ export default function AuditoriaPage() {
 
   function handleOpenCreate() {
     setNewOs('');
-    setNewResponsible(technicians.length > 0 ? technicians[0].name : '');
+    setNewResponsible('');
     setCreateError('');
     setCreateModalOpen(true);
   }
@@ -532,24 +558,25 @@ export default function AuditoriaPage() {
             </Field>
           </div>
 
-          <Field label="Responsável Técnico">
-            {technicians.length > 0 ? (
-              <Select
-                value={newResponsible}
-                onChange={(e) => setNewResponsible(e.target.value)}
-              >
-                <option value="">Selecione um técnico...</option>
-                {technicians.map((t) => (
-                  <option key={t.id} value={t.name}>
-                    {t.name} {t.company ? `(${t.company})` : ''}
-                  </option>
-                ))}
-              </Select>
-            ) : (
+          <Field label="Responsável Técnico (Usuário do CRM)" hint="Selecione um usuário ou colaborador já cadastrado no sistema.">
+            <Select
+              value={newResponsible}
+              onChange={(e) => setNewResponsible(e.target.value)}
+              className="font-semibold text-sm"
+            >
+              <option value="">Selecione o usuário responsável...</option>
+              {responsibles.map((r) => (
+                <option key={`${r.type}_${r.id}`} value={r.name}>
+                  {r.name} — ({r.role}{r.company ? ` · ${r.company}` : ''})
+                </option>
+              ))}
+            </Select>
+            {responsibles.length === 0 && (
               <Input
                 value={newResponsible}
                 onChange={(e) => setNewResponsible(e.target.value)}
-                placeholder="Nome do técnico responsável"
+                placeholder="Nome do técnico ou usuário responsável"
+                className="mt-2"
               />
             )}
           </Field>

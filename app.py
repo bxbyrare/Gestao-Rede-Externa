@@ -6283,6 +6283,36 @@ def api_notifications_export():
 # AUDITORIAS API ROUTES (ABA AUDITORIA)
 # --------------------------------------------------------------------------
 
+@app.route('/api/auditorias/users-list', methods=['GET'], strict_slashes=False)
+@login_required
+def api_auditorias_users_list():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute("SELECT id, username, role FROM users ORDER BY username ASC;")
+        crm_users = cur.fetchall()
+        
+        cur.execute("SELECT id, name, role, company FROM technicians ORDER BY name ASC;")
+        techs = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "users": [
+                {"id": u['id'], "name": u['username'], "username": u['username'], "role": u['role'], "type": "user"}
+                for u in crm_users
+            ],
+            "technicians": [
+                {"id": t['id'], "name": t['name'], "role": t['role'] or 'Técnico', "company": t['company'] or '', "type": "tech"}
+                for t in techs
+            ]
+        }), 200
+    except Exception as e:
+        print("Error fetching auditorias users list:", e)
+        return jsonify({"users": [], "technicians": []}), 500
+
 @app.route('/api/auditorias', methods=['GET', 'POST'], strict_slashes=False)
 @login_required
 def api_auditorias():
