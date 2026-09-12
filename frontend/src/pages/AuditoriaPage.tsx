@@ -5,7 +5,7 @@ import {
   Upload, Image as ImageIcon, User
 } from 'lucide-react';
 import { api, assetUrl } from '../api/client';
-import type { Auditoria } from '../api/types';
+import type { Auditoria, Technician } from '../api/types';
 import { useAuth } from '../state/AuthContext';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
@@ -72,17 +72,47 @@ export default function AuditoriaPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [auditData, usersListData] = await Promise.all([
-        api.get<Auditoria[]>('/api/auditorias'),
+      const [auditData, techListData, usersListData] = await Promise.all([
+        api.get<Auditoria[]>('/api/auditorias').catch(() => []),
+        api.get<Technician[]>('/api/technicians').catch(() => []),
         api.get<{ users: ResponsibleOption[]; technicians: ResponsibleOption[] }>('/api/auditorias/users-list').catch(() => ({ users: [], technicians: [] })),
       ]);
       setAuditorias(auditData || []);
 
-      const combined: ResponsibleOption[] = [
-        ...(usersListData?.users || []),
-        ...(usersListData?.technicians || []),
-      ];
+      const combined: ResponsibleOption[] = [];
 
+      // 1. Add all technicians from #pessoas (technicians table)
+      if (Array.isArray(techListData)) {
+        techListData.forEach((t) => {
+          if (t && t.name) {
+            combined.push({
+              id: t.id,
+              name: t.name,
+              role: t.role || 'Técnico',
+              company: t.company || undefined,
+              type: 'tech',
+            });
+          }
+        });
+      }
+
+      // 2. Add from usersListData if available
+      if (usersListData?.technicians) {
+        usersListData.technicians.forEach((t) => {
+          if (t && t.name) {
+            combined.push({ ...t, type: 'tech' });
+          }
+        });
+      }
+      if (usersListData?.users) {
+        usersListData.users.forEach((u) => {
+          if (u && u.name) {
+            combined.push({ ...u, type: 'user' });
+          }
+        });
+      }
+
+      // 3. Deduplicate by lowercased trimmed name
       const uniqueMap = new Map<string, ResponsibleOption>();
       combined.forEach((item) => {
         if (item && item.name) {
@@ -93,7 +123,7 @@ export default function AuditoriaPage() {
         }
       });
 
-      const sortedList = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const sortedList = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
       setResponsibles(sortedList);
     } catch (err) {
       console.error('Erro ao carregar auditorias:', err);
@@ -564,16 +594,17 @@ export default function AuditoriaPage() {
             </Field>
           </div>
 
-          <Field label="Responsável Técnico (Usuário do CRM)" hint="Selecione um usuário ou colaborador já cadastrado no sistema.">
+          <Field label="Responsável Técnico (#pessoas / Usuário)" hint="Selecione qualquer colaborador cadastrado em #pessoas ou usuário do CRM.">
             <Select
               value={newResponsible}
               onChange={(e) => setNewResponsible(e.target.value)}
               className="font-semibold text-sm"
+              required
             >
-              <option value="">Selecione o usuário responsável...</option>
+              <option value="">Selecione o responsável técnico...</option>
               {responsibles.map((r) => (
-                <option key={`${r.type}_${r.id}`} value={r.name}>
-                  {r.name} — ({r.role}{r.company ? ` · ${r.company}` : ''})
+                <option key={`${r.type}_${r.id}_${r.name}`} value={r.name}>
+                  {r.name} {r.role ? `— ${r.role}` : ''} {r.company ? `(${r.company})` : ''}
                 </option>
               ))}
             </Select>

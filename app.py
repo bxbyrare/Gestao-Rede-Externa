@@ -6314,30 +6314,43 @@ def api_notifications_export():
 def api_auditorias_users_list():
     if request.method == 'OPTIONS':
         return ('', 204)
+    conn = None
     try:
         conn = get_db()
         cur = conn.cursor()
         
-        cur.execute("SELECT id, username, role FROM users ORDER BY username ASC;")
-        crm_users = cur.fetchall()
+        crm_users = []
+        try:
+            cur.execute("SELECT id, username, role FROM users ORDER BY username ASC;")
+            crm_users = cur.fetchall() or []
+        except Exception as e_u:
+            print("Warning fetching users for auditoria:", e_u)
         
-        cur.execute("SELECT id, name, role, company FROM technicians ORDER BY name ASC;")
-        techs = cur.fetchall()
+        techs = []
+        try:
+            cur.execute("SELECT id, name, role, company FROM technicians ORDER BY name ASC;")
+            techs = cur.fetchall() or []
+        except Exception as e_t:
+            print("Warning fetching technicians for auditoria:", e_t)
         
         cur.close()
         conn.close()
+        conn = None
         
         return jsonify({
             "users": [
-                {"id": u['id'], "name": u['username'], "username": u['username'], "role": u['role'], "type": "user"}
-                for u in crm_users
+                {"id": u['id'], "name": u['username'], "username": u['username'], "role": u['role'] or 'Usuário', "type": "user"}
+                for u in crm_users if u and u.get('username')
             ],
             "technicians": [
-                {"id": t['id'], "name": t['name'], "role": t['role'] or 'Técnico', "company": t['company'] or '', "type": "tech"}
-                for t in techs
+                {"id": t['id'], "name": t['name'], "role": t['role'] or 'Técnico', "company": t.get('company') or '', "type": "tech"}
+                for t in techs if t and t.get('name')
             ]
         }), 200
     except Exception as e:
+        if conn:
+            try: conn.close()
+            except Exception: pass
         print("Error fetching auditorias users list:", e)
         traceback.print_exc()
         return jsonify({"users": [], "technicians": []}), 200
