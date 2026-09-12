@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  ShieldCheck, Plus, Search, Filter, Download, FileText,
+  Plus, Search, Filter, Download, FileText,
   CheckCircle2, XCircle, Clock, AlertTriangle, Trash2,
-  Upload, Image as ImageIcon, Calendar, User, Eye, Sparkles
+  Upload, Image as ImageIcon, User
 } from 'lucide-react';
 import { api, assetUrl } from '../api/client';
 import type { Auditoria, Technician } from '../api/types';
@@ -211,7 +211,7 @@ export default function AuditoriaPage() {
     });
   }, [auditorias, search, statusFilter]);
 
-  function renderStatusBadge(status: Auditoria['status'], isDuplicate?: boolean) {
+  function renderStatusBadge(status: Auditoria['status']) {
     switch (status) {
       case 'Aprovado':
         return (
@@ -432,7 +432,7 @@ export default function AuditoriaPage() {
                         {item.responsible}
                       </td>
                       <td className="py-3.5 px-4">
-                        {renderStatusBadge(item.status, item.is_duplicate)}
+                        {renderStatusBadge(item.status)}
                       </td>
                       <td className="py-3.5 px-4 text-[var(--color-text-muted)]">
                         {formatDisplayDate(item.audit_date)}
@@ -525,7 +525,7 @@ export default function AuditoriaPage() {
 
             <Field label="Criado por">
               <Input
-                value={user?.username || user?.name || 'Administrador'}
+                value={user?.username || 'Administrador'}
                 disabled
                 className="opacity-70 bg-white/[0.02] cursor-not-allowed"
               />
