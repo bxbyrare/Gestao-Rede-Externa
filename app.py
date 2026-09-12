@@ -6280,12 +6280,15 @@ def api_notifications_export():
         return jsonify({"error": "Erro ao exportar notificações."}), 500
 
 # --------------------------------------------------------------------------
-# AUDITORIAS API ROUTES (ABA AUDITORIA)
+# AUDITORIAS API ROUTES (ABA AUDITORIA) — HARDENED & FAULT-TOLERANT
 # --------------------------------------------------------------------------
 
-@app.route('/api/auditorias/users-list', methods=['GET'], strict_slashes=False)
+@app.route('/api/auditorias/users-list', methods=['GET', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/auditorias/users-list/', methods=['GET', 'OPTIONS'], strict_slashes=False)
 @login_required
 def api_auditorias_users_list():
+    if request.method == 'OPTIONS':
+        return ('', 204)
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -6311,12 +6314,19 @@ def api_auditorias_users_list():
         }), 200
     except Exception as e:
         print("Error fetching auditorias users list:", e)
-        return jsonify({"users": [], "technicians": []}), 500
+        traceback.print_exc()
+        return jsonify({"users": [], "technicians": []}), 200
 
-@app.route('/api/auditorias', methods=['GET', 'POST'], strict_slashes=False)
+
+@app.route('/api/auditorias', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/auditorias/', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
 @login_required
 def api_auditorias():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
     if request.method == 'GET':
+        conn = None
         try:
             conn = get_db()
             cur = conn.cursor()
@@ -6354,7 +6364,6 @@ def api_auditorias():
                 clean_os = (r['os'] or '').strip().upper()
                 is_dup = os_counts[clean_os] > 1
                 
-                # Format dates
                 c_date = r['created_date'].strftime('%Y-%m-%d') if r.get('created_date') else ''
                 a_date = r['audit_date'].strftime('%Y-%m-%d') if r.get('audit_date') else ''
                 
@@ -6383,13 +6392,19 @@ def api_auditorias():
 
             return jsonify(results), 200
         except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
             print("Error listing auditorias:", e)
             traceback.print_exc()
             return jsonify({"error": "Erro ao listar auditorias."}), 500
 
     if request.method == 'POST':
+        conn = None
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or request.form.to_dict() or {}
             os_name = (data.get('os') or '').strip()
             responsible = (data.get('responsible') or '').strip()
             responsible_id = data.get('responsible_id')
@@ -6439,14 +6454,24 @@ def api_auditorias():
             emit_live_alert('auditoria', 'Nova Auditoria de OS', f'OS {os_name} acionada para o técnico {responsible} por {created_by}.', link='/auditoria')
             return jsonify({"success": True, "id": new_id}), 201
         except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
             print("Error creating auditoria:", e)
             traceback.print_exc()
-            return jsonify({"error": "Erro ao criar auditoria."}), 500
+            return jsonify({"error": "Erro ao criar auditoria no banco de dados."}), 500
 
 
-@app.route('/api/auditorias/<int:auditoria_id>', methods=['GET', 'PUT', 'DELETE'], strict_slashes=False)
+@app.route('/api/auditorias/<int:auditoria_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/auditorias/<int:auditoria_id>/', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
 @login_required
 def api_auditoria_detail(auditoria_id):
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    conn = None
     if request.method == 'GET':
         try:
             conn = get_db()
@@ -6478,13 +6503,18 @@ def api_auditoria_detail(auditoria_id):
                 "photos": photos_list
             }), 200
         except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
             print("Error getting auditoria detail:", e)
             traceback.print_exc()
             return jsonify({"error": "Erro ao buscar auditoria."}), 500
 
     if request.method == 'PUT':
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or request.form.to_dict() or {}
             status = (data.get('status') or 'Acionado').strip()
             observations = data.get('observations', '')
             audit_date_str = (data.get('audit_date') or '').strip()
@@ -6530,6 +6560,11 @@ def api_auditoria_detail(auditoria_id):
                 emit_live_alert('auditoria', 'OS Reclassificada', f'Auditoria #{auditoria_id} foi reclassificada.', link='/auditoria')
             return jsonify({"success": True}), 200
         except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
             print("Error updating auditoria:", e)
             traceback.print_exc()
             return jsonify({"error": "Erro ao atualizar relatório de auditoria."}), 500
@@ -6546,14 +6581,22 @@ def api_auditoria_detail(auditoria_id):
             log_action(session.get('user_id'), session.get('username'), f"Excluiu auditoria ID {auditoria_id}")
             return jsonify({"success": True}), 200
         except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
             print("Error deleting auditoria:", e)
             traceback.print_exc()
             return jsonify({"error": "Erro ao excluir auditoria."}), 500
 
 
-@app.route('/api/auditorias/upload-photos', methods=['POST'], strict_slashes=False)
+@app.route('/api/auditorias/upload-photos', methods=['POST', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/auditorias/upload-photos/', methods=['POST', 'OPTIONS'], strict_slashes=False)
 @login_required
 def api_auditorias_upload_photos():
+    if request.method == 'OPTIONS':
+        return ('', 204)
     try:
         import uuid
         files = request.files.getlist('photos')
