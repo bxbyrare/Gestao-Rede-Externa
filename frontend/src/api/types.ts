@@ -201,3 +201,19 @@ export interface MapaEvento {
   date?: string;
   description?: string;
 }
+
+export interface Auditoria {
+  id: number;
+  os: string;
+  created_date: string;
+  created_by: string;
+  created_by_id?: number | null;
+  responsible: string;
+  responsible_id?: number | null;
+  status: 'Acionado' | 'Aprovado' | 'Reprovado' | 'Reclassificado';
+  audit_date: string | null;
+  observations: string | null;
+  photos: string[];
+  is_duplicate?: boolean;
+  created_at: string;
+}

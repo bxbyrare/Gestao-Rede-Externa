@@ -1,4 +1,4 @@
-﻿import os
+import os
 import time
 import csv
 import json
@@ -131,6 +131,7 @@ ALLOWED_PROJECT_EXTENSIONS = {'pdf', 'kmz', 'kml', 'zip', 'doc', 'docx', 'xls', 
 
 # Create upload folders if they don't exist
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'projetos'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'auditorias'), exist_ok=True)
 
 # Helper function to get PostgreSQL connection
 def get_db():
@@ -587,6 +588,25 @@ def init_db():
             );
         """)
 
+        # 19. Auditorias Table (Aba Auditoria)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS auditorias (
+                id SERIAL PRIMARY KEY,
+                os VARCHAR(150) NOT NULL,
+                created_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                created_by VARCHAR(150) NOT NULL,
+                created_by_id INT REFERENCES users(id) ON DELETE SET NULL,
+                responsible VARCHAR(150) NOT NULL,
+                responsible_id INT REFERENCES technicians(id) ON DELETE SET NULL,
+                status VARCHAR(50) NOT NULL DEFAULT 'Acionado',
+                audit_date DATE,
+                observations TEXT,
+                photos JSONB DEFAULT '[]'::jsonb,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
         # Seed initial admin user if empty
         cur.execute("SELECT COUNT(*) AS count FROM users;")
         if cur.fetchone()['count'] == 0:
@@ -830,10 +850,7 @@ def parse_google_form(url):
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     from werkzeug.utils import safe_join
-    # Only project attachments are meant to be public — they're linked from
-    # the public project page (/p/project/<id>). Everything else (route
-    # files, etc.) is internal and requires an authenticated session.
-    if not filename.startswith('projetos/') and not filename.startswith('formularios/') and 'user_id' not in session:
+    if not filename.startswith('projetos/') and not filename.startswith('formularios/') and not filename.startswith('auditorias/') and 'user_id' not in session:
         return jsonify({"error": "Não autenticado."}), 401
     safe_path = safe_join(UPLOAD_FOLDER, filename)
     if not safe_path or not os.path.exists(safe_path):
@@ -6220,3 +6237,331 @@ def api_notifications_export():
         print("Error exporting notifications:", e)
         traceback.print_exc()
         return jsonify({"error": "Erro ao exportar notificações."}), 500
+
+# --------------------------------------------------------------------------
+# AUDITORIAS API ROUTES (ABA AUDITORIA)
+# --------------------------------------------------------------------------
+
+@app.route('/api/auditorias', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_auditorias():
+    if request.method == 'GET':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    a.id,
+                    a.os,
+                    a.created_date,
+                    a.created_by,
+                    a.created_by_id,
+                    a.responsible,
+                    a.responsible_id,
+                    a.status,
+                    a.audit_date,
+                    a.observations,
+                    COALESCE(a.photos, '[]'::jsonb) AS photos,
+                    a.created_at,
+                    a.updated_at
+                FROM auditorias a
+                ORDER BY a.id DESC;
+            """)
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            # Count OS occurrences to mark duplicates
+            os_counts = defaultdict(int)
+            for r in rows:
+                clean_os = (r['os'] or '').strip().upper()
+                if clean_os:
+                    os_counts[clean_os] += 1
+
+            results = []
+            for r in rows:
+                clean_os = (r['os'] or '').strip().upper()
+                is_dup = os_counts[clean_os] > 1
+                
+                # Format dates
+                c_date = r['created_date'].strftime('%Y-%m-%d') if r.get('created_date') else ''
+                a_date = r['audit_date'].strftime('%Y-%m-%d') if r.get('audit_date') else ''
+                
+                photos_list = r.get('photos') or []
+                if isinstance(photos_list, str):
+                    try:
+                        photos_list = json.loads(photos_list)
+                    except Exception:
+                        photos_list = []
+
+                results.append({
+                    "id": r['id'],
+                    "os": r['os'],
+                    "created_date": c_date,
+                    "created_by": r['created_by'],
+                    "created_by_id": r['created_by_id'],
+                    "responsible": r['responsible'],
+                    "responsible_id": r['responsible_id'],
+                    "status": r['status'],
+                    "audit_date": a_date,
+                    "observations": r['observations'] or '',
+                    "photos": photos_list,
+                    "is_duplicate": is_dup,
+                    "created_at": r['created_at'].isoformat() if r.get('created_at') else ''
+                })
+
+            return jsonify(results), 200
+        except Exception as e:
+            print("Error listing auditorias:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao listar auditorias."}), 500
+
+    if request.method == 'POST':
+        try:
+            data = request.get_json() or {}
+            os_name = (data.get('os') or '').strip()
+            responsible = (data.get('responsible') or '').strip()
+            responsible_id = data.get('responsible_id')
+            created_date_str = (data.get('created_date') or '').strip()
+
+            if not os_name:
+                return jsonify({"error": "O campo OS é obrigatório."}), 400
+            if not responsible:
+                return jsonify({"error": "O campo Responsável é obrigatório."}), 400
+
+            created_by = session.get('user_name') or session.get('username') or 'Usuário'
+            created_by_id = session.get('user_id')
+
+            if created_date_str:
+                try:
+                    c_date = datetime.datetime.strptime(created_date_str, '%Y-%m-%d').date()
+                except Exception:
+                    c_date = datetime.date.today()
+            else:
+                c_date = datetime.date.today()
+
+            conn = get_db()
+            cur = conn.cursor()
+
+            # RECLASSIFICATION LOGIC:
+            # If the OS already exists, update all existing older records of this OS to 'Reclassificado'
+            cur.execute("""
+                UPDATE auditorias
+                SET status = 'Reclassificado', updated_at = CURRENT_TIMESTAMP
+                WHERE TRIM(UPPER(os)) = TRIM(UPPER(%s));
+            """, (os_name,))
+
+            # Insert new record with status 'Acionado'
+            cur.execute("""
+                INSERT INTO auditorias (
+                    os, created_date, created_by, created_by_id, responsible, responsible_id, status
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'Acionado')
+                RETURNING id;
+            """, (os_name, c_date, created_by, created_by_id, responsible, responsible_id))
+            
+            new_id = cur.fetchone()['id']
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Criou auditoria para OS {os_name} (ID {new_id})")
+            return jsonify({"success": True, "id": new_id}), 201
+        except Exception as e:
+            print("Error creating auditoria:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao criar auditoria."}), 500
+
+
+@app.route('/api/auditorias/<int:auditoria_id>', methods=['GET', 'PUT', 'DELETE'], strict_slashes=False)
+@login_required
+def api_auditoria_detail(auditoria_id):
+    if request.method == 'GET':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM auditorias WHERE id = %s;", (auditoria_id,))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+
+            if not row:
+                return jsonify({"error": "Auditoria não encontrada."}), 404
+
+            photos_list = row.get('photos') or []
+            if isinstance(photos_list, str):
+                try:
+                    photos_list = json.loads(photos_list)
+                except Exception:
+                    photos_list = []
+
+            return jsonify({
+                "id": row['id'],
+                "os": row['os'],
+                "created_date": row['created_date'].strftime('%Y-%m-%d') if row.get('created_date') else '',
+                "created_by": row['created_by'],
+                "responsible": row['responsible'],
+                "status": row['status'],
+                "audit_date": row['audit_date'].strftime('%Y-%m-%d') if row.get('audit_date') else '',
+                "observations": row['observations'] or '',
+                "photos": photos_list
+            }), 200
+        except Exception as e:
+            print("Error getting auditoria detail:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao buscar auditoria."}), 500
+
+    if request.method == 'PUT':
+        try:
+            data = request.get_json() or {}
+            status = (data.get('status') or 'Acionado').strip()
+            observations = data.get('observations', '')
+            audit_date_str = (data.get('audit_date') or '').strip()
+            photos = data.get('photos') or []
+
+            # Limit to 10 photos
+            if isinstance(photos, list):
+                photos = photos[:10]
+            else:
+                photos = []
+
+            if audit_date_str:
+                try:
+                    a_date = datetime.datetime.strptime(audit_date_str, '%Y-%m-%d').date()
+                except Exception:
+                    a_date = datetime.date.today()
+            else:
+                a_date = datetime.date.today() if status in ['Aprovado', 'Reprovado'] else None
+
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE auditorias
+                SET 
+                    status = %s,
+                    audit_date = %s,
+                    observations = %s,
+                    photos = %s::jsonb,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (status, a_date, observations, json.dumps(photos), auditoria_id))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Atualizou relatório da auditoria ID {auditoria_id} (Status: {status})")
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            print("Error updating auditoria:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao atualizar relatório de auditoria."}), 500
+
+    if request.method == 'DELETE':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM auditorias WHERE id = %s;", (auditoria_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Excluiu auditoria ID {auditoria_id}")
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            print("Error deleting auditoria:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao excluir auditoria."}), 500
+
+
+@app.route('/api/auditorias/upload-photos', methods=['POST'], strict_slashes=False)
+@login_required
+def api_auditorias_upload_photos():
+    try:
+        import uuid
+        files = request.files.getlist('photos')
+        if not files and 'photo' in request.files:
+            files = [request.files['photo']]
+        if not files and 'file' in request.files:
+            files = [request.files['file']]
+
+        if not files:
+            return jsonify({"error": "Nenhuma foto foi enviada."}), 400
+
+        auditorias_dir = os.path.join(UPLOAD_FOLDER, 'auditorias')
+        os.makedirs(auditorias_dir, exist_ok=True)
+
+        uploaded_urls = []
+        for f in files:
+            if not f or not f.filename:
+                continue
+            ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else 'jpg'
+            if ext not in ALLOWED_IMAGE_EXTENSIONS:
+                ext = 'jpg'
+            
+            safe_name = f"audit_{uuid.uuid4().hex[:12]}.{ext}"
+            target_path = os.path.join(auditorias_dir, safe_name)
+            f.save(target_path)
+            uploaded_urls.append(f"/uploads/auditorias/{safe_name}")
+
+        return jsonify({"success": True, "urls": uploaded_urls, "photos": uploaded_urls}), 200
+    except Exception as e:
+        print("Error uploading auditoria photos:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao fazer upload das fotos."}), 500
+
+
+@app.route('/api/auditorias/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_auditorias_export():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                os, created_date, created_by, responsible, status, audit_date, observations,
+                COALESCE(photos, '[]'::jsonb) AS photos
+            FROM auditorias 
+            ORDER BY id ASC;
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        output = io.StringIO()
+        output.write('\ufeff') # UTF-8 BOM for Excel
+        writer = csv.writer(output, delimiter=';')
+
+        # Header matching the user's Excel sheet
+        writer.writerow(['OS', 'Data', 'Criada por', 'Responsável', 'Status', 'Data da auditoria', 'Observações', 'Qtd Fotos'])
+
+        for r in rows:
+            c_date_str = r['created_date'].strftime('%d/%m/%Y') if r.get('created_date') else ''
+            a_date_str = r['audit_date'].strftime('%d/%m/%Y') if r.get('audit_date') else ''
+            
+            photos_list = r.get('photos') or []
+            if isinstance(photos_list, str):
+                try: photos_list = json.loads(photos_list)
+                except Exception: photos_list = []
+
+            writer.writerow([
+                r['os'] or '',
+                c_date_str,
+                r['created_by'] or '',
+                r['responsible'] or '',
+                r['status'] or '',
+                a_date_str,
+                (r['observations'] or '').replace('\n', ' ').strip(),
+                len(photos_list)
+            ])
+
+        output.seek(0)
+        filename = f"auditoria_rede_externa_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+    except Exception as e:
+        print("Error exporting auditorias:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao exportar dados da auditoria."}), 500

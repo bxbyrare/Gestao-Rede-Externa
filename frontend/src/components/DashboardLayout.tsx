@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, Boxes, FolderKanban, FileText, Route as RouteIcon, BarChart3,
-  Settings, Menu, X, LogOut, BellRing,
+  Settings, Menu, X, LogOut, BellRing, ShieldCheck,
 } from 'lucide-react';
 import { useAuth, isCoordenador, isCoordenadorClaro } from '../state/AuthContext';
 import LiquidEther from './LiquidEther';
@@ -41,6 +41,7 @@ const NAV_ITEMS = [
   { to: '/pessoas', label: 'Pessoas', icon: Users },
   { to: '/veiculos', label: 'Veículos', icon: Truck },
   { to: '/buscador', label: 'Buscador', icon: Search },
+  { to: '/auditoria', label: 'Auditoria', icon: ShieldCheck },
   { to: '/mapa-eventos', label: 'Mapa de Eventos', icon: MapPinned },
   { to: '/financeiro', label: 'Financeiro', icon: Wallet },
   { to: '/escala', label: 'Escala', icon: CalendarDays },
