@@ -132,6 +132,7 @@ ALLOWED_PROJECT_EXTENSIONS = {'pdf', 'kmz', 'kml', 'zip', 'doc', 'docx', 'xls', 
 # Create upload folders if they don't exist
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'projetos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'auditorias'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'aceitacoes'), exist_ok=True)
 
 # Helper function to get PostgreSQL connection
 def get_db():
@@ -650,13 +651,56 @@ def init_db():
             except Exception:
                 conn.rollback()
 
+        # 20. Aceitacoes Table (Aba Aceitação)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS aceitacoes (
+                id SERIAL PRIMARY KEY,
+                os VARCHAR(150) NOT NULL,
+                created_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                created_by VARCHAR(150) NOT NULL,
+                created_by_id INT,
+                responsible VARCHAR(150) NOT NULL,
+                responsible_id INT,
+                status VARCHAR(50) NOT NULL DEFAULT 'Acionado',
+                acceptance_date DATE,
+                observations TEXT,
+                photos JSONB DEFAULT '[]'::jsonb,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        try:
+            cur.execute("ALTER TABLE aceitacoes DROP CONSTRAINT IF EXISTS aceitacoes_responsible_id_fkey;")
+            cur.execute("ALTER TABLE aceitacoes DROP CONSTRAINT IF EXISTS aceitacoes_created_by_id_fkey;")
+        except Exception:
+            conn.rollback()
+
+        for col, coltype in [
+            ('os', 'VARCHAR(150)'),
+            ('created_date', 'DATE DEFAULT CURRENT_DATE'),
+            ('created_by', 'VARCHAR(150)'),
+            ('created_by_id', 'INT'),
+            ('responsible', 'VARCHAR(150)'),
+            ('responsible_id', 'INT'),
+            ('status', "VARCHAR(50) DEFAULT 'Acionado'"),
+            ('acceptance_date', 'DATE'),
+            ('observations', 'TEXT'),
+            ('photos', "JSONB DEFAULT '[]'::jsonb"),
+            ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+            ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE aceitacoes ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
+
         # Seed initial admin user if empty
         
-        # 20. System Live Alerts Table (Notificações em Tempo Real com Som & Toasts)
+        # 21. System Live Alerts Table (Notificações em Tempo Real com Som & Toasts)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS system_live_alerts (
                 id SERIAL PRIMARY KEY,
-                category VARCHAR(50) NOT NULL, -- 'auditoria', 'avaliacao', 'indicadores', 'sistema'
+                category VARCHAR(50) NOT NULL, -- 'auditoria', 'aceitacao', 'avaliacao', 'indicadores', 'sistema'
                 title VARCHAR(150) NOT NULL,
                 message TEXT NOT NULL,
                 target_user_id INT,
@@ -914,7 +958,7 @@ def parse_google_form(url):
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     from werkzeug.utils import safe_join
-    if not filename.startswith('projetos/') and not filename.startswith('formularios/') and not filename.startswith('auditorias/') and 'user_id' not in session:
+    if not filename.startswith('projetos/') and not filename.startswith('formularios/') and not filename.startswith('auditorias/') and not filename.startswith('aceitacoes/') and 'user_id' not in session:
         return jsonify({"error": "Não autenticado."}), 401
     safe_path = safe_join(UPLOAD_FOLDER, filename)
     if not safe_path or not os.path.exists(safe_path):
@@ -6552,6 +6596,495 @@ def api_auditorias_export():
         print("Error exporting auditorias:", e)
         traceback.print_exc()
         return jsonify({"error": "Erro ao exportar dados da auditoria."}), 500
+
+
+# --------------------------------------------------------------------------
+# ACEITAÇÕES API ROUTES (ABA ACEITAÇÃO) — HARDENED & FAULT-TOLERANT
+# --------------------------------------------------------------------------
+
+@app.route('/api/aceitacoes/users-list', methods=['GET', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/aceitacoes/users-list/', methods=['GET', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_aceitacoes_users_list():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        crm_users = []
+        try:
+            cur.execute("SELECT id, username, role FROM users ORDER BY username ASC;")
+            crm_users = cur.fetchall() or []
+        except Exception as e_u:
+            print("Warning fetching users for aceitacao:", e_u)
+        
+        techs = []
+        try:
+            cur.execute("SELECT id, name, role, company FROM technicians ORDER BY name ASC;")
+            techs = cur.fetchall() or []
+        except Exception as e_t:
+            print("Warning fetching technicians for aceitacao:", e_t)
+        
+        cur.close()
+        conn.close()
+        conn = None
+        
+        return jsonify({
+            "users": [
+                {"id": u['id'], "name": u['username'], "username": u['username'], "role": u['role'] or 'Usuário', "type": "user"}
+                for u in crm_users if u and u.get('username')
+            ],
+            "technicians": [
+                {"id": t['id'], "name": t['name'], "role": t['role'] or 'Técnico', "company": t.get('company') or '', "type": "tech"}
+                for t in techs if t and t.get('name')
+            ]
+        }), 200
+    except Exception as e:
+        if conn:
+            try: conn.close()
+            except Exception: pass
+        print("Error fetching aceitacoes users list:", e)
+        traceback.print_exc()
+        return jsonify({"users": [], "technicians": []}), 200
+
+
+@app.route('/api/aceitacoes', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/aceitacoes/', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_aceitacoes():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    if request.method == 'GET':
+        conn = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    a.id,
+                    a.os,
+                    a.created_date,
+                    a.created_by,
+                    a.created_by_id,
+                    a.responsible,
+                    a.responsible_id,
+                    a.status,
+                    a.acceptance_date,
+                    a.observations,
+                    COALESCE(a.photos, '[]'::jsonb) AS photos,
+                    a.created_at,
+                    a.updated_at
+                FROM aceitacoes a
+                ORDER BY a.id DESC;
+            """)
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            # Count OS occurrences to mark duplicates
+            os_counts = defaultdict(int)
+            for r in rows:
+                clean_os = (r['os'] or '').strip().upper()
+                if clean_os:
+                    os_counts[clean_os] += 1
+
+            results = []
+            for r in rows:
+                clean_os = (r['os'] or '').strip().upper()
+                is_dup = os_counts[clean_os] > 1
+                
+                c_date = r['created_date'].strftime('%Y-%m-%d') if r.get('created_date') else ''
+                acc_date = r['acceptance_date'].strftime('%Y-%m-%d') if r.get('acceptance_date') else ''
+                
+                photos_list = r.get('photos') or []
+                if isinstance(photos_list, str):
+                    try:
+                        photos_list = json.loads(photos_list)
+                    except Exception:
+                        photos_list = []
+
+                results.append({
+                    "id": r['id'],
+                    "os": r['os'],
+                    "created_date": c_date,
+                    "created_by": r['created_by'],
+                    "created_by_id": r['created_by_id'],
+                    "responsible": r['responsible'],
+                    "responsible_id": r['responsible_id'],
+                    "status": r['status'],
+                    "acceptance_date": acc_date,
+                    "observations": r['observations'] or '',
+                    "photos": photos_list,
+                    "is_duplicate": is_dup,
+                    "created_at": r['created_at'].isoformat() if r.get('created_at') else ''
+                })
+
+            return jsonify(results), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error listing aceitacoes:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao listar aceitações."}), 500
+
+    if request.method == 'POST':
+        conn = None
+        try:
+            data = request.get_json(silent=True) or request.form.to_dict() or {}
+            os_name = (data.get('os') or '').strip()
+            responsible = (data.get('responsible') or '').strip()
+            responsible_id = data.get('responsible_id')
+            created_date_str = (data.get('created_date') or '').strip()
+            custom_obs = data.get('observations')
+            custom_photos = data.get('photos')
+
+            if not os_name:
+                return jsonify({"error": "O campo OS é obrigatório."}), 400
+            if not responsible:
+                return jsonify({"error": "O campo Responsável é obrigatório."}), 400
+
+            created_by = session.get('user_name') or session.get('username') or 'Usuário'
+            raw_creator_id = session.get('user_id')
+            clean_creator_id = None
+            if raw_creator_id:
+                try:
+                    clean_creator_id = int(raw_creator_id)
+                except Exception:
+                    clean_creator_id = None
+
+            clean_resp_id = None
+            if responsible_id not in (None, '', 'null', 0, '0'):
+                try:
+                    clean_resp_id = int(responsible_id)
+                except Exception:
+                    clean_resp_id = None
+
+            if created_date_str:
+                try:
+                    c_date = datetime.datetime.strptime(created_date_str, '%Y-%m-%d').date()
+                except Exception:
+                    c_date = datetime.date.today()
+            else:
+                c_date = datetime.date.today()
+
+            conn = get_db()
+            cur = conn.cursor()
+
+            # RECLASSIFICATION & HISTORY-CARRY-OVER LOGIC:
+            # If the OS already exists, fetch latest historical data, update all existing older records to 'Reclassificado'
+            cur.execute("""
+                SELECT observations, photos, acceptance_date FROM aceitacoes
+                WHERE TRIM(UPPER(os)) = TRIM(UPPER(%s))
+                ORDER BY id DESC LIMIT 1;
+            """, (os_name,))
+            prev_record = cur.fetchone()
+
+            prev_obs = ''
+            prev_photos = []
+            prev_acc_date = None
+            if prev_record:
+                prev_obs = prev_record.get('observations') or ''
+                prev_acc_date = prev_record.get('acceptance_date')
+                prev_p = prev_record.get('photos')
+                if isinstance(prev_p, str):
+                    try:
+                        prev_photos = json.loads(prev_p)
+                    except Exception:
+                        prev_photos = []
+                elif isinstance(prev_p, list):
+                    prev_photos = prev_p
+
+                # Update all existing older records of this OS to 'Reclassificado'
+                cur.execute("""
+                    UPDATE aceitacoes
+                    SET status = 'Reclassificado', updated_at = CURRENT_TIMESTAMP
+                    WHERE TRIM(UPPER(os)) = TRIM(UPPER(%s));
+                """, (os_name,))
+
+            # Determine final observations and photos: prioritize new input if given, otherwise carry over history
+            final_obs = custom_obs if (custom_obs is not None and str(custom_obs).strip() != '') else prev_obs
+            final_photos = custom_photos if custom_photos is not None else prev_photos
+            if isinstance(final_photos, str):
+                try:
+                    final_photos = json.loads(final_photos)
+                except Exception:
+                    final_photos = []
+            if not isinstance(final_photos, list):
+                final_photos = []
+
+            # Insert new record with status 'Acionado'
+            cur.execute("""
+                INSERT INTO aceitacoes (
+                    os, created_date, created_by, created_by_id, responsible, responsible_id, status, acceptance_date, observations, photos
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'Acionado', %s, %s, %s::jsonb)
+                RETURNING id;
+            """, (os_name, c_date, created_by, clean_creator_id, responsible, clean_resp_id, prev_acc_date, final_obs, json.dumps(final_photos)))
+            
+            new_id = cur.fetchone()['id']
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Criou aceitação para OS {os_name} (ID {new_id})")
+            try:
+                emit_live_alert('aceitacao', 'Nova Aceitação de OS', f'OS {os_name} acionada para {responsible} por {created_by}.', link='/aceitacao')
+            except Exception:
+                pass
+            return jsonify({"success": True, "id": new_id}), 201
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error creating aceitacao:", e)
+            traceback.print_exc()
+            return jsonify({"error": f"Erro ao criar aceitação: {str(e)}"}), 500
+
+
+@app.route('/api/aceitacoes/<int:aceitacao_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/aceitacoes/<int:aceitacao_id>/', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_aceitacao_detail(aceitacao_id):
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    conn = None
+    if request.method == 'GET':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM aceitacoes WHERE id = %s;", (aceitacao_id,))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+
+            if not row:
+                return jsonify({"error": "Aceitação não encontrada."}), 404
+
+            photos_list = row.get('photos') or []
+            if isinstance(photos_list, str):
+                try:
+                    photos_list = json.loads(photos_list)
+                except Exception:
+                    photos_list = []
+
+            return jsonify({
+                "id": row['id'],
+                "os": row['os'],
+                "created_date": row['created_date'].strftime('%Y-%m-%d') if row.get('created_date') else '',
+                "created_by": row['created_by'],
+                "created_by_id": row['created_by_id'],
+                "responsible": row['responsible'],
+                "responsible_id": row['responsible_id'],
+                "status": row['status'],
+                "acceptance_date": row['acceptance_date'].strftime('%Y-%m-%d') if row.get('acceptance_date') else '',
+                "observations": row['observations'] or '',
+                "photos": photos_list,
+                "created_at": row['created_at'].isoformat() if row.get('created_at') else ''
+            }), 200
+        except Exception as e:
+            if conn:
+                try: conn.close()
+                except Exception: pass
+            print("Error getting aceitacao detail:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao buscar aceitação."}), 500
+
+    if request.method == 'PUT':
+        try:
+            data = request.get_json(silent=True) or request.form.to_dict() or {}
+            status = (data.get('status') or 'Acionado').strip()
+            observations = (data.get('observations') or '').strip()
+            acceptance_date_str = (data.get('acceptance_date') or '').strip()
+            photos = data.get('photos') or []
+
+            if not isinstance(photos, list):
+                if isinstance(photos, str):
+                    try:
+                        photos = json.loads(photos)
+                    except Exception:
+                        photos = []
+                else:
+                    photos = []
+
+            acc_date = None
+            if acceptance_date_str:
+                try:
+                    acc_date = datetime.datetime.strptime(acceptance_date_str, '%Y-%m-%d').date()
+                except Exception:
+                    acc_date = None
+
+            conn = get_db()
+            cur = conn.cursor()
+            
+            cur.execute("SELECT os, status FROM aceitacoes WHERE id = %s;", (aceitacao_id,))
+            current_acc = cur.fetchone()
+            if not current_acc:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Aceitação não encontrada."}), 404
+
+            cur.execute("""
+                UPDATE aceitacoes
+                SET status = %s,
+                    acceptance_date = %s,
+                    observations = %s,
+                    photos = %s::jsonb,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (status, acc_date, observations, json.dumps(photos), aceitacao_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Atualizou relatório da aceitação ID {aceitacao_id} (Status: {status})")
+            try:
+                os_code = current_acc['os']
+                if status == 'Aprovado':
+                    emit_live_alert('aceitacao', 'Aceitação Aprovada', f'Aceitação da OS {os_code} foi APROVADA com sucesso.', link='/aceitacao')
+                elif status == 'Reprovado':
+                    emit_live_alert('aceitacao', 'Aceitação Reprovada', f'Aceitação da OS {os_code} foi REPROVADA. Necessita atenção técnica.', link='/aceitacao')
+                elif status == 'Reclassificado':
+                    emit_live_alert('aceitacao', 'OS Reclassificada', f'Aceitação da OS {os_code} foi reclassificada.', link='/aceitacao')
+            except Exception:
+                pass
+
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error updating aceitacao:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao atualizar relatório de aceitação."}), 500
+
+    if request.method == 'DELETE':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM aceitacoes WHERE id = %s;", (aceitacao_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Excluiu aceitação ID {aceitacao_id}")
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error deleting aceitacao:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao excluir aceitação."}), 500
+
+
+@app.route('/api/aceitacoes/upload-photos', methods=['POST', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/aceitacoes/upload-photos/', methods=['POST', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_aceitacoes_upload_photos():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    try:
+        import uuid
+        files = request.files.getlist('photos')
+        if not files and 'photo' in request.files:
+            files = [request.files['photo']]
+        if not files and 'file' in request.files:
+            files = [request.files['file']]
+
+        if not files:
+            return jsonify({"error": "Nenhuma foto foi enviada."}), 400
+
+        aceitacoes_dir = os.path.join(UPLOAD_FOLDER, 'aceitacoes')
+        os.makedirs(aceitacoes_dir, exist_ok=True)
+
+        uploaded_urls = []
+        for f in files:
+            if not f or not f.filename:
+                continue
+            ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else 'jpg'
+            if ext not in ALLOWED_IMAGE_EXTENSIONS:
+                ext = 'jpg'
+            
+            safe_name = f"acc_{uuid.uuid4().hex[:12]}.{ext}"
+            target_path = os.path.join(aceitacoes_dir, safe_name)
+            f.save(target_path)
+            uploaded_urls.append(f"/uploads/aceitacoes/{safe_name}")
+
+        return jsonify({"success": True, "urls": uploaded_urls, "photos": uploaded_urls}), 200
+    except Exception as e:
+        print("Error uploading aceitacao photos:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao fazer upload das fotos."}), 500
+
+
+@app.route('/api/aceitacoes/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_aceitacoes_export():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                os, created_date, created_by, responsible, status, acceptance_date, observations,
+                COALESCE(photos, '[]'::jsonb) AS photos
+            FROM aceitacoes 
+            ORDER BY id ASC;
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        output = io.StringIO()
+        output.write('\ufeff') # UTF-8 BOM for Excel
+        writer = csv.writer(output, delimiter=';')
+
+        # Header matching the user's Excel sheet
+        writer.writerow(['OS', 'Data', 'Criada por', 'Responsável', 'Status', 'Data da aceitação', 'Observações', 'Qtd Fotos'])
+
+        for r in rows:
+            c_date_str = r['created_date'].strftime('%d/%m/%Y') if r.get('created_date') else ''
+            acc_date_str = r['acceptance_date'].strftime('%d/%m/%Y') if r.get('acceptance_date') else ''
+            
+            photos_list = r.get('photos') or []
+            if isinstance(photos_list, str):
+                try: photos_list = json.loads(photos_list)
+                except Exception: photos_list = []
+
+            writer.writerow([
+                r['os'] or '',
+                c_date_str,
+                r['created_by'] or '',
+                r['responsible'] or '',
+                r['status'] or '',
+                acc_date_str,
+                (r['observations'] or '').replace('\n', ' ').strip(),
+                len(photos_list)
+            ])
+
+        output.seek(0)
+        filename = f"aceitacao_rede_externa_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+    except Exception as e:
+        print("Error exporting aceitacoes:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao exportar dados da aceitação."}), 500
+
 
 @app.route('/api/live-alerts', methods=['GET'], strict_slashes=False)
 @login_required

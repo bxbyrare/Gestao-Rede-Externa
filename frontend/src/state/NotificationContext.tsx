@@ -1,14 +1,14 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ShieldCheck, Star, BarChart3, BellRing, X, ExternalLink
+  ShieldCheck, Star, BarChart3, BellRing, X, ExternalLink, CheckSquare
 } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from './AuthContext';
 
 export interface LiveAlert {
   id: number | string;
-  category: 'auditoria' | 'avaliacao' | 'indicadores' | 'sistema';
+  category: 'auditoria' | 'aceitacao' | 'avaliacao' | 'indicadores' | 'sistema';
   title: string;
   message: string;
   link?: string;
@@ -347,6 +347,19 @@ function getCategoryConfig(category: LiveAlert['category']) {
         badgeText: 'text-sky-300',
         glowColor: 'rgba(14, 165, 233, 0.25)',
         progressBg: 'bg-sky-500',
+      };
+    case 'aceitacao':
+      return {
+        label: 'Aceitação OS',
+        icon: CheckSquare,
+        cardBg: 'bg-[#0f1d24]/95',
+        cardBorder: 'border-cyan-500/30',
+        iconBg: 'bg-cyan-500/20',
+        iconColor: 'text-cyan-400',
+        badgeBg: 'bg-cyan-500/20',
+        badgeText: 'text-cyan-300',
+        glowColor: 'rgba(6, 182, 212, 0.25)',
+        progressBg: 'bg-cyan-500',
       };
     case 'avaliacao':
       return {

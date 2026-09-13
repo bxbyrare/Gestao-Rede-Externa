@@ -17,6 +17,7 @@ import IndicatorsPage from './pages/IndicatorsPage';
 import ProjectsPage from './pages/ProjectsPage';
 import BuscadorPage from './pages/BuscadorPage';
 import AuditoriaPage from './pages/AuditoriaPage';
+import AceitacaoPage from './pages/AceitacaoPage';
 import FormulariosPage from './pages/FormulariosPage';
 import EscalaPage from './pages/EscalaPage';
 import RotasPage from './pages/RotasPage';
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="veiculos" element={<VehiclesPage />} />
             <Route path="buscador" element={<BuscadorPage />} />
             <Route path="auditoria" element={<AuditoriaPage />} />
+            <Route path="aceitacao" element={<AceitacaoPage />} />
             <Route path="mapa-eventos" element={<MapaEventosPage />} />
             <Route path="financeiro" element={<FinancePage />} />
             <Route path="escala" element={<EscalaPage />} />
