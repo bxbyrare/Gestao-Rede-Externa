@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ExternalLink, File, FolderOpen, FolderPlus, Home, Paperclip, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, ExternalLink, File, FolderOpen, FolderPlus, Home, Paperclip, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Project, ProjectFolder } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Textarea } from '../components/ui';
@@ -28,6 +28,7 @@ export default function ProjectsPage() {
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
   const [folderModalOpen, setFolderModalOpen] = useState(false);
@@ -45,19 +46,48 @@ export default function ProjectsPage() {
 
   const currentFolderId = crumbs[crumbs.length - 1].id;
 
-  function load(folderId: number | null) {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  function load(folderId: number | null, query: string = debouncedSearch) {
     setLoading(true);
-    api.get<{ folders: ProjectFolder[]; projects: Project[] }>('/api/folders', { parent_id: folderId ?? undefined })
-      .then((res) => { setFolders(sortFoldersByLeadingNumber(res.folders)); setProjects(res.projects); })
+    const params: Record<string, any> = {};
+    if (query) {
+      params.search = query;
+    } else if (folderId !== null) {
+      params.parent_id = folderId;
+    }
+    api.get<{ folders: ProjectFolder[]; projects: Project[] }>('/api/folders', params)
+      .then((res) => {
+        setFolders(sortFoldersByLeadingNumber(res.folders));
+        setProjects(res.projects);
+      })
+      .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(currentFolderId); }, [currentFolderId]);
+  useEffect(() => {
+    load(currentFolderId, debouncedSearch);
+  }, [currentFolderId, debouncedSearch]);
 
   function enterFolder(folder: ProjectFolder) {
-    setCrumbs((c) => [...c, { id: folder.id, name: folder.name }]);
+    if (debouncedSearch) {
+      setSearch('');
+      setDebouncedSearch('');
+      setCrumbs([{ id: null, name: 'Projetos' }, { id: folder.id, name: folder.name }]);
+    } else {
+      setCrumbs((c) => [...c, { id: folder.id, name: folder.name }]);
+    }
   }
   function goToCrumb(idx: number) {
+    if (debouncedSearch) {
+      setSearch('');
+      setDebouncedSearch('');
+    }
     setCrumbs((c) => c.slice(0, idx + 1));
   }
 
@@ -173,29 +203,47 @@ export default function ProjectsPage() {
         }
       />
 
-      <div className="relative mb-6 max-w-md">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar pastas ou projetos por nome, área..."
-          className="pl-11 rounded-full"
-        />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar pastas ou projetos em todo o sistema..."
+            className="pl-11 pr-10 rounded-full"
+          />
+          {search && (
+            <button
+              onClick={() => { setSearch(''); setDebouncedSearch(''); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-[var(--color-text-faint)] hover:text-[var(--color-text)] hover:bg-white/[0.08] transition-colors"
+              title="Limpar busca"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        {debouncedSearch && (
+          <span className="text-xs bg-[var(--color-accent-dim)] text-[var(--color-accent)] px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 w-fit">
+            Buscando por "{debouncedSearch}" em todas as pastas
+          </span>
+        )}
       </div>
 
-      <div className="flex items-center gap-1.5 mb-6 text-sm flex-wrap">
-        {crumbs.map((c, idx) => (
-          <span key={idx} className="flex items-center gap-1.5">
-            {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-[var(--color-text-faint)]" />}
-            <button
-              onClick={() => goToCrumb(idx)}
-              className={`flex items-center gap-1 hover:text-[var(--color-text)] transition-colors ${idx === crumbs.length - 1 ? 'font-bold text-[var(--color-text)]' : 'text-[var(--color-text-muted)]'}`}
-            >
-              {idx === 0 && <Home className="w-3.5 h-3.5" />} {c.name}
-            </button>
-          </span>
-        ))}
-      </div>
+      {!debouncedSearch && (
+        <div className="flex items-center gap-1.5 mb-6 text-sm flex-wrap">
+          {crumbs.map((c, idx) => (
+            <span key={idx} className="flex items-center gap-1.5">
+              {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-[var(--color-text-faint)]" />}
+              <button
+                onClick={() => goToCrumb(idx)}
+                className={`flex items-center gap-1 hover:text-[var(--color-text)] transition-colors ${idx === crumbs.length - 1 ? 'font-bold text-[var(--color-text)]' : 'text-[var(--color-text-muted)]'}`}
+              >
+                {idx === 0 && <Home className="w-3.5 h-3.5" />} {c.name}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-[var(--color-text-muted)]">Carregando...</p>

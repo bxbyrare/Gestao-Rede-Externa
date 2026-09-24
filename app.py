@@ -2981,26 +2981,42 @@ def get_recursive_folder_counts(conn, folder_ids):
 @login_required
 def api_get_folders():
     parent_id = request.args.get('parent_id')
+    search = request.args.get('search', '').strip()
     if parent_id == 'null' or parent_id == '' or parent_id is None:
         parent_id = None
     else:
-        parent_id = int(parent_id)
+        try:
+            parent_id = int(parent_id)
+        except (ValueError, TypeError):
+            parent_id = None
         
     try:
         conn = get_db()
         cur = conn.cursor()
         
-        if parent_id is None:
-            cur.execute("SELECT * FROM project_folders WHERE parent_id IS NULL ORDER BY name ASC;")
+        if search:
+            search_pattern = f"%{search.lower()}%"
+            cur.execute("SELECT * FROM project_folders WHERE LOWER(name) LIKE %s ORDER BY name ASC;", (search_pattern,))
+            folders = cur.fetchall()
+            
+            cur.execute("""
+                SELECT * FROM projects 
+                WHERE LOWER(name) LIKE %s OR LOWER(COALESCE(description, '')) LIKE %s OR LOWER(COALESCE(area, '')) LIKE %s 
+                ORDER BY created_at DESC;
+            """, (search_pattern, search_pattern, search_pattern))
+            projects = cur.fetchall()
         else:
-            cur.execute("SELECT * FROM project_folders WHERE parent_id = %s ORDER BY name ASC;", (parent_id,))
-        folders = cur.fetchall()
-        
-        if parent_id is None:
-            cur.execute("SELECT * FROM projects WHERE folder_id IS NULL ORDER BY created_at DESC;")
-        else:
-            cur.execute("SELECT * FROM projects WHERE folder_id = %s ORDER BY created_at DESC;", (parent_id,))
-        projects = cur.fetchall()
+            if parent_id is None:
+                cur.execute("SELECT * FROM project_folders WHERE parent_id IS NULL ORDER BY name ASC;")
+            else:
+                cur.execute("SELECT * FROM project_folders WHERE parent_id = %s ORDER BY name ASC;", (parent_id,))
+            folders = cur.fetchall()
+            
+            if parent_id is None:
+                cur.execute("SELECT * FROM projects WHERE folder_id IS NULL ORDER BY created_at DESC;")
+            else:
+                cur.execute("SELECT * FROM projects WHERE folder_id = %s ORDER BY created_at DESC;", (parent_id,))
+            projects = cur.fetchall()
         
         folder_ids = [f['id'] for f in folders]
         rec_counts = get_recursive_folder_counts(conn, folder_ids)
