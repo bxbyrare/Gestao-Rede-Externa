@@ -5696,6 +5696,68 @@ def api_delete_user_task(task_id):
     conn.close()
     return jsonify({'message': 'Tarefa excluída com sucesso!'})
 
+@app.route('/api/user-tasks/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_export_user_tasks():
+    user_id = session.get('user_id')
+    user_role = session.get('role', '')
+    username = (session.get('username') or '').lower()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        if username == 'alexandre.candido' or user_role in ['Administrador', 'Admin']:
+            cur.execute("""
+                SELECT id, title, priority, due_date, assigned_tech_name, description, status, created_at
+                FROM user_tasks
+                WHERE user_id = %s OR user_id IS NULL
+                ORDER BY CASE WHEN status = 'Pendente' THEN 1 WHEN status = 'Em Andamento' THEN 2 ELSE 3 END, created_at DESC;
+            """, (user_id,))
+        else:
+            cur.execute("""
+                SELECT id, title, priority, due_date, assigned_tech_name, description, status, created_at
+                FROM user_tasks
+                WHERE user_id = %s
+                ORDER BY CASE WHEN status = 'Pendente' THEN 1 WHEN status = 'Em Andamento' THEN 2 ELSE 3 END, created_at DESC;
+            """, (user_id,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        output = io.StringIO()
+        output.write('\ufeff') # UTF-8 BOM for Excel
+        writer = csv.writer(output, delimiter=';')
+
+        # Header columns
+        writer.writerow(['ID', 'Título / Projeto', 'Status', 'Prioridade', 'Responsável', 'Prazo', 'Descrição / Acompanhamento', 'Data de Criação'])
+
+        for r in rows:
+            due_str = r['due_date'].strftime('%d/%m/%Y') if r.get('due_date') else ''
+            created_str = r['created_at'].strftime('%d/%m/%Y %H:%M') if r.get('created_at') else ''
+            desc_clean = (r.get('description') or '').replace('\n', ' ').strip()
+
+            writer.writerow([
+                r['id'],
+                r['title'] or '',
+                r['status'] or 'Pendente',
+                r['priority'] or 'Média',
+                r['assigned_tech_name'] or '—',
+                due_str,
+                desc_clean,
+                created_str
+            ])
+
+        output.seek(0)
+        filename = f"projetos_area_de_trabalho_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+    except Exception as e:
+        print("Error exporting user tasks:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao exportar tarefas da área de trabalho."}), 500
+
 # ==========================================================================
 # COLLABORATOR EVALUATIONS API (AVALIAÇÃO TÉCNICA FFA & PROCISA)
 # ==========================================================================

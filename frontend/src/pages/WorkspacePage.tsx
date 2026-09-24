@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Download, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician, UserTask } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
@@ -99,9 +99,19 @@ export default function WorkspacePage() {
         title="Área de Trabalho"
         subtitle="Suas tarefas pessoais de acompanhamento"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4" /> Nova Tarefa
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => { window.location.href = '/api/user-tasks/export'; }}
+              className="gap-2 text-xs"
+            >
+              <Download className="w-4 h-4 text-[var(--color-primary)]" />
+              Exportar
+            </Button>
+            <Button onClick={openCreate} className="gap-2 text-xs shadow-[0_0_20px_rgba(238,44,36,0.3)]">
+              <Plus className="w-4 h-4" /> Nova Tarefa
+            </Button>
+          </div>
         }
       />
 
