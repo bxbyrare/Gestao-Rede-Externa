@@ -4,12 +4,32 @@ import { Card, PageHeader, Select, Textarea } from '../components/ui';
 
 const AREAS = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos'];
 
-const MONTHS_LIST = [
-  'janeiro-26', 'fevereiro-26', 'março-26', 'abril-26', 'maio-26', 'junho-26',
-  'julho-26', 'agosto-26', 'setembro-26', 'outubro-26', 'novembro-26', 'dezembro-26',
-  'janeiro-27', 'fevereiro-27', 'março-27', 'abril-27', 'maio-27', 'junho-27',
-  'julho-27', 'agosto-27', 'setembro-27', 'outubro-27', 'novembro-27', 'dezembro-27',
+const MONTH_NAMES_PT = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
 ];
+
+function generateMonthsList(): string[] {
+  const list: string[] = [];
+  const years = [2025, 2026, 2027, 2028];
+  for (const y of years) {
+    const yr = String(y).slice(-2);
+    for (const m of MONTH_NAMES_PT) {
+      list.push(`${m}-${yr}`);
+    }
+  }
+  return list;
+}
+
+const MONTHS_LIST = generateMonthsList();
+
+function getCurrentMonthKey(): string {
+  const now = new Date();
+  const m = MONTH_NAMES_PT[now.getMonth()];
+  const yr = String(now.getFullYear()).slice(-2);
+  const key = `${m}-${yr}`;
+  return MONTHS_LIST.includes(key) ? key : `${MONTH_NAMES_PT[now.getMonth()]}-26`;
+}
 
 const THRESHOLDS: Record<string, number> = { ral: 90, rec: 85, hfc: 80, gpon: 70, me11: 90, me3_hfc: 25, me3_gpon: 25 };
 
@@ -152,7 +172,7 @@ function TimeTable({ title, keyName, rows, onChange }: { title: string; keyName:
 }
 
 export default function IndicatorsPage() {
-  const [month, setMonth] = useState('julho-26');
+  const [month, setMonth] = useState<string>(getCurrentMonthKey);
   const [data, setData] = useState<IndicatorData>(defaultData());
   const [status, setStatus] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

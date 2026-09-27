@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ExternalLink, File, FolderOpen, FolderPlus, Home, Paperclip, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronRight, Download, ExternalLink, File, FolderOpen, FolderPlus, Home, MessageCircle, Paperclip, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Project, ProjectFolder } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Textarea } from '../components/ui';
@@ -19,6 +19,42 @@ function sortFoldersByLeadingNumber(folders: ProjectFolder[]): ProjectFolder[] {
   });
 }
 
+function getProjectFiles(p: Project): { name: string; url: string; type: string }[] {
+  const list: { name: string; url: string; type: string }[] = [];
+  if (p.kmz_path) {
+    p.kmz_path.split(';').forEach((path) => {
+      const clean = path.trim();
+      if (clean) {
+        list.push({
+          name: clean.split('/').pop() || clean,
+          url: `/uploads/${clean}`,
+          type: 'KMZ/KML'
+        });
+      }
+    });
+  }
+  if (p.pdf_path) {
+    p.pdf_path.split(';').forEach((path) => {
+      const clean = path.trim();
+      if (clean) {
+        list.push({
+          name: clean.split('/').pop() || clean,
+          url: `/uploads/${clean}`,
+          type: 'Documento / PDF'
+        });
+      }
+    });
+  }
+  return list;
+}
+
+function shareProjectWhatsapp(p: Project) {
+  const publicUrl = `${window.location.origin}/p/project/${p.id}`;
+  const text = `*PROJETO DE REDE:* ${p.name}${p.area ? `\n*Área:* ${p.area}` : ''}${p.description ? `\n*Descrição:* ${p.description}` : ''}\n\n*Acesse o projeto e baixe os arquivos aqui:* ${publicUrl}`;
+  const zapUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+  window.open(zapUrl, '_blank');
+}
+
 const emptyProjectForm = { name: '', description: '', area: '' };
 
 export default function ProjectsPage() {
@@ -36,6 +72,7 @@ export default function ProjectsPage() {
   const [editingFolder, setEditingFolder] = useState<ProjectFolder | null>(null);
 
   const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [downloadProjectModal, setDownloadProjectModal] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectForm, setProjectForm] = useState(emptyProjectForm);
   const [kmzFiles, setKmzFiles] = useState<FileList | null>(null);
@@ -280,19 +317,89 @@ export default function ProjectsPage() {
               <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-faint)]">
                 <Paperclip className="w-3 h-3" /> {attachmentCount(p)} anexo(s)
               </div>
-              <div className="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
-                <a href={`/p/project/${p.id}`} target="_blank" rel="noopener noreferrer" className="flex-1 h-9 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors">
-                  <ExternalLink className="w-3.5 h-3.5" /> Ver Público
+              <div className="flex items-center gap-1.5 mt-auto pt-2 border-t border-white/5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => shareProjectWhatsapp(p)}
+                  title="Enviar por WhatsApp"
+                  className="h-8 px-2.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" /> Zap
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const files = getProjectFiles(p);
+                    if (files.length === 0) {
+                      alert('Nenhum arquivo anexado a este projeto.');
+                      return;
+                    }
+                    if (files.length === 1) {
+                      window.open(files[0].url, '_blank');
+                      return;
+                    }
+                    setDownloadProjectModal(p);
+                  }}
+                  title={attachmentCount(p) > 0 ? "Baixar arquivos" : "Sem anexos"}
+                  className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 text-xs font-semibold transition-colors ${
+                    attachmentCount(p) > 0
+                      ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20 hover:text-sky-300'
+                      : 'bg-white/[0.02] border-white/5 text-[var(--color-text-faint)] opacity-40 cursor-not-allowed'
+                  }`}
+                  disabled={attachmentCount(p) === 0}
+                >
+                  <Download className="w-3.5 h-3.5" /> Baixar
+                </button>
+                <a
+                  href={`/p/project/${p.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Ver página pública"
+                  className="h-8 px-2.5 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Público
                 </a>
-                <button onClick={() => openEditProject(p)} aria-label="Editar projeto" className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-4 h-4" /></button>
-                {canManage && (
-                  <button onClick={() => deleteProject(p)} aria-label="Excluir projeto" className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-4 h-4" /></button>
-                )}
+                <div className="flex items-center gap-1 ml-auto">
+                  <button onClick={() => openEditProject(p)} aria-label="Editar projeto" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-3.5 h-3.5" /></button>
+                  {canManage && (
+                    <button onClick={() => deleteProject(p)} aria-label="Excluir projeto" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-3.5 h-3.5" /></button>
+                  )}
+                </div>
               </div>
             </Card>
           ))}
         </div>
       )}
+
+      <Modal
+        open={!!downloadProjectModal}
+        onClose={() => setDownloadProjectModal(null)}
+        title={downloadProjectModal ? `Arquivos: ${downloadProjectModal.name}` : 'Baixar Arquivos'}
+        footer={<Button variant="ghost" onClick={() => setDownloadProjectModal(null)}>Fechar</Button>}
+      >
+        {downloadProjectModal && (
+          <div className="space-y-2.5">
+            <p className="text-xs text-[var(--color-text-muted)] mb-3">Selecione o arquivo que deseja baixar:</p>
+            {getProjectFiles(downloadProjectModal).map((file, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/10 gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate text-[var(--color-text)]">{file.name}</div>
+                  <div className="text-[11px] text-[var(--color-text-faint)]">{file.type}</div>
+                </div>
+                <a
+                  href={file.url}
+                  download={file.name}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-8 px-3 rounded-full bg-[var(--color-primary-dim)] border border-[var(--color-primary)]/30 text-[var(--color-primary)] text-xs font-semibold flex items-center gap-1.5 hover:bg-[var(--color-primary)] hover:text-white transition-colors shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" /> Baixar
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
 
       <Modal
         open={folderModalOpen}

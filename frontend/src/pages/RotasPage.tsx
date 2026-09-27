@@ -97,7 +97,16 @@ export default function RotasPage() {
       <PageHeader
         title="Rotas"
         subtitle="Medições de rotas e arquivos técnicos por trecho"
-        actions={<Button onClick={openCreateRoute}><Plus className="w-4 h-4" /> Nova Rota</Button>}
+        actions={
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => { window.location.href = '/api/routes/export'; }}>
+              <Download className="w-4 h-4 text-[var(--color-primary)]" /> Exportar CSV
+            </Button>
+            <Button onClick={openCreateRoute}>
+              <Plus className="w-4 h-4" /> Nova Rota
+            </Button>
+          </div>
+        }
       />
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">

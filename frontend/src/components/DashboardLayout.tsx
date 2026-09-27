@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
-  ClipboardCheck, Boxes, FolderKanban, FileText, Route as RouteIcon, BarChart3,
+  ClipboardCheck, FolderKanban, FileText, Route as RouteIcon, BarChart3,
   Settings, Menu, X, LogOut, BellRing, ShieldCheck, CheckSquare,
 } from 'lucide-react';
-import { useAuth, isCoordenador, isCoordenadorClaro } from '../state/AuthContext';
+import { useAuth } from '../state/AuthContext';
 import LiquidEther from './LiquidEther';
 import GlassIcon from './GlassIcon';
 
@@ -38,20 +38,21 @@ function companyLogoNeedsWhiteBg(company: string | null | undefined): boolean {
 
 const NAV_ITEMS = [
   { to: '/', label: 'Favoritos', icon: Star, end: true },
+  { to: '/area-de-trabalho', label: 'Área de Trabalho', icon: Briefcase },
   { to: '/pessoas', label: 'Pessoas', icon: Users },
   { to: '/veiculos', label: 'Veículos', icon: Truck },
   { to: '/buscador', label: 'Buscador', icon: Search },
   { to: '/auditoria', label: 'Auditoria', icon: ShieldCheck },
   { to: '/aceitacao', label: 'Aceitação', icon: CheckSquare },
   { to: '/mapa-eventos', label: 'Mapa de Eventos', icon: MapPinned },
-  { to: '/financeiro', label: 'Financeiro', icon: Wallet },
-  { to: '/escala', label: 'Escala', icon: CalendarDays },
   { to: '/avaliacao', label: 'Avaliação', icon: ClipboardCheck },
-  { to: '/inventario', label: 'Inventário', icon: Boxes },
   { to: '/projetos', label: 'Projetos', icon: FolderKanban },
   { to: '/formularios', label: 'Formulários', icon: FileText },
   { to: '/rotas', label: 'Rotas', icon: RouteIcon },
   { to: '/indicadores', label: 'Indicadores', icon: BarChart3 },
+  { to: '/escala', label: 'Escala', icon: CalendarDays, inDev: true },
+  { to: '/financeiro', label: 'Financeiro', icon: Wallet, inDev: true },
+  { to: '/notificacoes', label: 'Notificações', icon: BellRing },
   { to: '/gerenciamento', label: 'Gerenciamento', icon: Settings },
 ];
 
@@ -60,12 +61,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  let items = user && isCoordenador(user)
-    ? [{ to: '/area-de-trabalho', label: 'Área de Trabalho', icon: Briefcase }, ...NAV_ITEMS]
-    : NAV_ITEMS;
-  if (user && isCoordenadorClaro(user)) {
-    items = [...items, { to: '/notificacoes', label: 'Notificações', icon: BellRing }];
-  }
+  const items = NAV_ITEMS;
 
   async function handleLogout() {
     await logout();
@@ -108,24 +104,37 @@ export default function DashboardLayout() {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1" aria-label="Navegação principal">
           {items.map((item) => {
             const Icon = item.icon;
+            const isInDev = !!item.inDev;
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
                 onClick={() => setMobileNavOpen(false)}
-                className={({ isActive }) =>
-                  `group flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                className={({ isActive }) => {
+                  if (isInDev) {
+                    return `group flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                      isActive
+                        ? 'bg-sky-500/20 text-sky-300 shadow-[0_0_20px_rgba(14,165,233,0.3)] border border-sky-400/40'
+                        : 'text-sky-400 bg-sky-500/[0.08] hover:bg-sky-500/[0.16] hover:text-sky-200 border border-sky-500/30'
+                    }`;
+                  }
+                  return `group flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
                     isActive
                       ? 'bg-white/[0.08] text-[var(--color-primary)] shadow-[0_0_20px_rgba(238,44,36,0.15)] border border-white/10'
                       : 'text-[var(--color-text-muted)] hover:bg-white/[0.04] hover:text-white border border-transparent'
-                  }`
-                }
+                  }`;
+                }}
               >
                 {({ isActive }) => (
                   <>
                     <GlassIcon icon={Icon} active={isActive} size={16} />
                     <span className="truncate">{item.label}</span>
+                    {isInDev && (
+                      <span className="ml-auto text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md font-bold bg-sky-500/25 text-sky-200 border border-sky-400/40">
+                        DEV
+                      </span>
+                    )}
                   </>
                 )}
               </NavLink>

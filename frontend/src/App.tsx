@@ -8,7 +8,6 @@ import FavoritesPage from './pages/FavoritesPage';
 import PessoasPage from './pages/PessoasPage';
 import MapaEventosPage from './pages/MapaEventosPage';
 import VehiclesPage from './pages/VehiclesPage';
-import InventoryPage from './pages/InventoryPage';
 import UsersPage from './pages/UsersPage';
 import EvaluationsPage from './pages/EvaluationsPage';
 import WorkspacePage from './pages/WorkspacePage';
@@ -48,7 +47,6 @@ export default function App() {
             <Route path="financeiro" element={<FinancePage />} />
             <Route path="escala" element={<EscalaPage />} />
             <Route path="avaliacao" element={<EvaluationsPage />} />
-            <Route path="inventario" element={<InventoryPage />} />
             <Route path="projetos" element={<ProjectsPage />} />
             <Route path="formularios" element={<FormulariosPage />} />
             <Route path="rotas" element={<RotasPage />} />

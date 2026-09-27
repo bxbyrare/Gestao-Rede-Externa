@@ -2174,6 +2174,51 @@ def api_export_route_lines(route_id):
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
+@app.route('/api/routes/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_export_all_routes():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT r.id, r.name, r.type, r.description, r.created_at,
+                   COUNT(rl.id) AS lines_count
+            FROM routes r
+            LEFT JOIN route_lines rl ON r.id = rl.route_id
+            GROUP BY r.id, r.name, r.type, r.description, r.created_at
+            ORDER BY r.created_at DESC;
+        """)
+        routes = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        output = io.StringIO()
+        output.write('\ufeff')
+        writer = csv.writer(output, delimiter=';')
+        writer.writerow(["ID", "Nome da Rota", "Tipo", "Descrição", "Qtd Medições", "Data Cadastro"])
+
+        for r in routes:
+            dta = r['created_at'].strftime('%d/%m/%Y %H:%M') if r['created_at'] else ''
+            writer.writerow([
+                r['id'],
+                r['name'] or '',
+                r['type'] or '',
+                (r['description'] or '').replace('\n', ' ').replace('\r', ''),
+                r['lines_count'],
+                dta
+            ])
+
+        from flask import Response
+        filename = f"relatorio_todas_rotas_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv",
+            headers={"Content-disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        print("Backend error log:", e)
+        return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
 @app.route('/api/routes/<int:route_id>/bulk', methods=['POST'], strict_slashes=False)
 @login_required
 def api_bulk_import_route_lines(route_id):
@@ -3726,8 +3771,12 @@ def api_finance_consumables_detail(record_id):
 
 @app.route('/api/finance/export', methods=['GET'])
 @login_required
-@coordenador_claro_required
 def api_export_finance():
+    user_role = session.get('role', '')
+    username = (session.get('username') or '').lower()
+    company = (session.get('company') or '').lower()
+    if username != 'alexandre.candido' and user_role not in ['Administrador', 'Admin', 'Coordenador', 'Supervisor'] and company != 'claro':
+        return jsonify({"error": "Acesso não autorizado."}), 403
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -3753,6 +3802,7 @@ def api_export_finance():
         conn.close()
 
         output = io.StringIO()
+        output.write('\ufeff')
         writer = csv.writer(output, delimiter=';')
         writer.writerow(["Tipo Lançamento", "Mês Referência", "Descrição / Pessoas", "Área de Trabalho", "Valor Mensal (R$)", "Data Registro"])
 
@@ -5594,13 +5644,11 @@ def api_mapa_eventos_projection():
                 pass
 
 # ==========================================================================
-# USER TASKS API (ÁREA DE TRABALHO EXCLUSIVA DO ADMIN ALEXANDRE.CANDIDO)
+# USER TASKS API (ÁREA DE TRABALHO PESSOAL POR USUÁRIO)
 # ==========================================================================
 @app.route('/api/user-tasks', methods=['GET'])
 @login_required
 def api_get_user_tasks():
-    if session.get('username', '').lower() != 'alexandre.candido':
-        return jsonify({'error': 'Acesso restrito ao administrador máximo (alexandre.candido).'}), 403
     user_id = session.get('user_id')
     conn = get_db()
     cur = conn.cursor()
@@ -5632,8 +5680,6 @@ def api_get_user_tasks():
 @app.route('/api/user-tasks', methods=['POST'])
 @login_required
 def api_create_user_task():
-    if session.get('username', '').lower() != 'alexandre.candido':
-        return jsonify({'error': 'Acesso restrito ao administrador máximo (alexandre.candido).'}), 403
     user_id = session.get('user_id')
     data = request.json or {}
     title = (data.get('title') or '').strip()
@@ -5662,8 +5708,6 @@ def api_create_user_task():
 @app.route('/api/user-tasks/<int:task_id>', methods=['PUT'])
 @login_required
 def api_update_user_task(task_id):
-    if session.get('username', '').lower() != 'alexandre.candido':
-        return jsonify({'error': 'Acesso restrito ao administrador máximo (alexandre.candido).'}), 403
     user_id = session.get('user_id')
     data = request.json or {}
     conn = get_db()
@@ -5701,8 +5745,6 @@ def api_update_user_task(task_id):
 @app.route('/api/user-tasks/<int:task_id>', methods=['DELETE'])
 @login_required
 def api_delete_user_task(task_id):
-    if session.get('username', '').lower() != 'alexandre.candido':
-        return jsonify({'error': 'Acesso restrito ao administrador máximo (alexandre.candido).'}), 403
     user_id = session.get('user_id')
     conn = get_db()
     cur = conn.cursor()
@@ -5716,25 +5758,15 @@ def api_delete_user_task(task_id):
 @login_required
 def api_export_user_tasks():
     user_id = session.get('user_id')
-    user_role = session.get('role', '')
-    username = (session.get('username') or '').lower()
     try:
         conn = get_db()
         cur = conn.cursor()
-        if username == 'alexandre.candido' or user_role in ['Administrador', 'Admin']:
-            cur.execute("""
-                SELECT id, title, priority, due_date, assigned_tech_name, description, status, created_at
-                FROM user_tasks
-                WHERE user_id = %s OR user_id IS NULL
-                ORDER BY CASE WHEN status = 'Pendente' THEN 1 WHEN status = 'Em Andamento' THEN 2 ELSE 3 END, created_at DESC;
-            """, (user_id,))
-        else:
-            cur.execute("""
-                SELECT id, title, priority, due_date, assigned_tech_name, description, status, created_at
-                FROM user_tasks
-                WHERE user_id = %s
-                ORDER BY CASE WHEN status = 'Pendente' THEN 1 WHEN status = 'Em Andamento' THEN 2 ELSE 3 END, created_at DESC;
-            """, (user_id,))
+        cur.execute("""
+            SELECT id, title, priority, due_date, assigned_tech_name, description, status, created_at
+            FROM user_tasks
+            WHERE user_id = %s
+            ORDER BY CASE WHEN status = 'Pendente' THEN 1 WHEN status = 'Em Andamento' THEN 2 ELSE 3 END, created_at DESC;
+        """, (user_id,))
         rows = cur.fetchall()
         cur.close()
         conn.close()
