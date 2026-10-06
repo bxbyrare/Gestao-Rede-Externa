@@ -432,6 +432,12 @@ def init_db():
                 UNIQUE(tech_id, date)
             );
         """)
+        try:
+            cur.execute("ALTER TABLE work_schedules ADD COLUMN IF NOT EXISTS work_hours VARCHAR(50) DEFAULT '08 às 17:48hs';")
+            cur.execute("ALTER TABLE work_schedules ADD COLUMN IF NOT EXISTS on_call VARCHAR(50) DEFAULT '0';")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_work_schedules_tech_date ON work_schedules (tech_id, date);")
+        except Exception:
+            conn.rollback()
 
         # Seed default Inventário - Maquinário form if not existing
         cur.execute("SELECT id FROM forms WHERE slug = 'inventario-maquinario';")
@@ -804,7 +810,7 @@ def is_user_coordenador_claro(user_id):
         conn = get_db()
         cur = conn.cursor()
         cur.execute("""
-            SELECT u.role, t.company 
+            SELECT u.username, u.role, t.company 
             FROM users u 
             LEFT JOIN technicians t ON u.tech_id = t.id 
             WHERE u.id = %s;
@@ -814,9 +820,14 @@ def is_user_coordenador_claro(user_id):
         conn.close()
         if not row:
             return False
-        role_val = (row['role'] or '').strip().lower()
-        company_val = (row['company'] or '').strip().lower()
-        return (role_val in ['coordenador', 'admin']) and (company_val == 'claro')
+        user_name = (row.get('username') or '').strip().lower()
+        if user_name == 'alexandre.candido':
+            return True
+        role_val = (row.get('role') or '').strip().lower()
+        company_val = (row.get('company') or '').strip().lower()
+        if role_val in ['administrador', 'admin']:
+            return True
+        return (role_val in ['coordenador', 'supervisor']) and (company_val == 'claro')
     except Exception:
         return False
 
@@ -826,7 +837,7 @@ def coordenador_claro_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         if not is_user_coordenador_claro(session['user_id']):
-            return jsonify({"error": "Você não é um Coordenador Claro, se isto é um erro contate nossa equipe de TI."}), 403
+            return jsonify({"error": "Acesso restrito: Apenas Coordenadores da Claro possuem permissão para exportar esta base."}), 403
         return f(*args, **kwargs)
     return decorated_function
 
@@ -1272,28 +1283,28 @@ def api_get_technicians():
 @login_required
 def api_create_technician():
     try:
-        # Form values (multipart form because of uniform specifications)
-        name = request.form.get('name', '').strip()
-        cpf = request.form.get('cpf', '').strip() or None
-        phone = request.form.get('phone', '').strip() or None
-        identity = request.form.get('identity', '').strip() or None
-        dob = request.form.get('dob', '').strip() or None
-        role = request.form.get('role', '').strip() or 'Técnico'
-        area = request.form.get('area', '').strip() or None
-        team_type = request.form.get('team_type', '').strip() or None
-        shirt_size = request.form.get('shirt_size', '').strip() or None
-        boot_size = request.form.get('boot_size', '').strip() or None
-        pants_size = request.form.get('pants_size', '').strip() or None
-        jacket_size = request.form.get('jacket_size', '').strip() or None
-        team = request.form.get('team', '').strip() or None
-        company = request.form.get('company', '').strip() or None
-        registration_claro = request.form.get('registration_claro', '').strip() or None
-        registration_third = request.form.get('registration_third', '').strip() or None
-        toa_login = request.form.get('toa_login', '').strip() or None
-        phone_model = request.form.get('phone_model', '').strip() or None
-        imei_1 = request.form.get('imei_1', '').strip() or None
-        imei_2 = request.form.get('imei_2', '').strip() or None
-        email = request.form.get('email', '').strip() or None
+        data = request.get_json(silent=True) or (request.form.to_dict() if request.form else {})
+        name = str(data.get('name') or '').strip()
+        cpf = str(data.get('cpf') or '').strip() or None
+        phone = str(data.get('phone') or '').strip() or None
+        identity = str(data.get('identity') or '').strip() or None
+        dob = str(data.get('dob') or '').strip() or None
+        role = str(data.get('role') or '').strip() or 'Técnico'
+        area = str(data.get('area') or '').strip() or None
+        team_type = str(data.get('team_type') or '').strip() or None
+        shirt_size = str(data.get('shirt_size') or '').strip() or None
+        boot_size = str(data.get('boot_size') or '').strip() or None
+        pants_size = str(data.get('pants_size') or '').strip() or None
+        jacket_size = str(data.get('jacket_size') or '').strip() or None
+        team = str(data.get('team') or '').strip() or None
+        company = str(data.get('company') or '').strip() or None
+        registration_claro = str(data.get('registration_claro') or '').strip() or None
+        registration_third = str(data.get('registration_third') or '').strip() or None
+        toa_login = str(data.get('toa_login') or '').strip() or None
+        phone_model = str(data.get('phone_model') or '').strip() or None
+        imei_1 = str(data.get('imei_1') or '').strip() or None
+        imei_2 = str(data.get('imei_2') or '').strip() or None
+        email = str(data.get('email') or '').strip() or None
         
         if not name:
             return jsonify({"error": "Nome completo é obrigatório."}), 400
@@ -1346,27 +1357,28 @@ def api_create_technician():
 @login_required
 def api_update_technician(tech_id):
     try:
-        name = request.form.get('name', '').strip()
-        cpf = request.form.get('cpf', '').strip() or None
-        phone = request.form.get('phone', '').strip() or None
-        identity = request.form.get('identity', '').strip() or None
-        dob = request.form.get('dob', '').strip() or None
-        role = request.form.get('role', '').strip() or 'Técnico'
-        area = request.form.get('area', '').strip() or None
-        team_type = request.form.get('team_type', '').strip() or None
-        shirt_size = request.form.get('shirt_size', '').strip() or None
-        boot_size = request.form.get('boot_size', '').strip() or None
-        pants_size = request.form.get('pants_size', '').strip() or None
-        jacket_size = request.form.get('jacket_size', '').strip() or None
-        team = request.form.get('team', '').strip() or None
-        company = request.form.get('company', '').strip() or None
-        registration_claro = request.form.get('registration_claro', '').strip() or None
-        registration_third = request.form.get('registration_third', '').strip() or None
-        toa_login = request.form.get('toa_login', '').strip() or None
-        phone_model = request.form.get('phone_model', '').strip() or None
-        imei_1 = request.form.get('imei_1', '').strip() or None
-        imei_2 = request.form.get('imei_2', '').strip() or None
-        email = request.form.get('email', '').strip() or None
+        data = request.get_json(silent=True) or (request.form.to_dict() if request.form else {})
+        name = str(data.get('name') or '').strip()
+        cpf = str(data.get('cpf') or '').strip() or None
+        phone = str(data.get('phone') or '').strip() or None
+        identity = str(data.get('identity') or '').strip() or None
+        dob = str(data.get('dob') or '').strip() or None
+        role = str(data.get('role') or '').strip() or 'Técnico'
+        area = str(data.get('area') or '').strip() or None
+        team_type = str(data.get('team_type') or '').strip() or None
+        shirt_size = str(data.get('shirt_size') or '').strip() or None
+        boot_size = str(data.get('boot_size') or '').strip() or None
+        pants_size = str(data.get('pants_size') or '').strip() or None
+        jacket_size = str(data.get('jacket_size') or '').strip() or None
+        team = str(data.get('team') or '').strip() or None
+        company = str(data.get('company') or '').strip() or None
+        registration_claro = str(data.get('registration_claro') or '').strip() or None
+        registration_third = str(data.get('registration_third') or '').strip() or None
+        toa_login = str(data.get('toa_login') or '').strip() or None
+        phone_model = str(data.get('phone_model') or '').strip() or None
+        imei_1 = str(data.get('imei_1') or '').strip() or None
+        imei_2 = str(data.get('imei_2') or '').strip() or None
+        email = str(data.get('email') or '').strip() or None
         
         if not name:
             return jsonify({"error": "Nome completo é obrigatório."}), 400
@@ -3167,6 +3179,7 @@ def api_delete_folder(folder_id):
 # --- BULK AND EXPORTS ---
 @app.route('/api/technicians/export', methods=['GET'])
 @login_required
+@coordenador_claro_required
 def api_export_technicians():
     try:
         conn = get_db()

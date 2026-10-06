@@ -4,12 +4,14 @@ import { api, ApiError } from '../api/client';
 import type { Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
+import { useAuth, isCoordenadorClaro } from '../state/AuthContext';
 
 const ROLES = ['Técnico', 'Auxiliar', 'Supervisor', 'Coordenador', 'Administrativo', 'COP'];
-const COMPANIES = ['Claro', 'FFA', 'Procisa'];
+const COMPANIES = ['Claro', 'FFA', 'Procisa', 'Servilog'];
 const TEAM_TYPES = [
   { value: 'Fusão', label: 'Fusão (Emenda Fibra)' },
   { value: 'Lançamento', label: 'Lançamento (Cabeamento)' },
+  { value: 'MDU', label: 'MDU' },
   { value: 'Coaxial', label: 'Coaxial' },
   { value: 'Vistoriador Estático', label: 'Vistoriador Estático' },
   { value: 'Gestão', label: 'Gestão' },
@@ -25,6 +27,8 @@ const emptyForm: FormState = {
 };
 
 export default function PessoasPage() {
+  const { user } = useAuth();
+  const canExport = isCoordenadorClaro(user);
   const [people, setPeople] = useState<Technician[] | null>(null);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -143,9 +147,11 @@ export default function PessoasPage() {
         subtitle={people ? `${people.length} pessoas cadastradas` : 'Carregando...'}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { window.location.href = '/api/technicians/export'; }}>
-              <Download className="w-4 h-4" /> Exportar
-            </Button>
+            {canExport && (
+              <Button variant="outline" onClick={() => { window.location.href = '/api/technicians/export'; }}>
+                <Download className="w-4 h-4" /> Exportar
+              </Button>
+            )}
             <Button onClick={openCreate}>
               <Plus className="w-4 h-4" /> Cadastrar Técnico
             </Button>

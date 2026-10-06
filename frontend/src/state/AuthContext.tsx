@@ -54,15 +54,19 @@ export function useAuth(): AuthContextValue {
 
 export function isCoordenador(user: User | null): boolean {
   if (!user) return false;
-  const role = user.role;
-  return user.username.toLowerCase() === 'alexandre.candido' || ['Administrador', 'Admin', 'Coordenador', 'Supervisor'].includes(role);
+  const role = (user.role || '').toLowerCase();
+  const username = (user.username || '').toLowerCase();
+  return username === 'alexandre.candido' || ['administrador', 'admin', 'coordenador', 'supervisor'].includes(role);
 }
 
 export function isCoordenadorClaro(user: User | null): boolean {
   if (!user) return false;
-  const role = user.role;
-  const isCoord = user.username.toLowerCase() === 'alexandre.candido' || ['Administrador', 'Admin', 'Coordenador'].includes(role);
-  return isCoord && (user.company || '').trim().toLowerCase() === 'claro';
+  const username = (user.username || '').toLowerCase();
+  if (username === 'alexandre.candido') return true;
+  const role = (user.role || '').toLowerCase();
+  if (['administrador', 'admin'].includes(role)) return true;
+  const company = (user.company || '').trim().toLowerCase();
+  return ['coordenador', 'supervisor'].includes(role) && company === 'claro';
 }
 
 export { ApiError };

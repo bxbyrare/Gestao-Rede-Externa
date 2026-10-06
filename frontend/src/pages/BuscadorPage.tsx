@@ -186,7 +186,16 @@ export default function BuscadorPage() {
                 <Upload className="w-4 h-4" /> Carregar Base
               </Button>
             )}
-            <Button variant="outline" onClick={() => { window.location.href = `/api/buscador/export?topic=${topic}`; }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const q = new URLSearchParams();
+                q.set('topic', topic);
+                if (search.trim()) q.set('search', search.trim());
+                if (route.trim()) q.set('route', route.trim());
+                window.location.href = `/api/buscador/export?${q.toString()}`;
+              }}
+            >
               <Download className="w-4 h-4" /> Exportar
             </Button>
             <Button variant="outline" onClick={sendWhatsapp}>
@@ -238,21 +247,31 @@ export default function BuscadorPage() {
             </thead>
             <tbody>
               {rows.map((r) => {
-                const [c1, c2, c3, c4, dist, ref, c6, c7, c8, id, isEdited] = r;
+                const id = Number(r[r.length - 2]);
+                const isEdited = Boolean(r[r.length - 1]);
+                const c1 = r[0];
+                const c2 = r[1];
+                const c3 = r[2];
+                const c4 = r[3];
+                const dist = r[4];
+                const ref = r[5];
+                const c6 = r[6];
+                const c7 = r[7];
+                const c8 = r[8];
                 return (
                   <tr key={id} className={`border-b border-white/5 last:border-0 hover:bg-white/[0.02] ${isEdited ? 'bg-[var(--color-accent)]/5' : ''}`}>
                     <td className="px-4 py-2.5">{c1 || '-'}</td>
                     <td className="px-4 py-2.5 mono">{c2 || '-'}</td>
                     <td className="px-4 py-2.5">{c3 || '-'}</td>
                     <td className="px-4 py-2.5">{c4 || '-'}</td>
-                    <td className="px-4 py-2.5 font-semibold">{dist || '-'}</td>
-                    <td className="px-4 py-2.5">{ref || '-'}</td>
+                    <td className="px-4 py-2.5 font-semibold text-emerald-400">{dist || '-'}</td>
+                    <td className="px-4 py-2.5 text-cyan-300 font-mono">{ref || '-'}</td>
                     <td className="px-4 py-2.5">{c6 || '-'}</td>
                     <td className="px-4 py-2.5">{c7 || '-'}</td>
                     <td className="px-4 py-2.5">{c8 || '-'}</td>
                     <td className="px-4 py-2.5">
                       {canManage && (
-                        <button onClick={() => openEdit(id, dist, ref)} aria-label="Editar distância e ref" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]">
+                        <button onClick={() => openEdit(id, dist, ref)} aria-label="Editar distância e ref" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] cursor-pointer">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                       )}
