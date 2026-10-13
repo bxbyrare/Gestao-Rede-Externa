@@ -15,7 +15,11 @@ import {
   CheckCircle2,
   Layers,
   Sparkles,
-  ArrowUpDown
+  ArrowUpDown,
+  Table as TableIcon,
+  ShieldCheck,
+  ExternalLink,
+  X,
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
@@ -119,6 +123,18 @@ export default function FormulariosPage() {
   const [responseSearch, setResponseSearch] = useState('');
   const [responseSortNewest, setResponseSortNewest] = useState(true);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [responseViewMode, setResponseViewMode] = useState<'table' | 'cards'>('table');
+
+  // Modal de edição de resposta individual (Preenchimento interno / correções)
+  const [editingResponse, setEditingResponse] = useState<FormResponse | null>(null);
+  const [editTechName, setEditTechName] = useState('');
+  const [editTechEmail, setEditTechEmail] = useState('');
+  const [editAnswers, setEditAnswers] = useState<Record<string, string | string[]>>({});
+  const [isSavingResponse, setIsSavingResponse] = useState(false);
+  const [editResponseError, setEditResponseError] = useState<string | null>(null);
+
+  // Lightbox de visualização ampliada de fotos
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
@@ -263,6 +279,112 @@ export default function FormulariosPage() {
       setCopiedId(r.id);
       setTimeout(() => setCopiedId(null), 2000);
     });
+  }
+
+  // Lista dinâmica e ordenada de colunas para o Modo Planilha
+  const dynamicColumns = useMemo(() => {
+    if (!responses || responses.length === 0) return [];
+    const keysSet = new Set<string>();
+
+    responses.forEach((r) => {
+      Object.keys(r.answers || {}).forEach((k) => {
+        if (!k.endsWith('_other') && k !== 'form_slug') {
+          keysSet.add(k);
+        }
+      });
+    });
+
+    const priorityOrder = [
+      'número task toa',
+      'numero task toa',
+      'task toa',
+      'rede hfc ou fibra',
+      'hfc ou fibra',
+      'nome do node ou rota de fibra',
+      'node',
+      'controle de wfc ( preenchimento interno )',
+      'controle de wfc',
+      'wfc',
+      'fotos para evidência',
+      'fotos para evidencia',
+      'foto importante quando solicitado',
+      'evidência',
+      'evidencia',
+      'tipo de ocorrência',
+      'região / área',
+      'região',
+      'cidade / subcluster',
+      'endereço / logradouro',
+      'observações',
+      'observação :'
+    ];
+
+    const allKeys = Array.from(keysSet);
+    allKeys.sort((a, b) => {
+      const aLower = a.toLowerCase();
+      const bLower = b.toLowerCase();
+      const idxA = priorityOrder.findIndex((p) => aLower.includes(p) || p.includes(aLower));
+      const idxB = priorityOrder.findIndex((p) => bLower.includes(p) || p.includes(bLower));
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    return allKeys;
+  }, [responses]);
+
+  function openEditResponse(r: FormResponse) {
+    setEditingResponse(r);
+    setEditTechName(r.technician_name || '');
+    setEditTechEmail(r.technician_email || '');
+    setEditAnswers({ ...(r.answers || {}) });
+    setEditResponseError(null);
+  }
+
+  async function handleSaveResponse() {
+    if (!editingResponse || !responsesModal) return;
+    setIsSavingResponse(true);
+    setEditResponseError(null);
+    try {
+      await api.put(`/api/forms/${responsesModal.id}/responses/${editingResponse.id}`, {
+        technician_name: editTechName,
+        technician_email: editTechEmail,
+        answers: editAnswers,
+      });
+
+      // Atualiza em memória instantaneamente
+      setResponses((prev) =>
+        prev
+          ? prev.map((item) =>
+              item.id === editingResponse.id
+                ? {
+                    ...item,
+                    technician_name: editTechName,
+                    technician_email: editTechEmail,
+                    answers: editAnswers,
+                  }
+                : item
+            )
+          : null
+      );
+      setEditingResponse(null);
+    } catch (err) {
+      setEditResponseError(err instanceof ApiError ? err.message : 'Erro ao salvar alterações da resposta.');
+    } finally {
+      setIsSavingResponse(false);
+    }
+  }
+
+  async function handleDeleteResponse(r: FormResponse) {
+    if (!responsesModal) return;
+    if (!confirm(`Excluir a resposta #${r.id} de "${r.technician_name || 'Técnico'}"?`)) return;
+    try {
+      await api.delete(`/api/forms/${responsesModal.id}/responses/${r.id}`);
+      setResponses((prev) => (prev ? prev.filter((item) => item.id !== r.id) : null));
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir resposta.');
+    }
   }
 
   async function submitImport() {
@@ -437,12 +559,12 @@ export default function FormulariosPage() {
         </Field>
       </Modal>
 
-      {/* MODAL DE RESPOSTAS — DESIGN DIDÁTICO E ACCORDION GALLERY */}
+      {/* MODAL DE RESPOSTAS — VISUALIZAÇÃO EM PLANILHA E CARTÕES DIDÁTICOS */}
       <Modal
         open={!!responsesModal}
         onClose={() => setResponsesModal(null)}
         title={`Respostas — ${responsesModal?.title || ''}`}
-        maxWidth="max-w-5xl"
+        maxWidth="max-w-[96vw] sm:max-w-7xl"
         footer={
           <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-xs text-[var(--color-text-faint)] flex items-center gap-2">
@@ -530,37 +652,261 @@ export default function FormulariosPage() {
               </div>
             </div>
 
-            {/* BARRA DE FILTRO & PESQUISA */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
+            {/* BARRA DE FILTRO, PESQUISA E ALTERNÂNCIA DE VISUALIZAÇÃO */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="relative flex-1 min-w-[240px]">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-faint)]" />
                 <Input
                   value={responseSearch}
                   onChange={(e) => setResponseSearch(e.target.value)}
-                  placeholder="Pesquisar por técnico, cidade, endereço ou termo..."
+                  placeholder="Pesquisar por técnico, WFC, node, task TOA, cidade ou termo..."
                   className="pl-9 h-9 text-xs rounded-xl"
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => setResponseSortNewest(!responseSortNewest)}
-                className="h-9 px-3 rounded-xl bg-white/[0.03] border border-white/10 text-xs font-semibold text-[var(--color-text-muted)] hover:text-white flex items-center gap-1.5 transition-colors shrink-0"
-                title="Alternar ordenação"
-              >
-                <ArrowUpDown className="w-3.5 h-3.5" />
-                <span>{responseSortNewest ? 'Mais recentes' : 'Mais antigos'}</span>
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Seletor de visualização (Planilha vs Cartões) */}
+                <div className="flex items-center rounded-xl bg-white/[0.04] p-0.5 border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setResponseViewMode('table')}
+                    className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                      responseViewMode === 'table'
+                        ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                        : 'text-[var(--color-text-muted)] hover:text-white'
+                    }`}
+                    title="Visualização tipo planilha"
+                  >
+                    <TableIcon className="w-3.5 h-3.5" />
+                    <span>Planilha</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResponseViewMode('cards')}
+                    className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                      responseViewMode === 'cards'
+                        ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                        : 'text-[var(--color-text-muted)] hover:text-white'
+                    }`}
+                    title="Visualização em cartões"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Cartões</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setResponseSortNewest(!responseSortNewest)}
+                  className="h-8 px-3 rounded-xl bg-white/[0.03] border border-white/10 text-xs font-semibold text-[var(--color-text-muted)] hover:text-white flex items-center gap-1.5 transition-colors shrink-0"
+                  title="Alternar ordenação por data"
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                  <span>{responseSortNewest ? 'Mais recentes' : 'Mais antigos'}</span>
+                </button>
+              </div>
             </div>
 
-            {/* LISTA DE RESPOSTAS */}
-            <div className="space-y-4 max-h-[58vh] overflow-y-auto pr-1">
-              {filteredResponses.length === 0 ? (
-                <div className="p-8 text-center text-xs text-[var(--color-text-muted)] rounded-2xl bg-white/[0.02] border border-white/5">
-                  Nenhum registro encontrado para a busca "{responseSearch}".
+            {/* CONTEÚDO PRINCIPAL: MODO PLANILHA OU MODO CARTÕES */}
+            {filteredResponses.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[var(--color-text-muted)] rounded-2xl bg-white/[0.02] border border-white/5">
+                Nenhum registro encontrado para a busca "{responseSearch}".
+              </div>
+            ) : responseViewMode === 'table' ? (
+              /* MODO PLANILHA (TABELA INTERATIVA COM BOTÃO EDITAR) */
+              <div className="rounded-2xl border border-white/10 bg-black/40 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto max-h-[58vh]">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="sticky top-0 z-20 bg-[#0d121d] border-b border-white/10 text-[var(--color-text-faint)] uppercase text-[10px] font-bold tracking-wider">
+                      <tr>
+                        <th className="py-3 px-3 w-28 text-center sticky left-0 z-30 bg-[#0d121d] border-r border-white/10 shadow-[2px_0_6px_rgba(0,0,0,0.4)]">
+                          Ações
+                        </th>
+                        <th className="py-3 px-3 whitespace-nowrap">ID</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Data / Hora</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Técnico</th>
+                        <th className="py-3 px-3 whitespace-nowrap">E-mail</th>
+                        {dynamicColumns.map((colKey) => {
+                          const isWfc = colKey.toLowerCase().includes('wfc');
+                          return (
+                            <th
+                              key={colKey}
+                              className={`py-3 px-3 whitespace-nowrap ${
+                                isWfc
+                                  ? 'bg-amber-500/10 text-amber-300 font-extrabold border-x border-amber-500/20'
+                                  : ''
+                              }`}
+                            >
+                              <div className="flex items-center gap-1">
+                                {isWfc && <ShieldCheck className="w-3 h-3 text-amber-400" />}
+                                <span>{cleanLabel(colKey)}</span>
+                              </div>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {filteredResponses.map((r) => {
+                        return (
+                          <tr key={r.id} className="hover:bg-white/[0.04] transition-colors group">
+                            {/* Ações sticky com botão Editar */}
+                            <td className="py-2.5 px-3 sticky left-0 z-10 bg-[#0a0e17] group-hover:bg-[#121824] border-r border-white/10 shadow-[2px_0_6px_rgba(0,0,0,0.4)] text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditResponse(r)}
+                                  className="h-7 px-2.5 rounded-lg bg-[var(--color-primary-dim)] hover:bg-[var(--color-primary)] text-[var(--color-primary)] hover:text-white text-xs font-semibold flex items-center gap-1 border border-[var(--color-primary)]/30 transition-all shadow-sm"
+                                  title="Editar informações / Controle de WFC"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteResponse(r)}
+                                  className="w-7 h-7 rounded-lg text-[var(--color-text-faint)] hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-colors"
+                                  title="Excluir resposta"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+
+                            <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--color-text-faint)]">
+                              #{r.id}
+                            </td>
+
+                            <td className="py-2.5 px-3 whitespace-nowrap text-[var(--color-text-muted)]">
+                              {formatSubmissionDate(r.submitted_at)}
+                            </td>
+
+                            <td className="py-2.5 px-3 whitespace-nowrap font-bold text-white">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-md bg-[var(--color-primary-dim)] text-[var(--color-primary)] flex items-center justify-center text-[10px] font-extrabold">
+                                  {(r.technician_name || 'T')[0].toUpperCase()}
+                                </div>
+                                <span>{r.technician_name || 'Anônimo'}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-2.5 px-3 whitespace-nowrap text-[var(--color-text-faint)] text-[11px]">
+                              {r.technician_email || '-'}
+                            </td>
+
+                            {dynamicColumns.map((colKey) => {
+                              const rawVal = r.answers[colKey];
+                              const isWfc = colKey.toLowerCase().includes('wfc');
+                              const isHfc = colKey.toLowerCase().includes('hfc');
+                              const isPhoto = isPhotoField(rawVal);
+
+                              if (isWfc) {
+                                const strVal = String(rawVal || '').trim();
+                                return (
+                                  <td
+                                    key={colKey}
+                                    className="py-2.5 px-3 whitespace-nowrap bg-amber-500/[0.03] border-x border-amber-500/15"
+                                  >
+                                    {strVal ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30 text-xs shadow-sm">
+                                          <ShieldCheck className="w-3 h-3 text-amber-400 shrink-0" />
+                                          <span>{strVal}</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditResponse(r)}
+                                          className="text-[var(--color-text-faint)] hover:text-amber-300 p-1 rounded"
+                                          title="Editar WFC"
+                                        >
+                                          <Pencil className="w-2.5 h-2.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditResponse(r)}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-amber-400/80 hover:text-amber-200 bg-amber-500/5 hover:bg-amber-500/15 border border-dashed border-amber-500/30 transition-colors"
+                                        title="Clique para preencher WFC interno"
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                        <span>Preencher WFC</span>
+                                      </button>
+                                    )}
+                                  </td>
+                                );
+                              }
+
+                              if (isHfc) {
+                                const strVal = String(rawVal || '').trim();
+                                return (
+                                  <td key={colKey} className="py-2.5 px-3 whitespace-nowrap">
+                                    {strVal.toUpperCase() === 'HFC' ? (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 font-bold border border-blue-500/30 text-[11px]">
+                                        HFC
+                                      </span>
+                                    ) : strVal.toUpperCase() === 'FIBRA' ? (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30 text-[11px]">
+                                        Fibra
+                                      </span>
+                                    ) : (
+                                      <span className="text-white/80">{strVal || '-'}</span>
+                                    )}
+                                  </td>
+                                );
+                              }
+
+                              if (isPhoto) {
+                                const urls = extractPhotoUrls(rawVal);
+                                return (
+                                  <td key={colKey} className="py-2.5 px-3 whitespace-nowrap">
+                                    {urls.length === 0 ? (
+                                      <span className="text-[var(--color-text-faint)]">-</span>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5">
+                                        {urls.slice(0, 3).map((u, i) => (
+                                          <img
+                                            key={i}
+                                            src={u}
+                                            alt="Evidência"
+                                            onClick={() => setPreviewPhotoUrl(u)}
+                                            className="w-7 h-7 rounded object-cover border border-white/20 hover:scale-110 transition-transform cursor-pointer shadow-sm"
+                                            title="Clique para ampliar foto"
+                                          />
+                                        ))}
+                                        {urls.length > 3 && (
+                                          <span className="text-[10px] font-bold text-[var(--color-text-faint)]">
+                                            +{urls.length - 3}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                );
+                              }
+
+                              const strVal = Array.isArray(rawVal) ? rawVal.join(', ') : String(rawVal || '');
+                              return (
+                                <td
+                                  key={colKey}
+                                  className="py-2.5 px-3 whitespace-nowrap max-w-[240px] truncate text-white/90"
+                                  title={strVal}
+                                >
+                                  {strVal.trim() || '-'}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              ) : (
-                filteredResponses.map((r) => {
-                  // Separar perguntas em: Fotos, Informações Principais, Textos/Observações
+              </div>
+            ) : (
+              /* MODO CARTÕES DIDÁTICOS */
+              <div className="space-y-4 max-h-[58vh] overflow-y-auto pr-1">
+                {filteredResponses.map((r) => {
                   const photoSections: { key: string; label: string; urls: string[] }[] = [];
                   const textSections: { key: string; label: string; value: string }[] = [];
 
@@ -592,7 +938,7 @@ export default function FormulariosPage() {
                       key={r.id}
                       className="p-5 flex flex-col gap-4 border border-white/10 hover:border-white/20 transition-all rounded-2xl bg-black/40 shadow-lg"
                     >
-                      {/* HEADER DO CARD DA RESPOSTA */}
+                      {/* HEADER DO CARD COM BOTÃO EDITAR */}
                       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/5">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--color-primary-dim)] to-white/5 border border-white/10 flex items-center justify-center text-sm font-bold text-white shadow-inner">
@@ -616,6 +962,17 @@ export default function FormulariosPage() {
                             <Calendar className="w-3 h-3 text-[var(--color-primary)]" />
                             <span>{formatSubmissionDate(r.submitted_at)}</span>
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={() => openEditResponse(r)}
+                            className="h-7 px-2.5 rounded-full bg-[var(--color-primary-dim)] hover:bg-[var(--color-primary)] text-[var(--color-primary)] hover:text-white border border-[var(--color-primary)]/30 text-[11px] font-semibold flex items-center gap-1 transition-all"
+                            title="Editar resposta"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Editar</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => copyResponseSummary(r)}
@@ -637,25 +994,44 @@ export default function FormulariosPage() {
                         </div>
                       </div>
 
-                      {/* GRADE DE CAMPOS E RESPOSTAS DIDÁTICAS */}
+                      {/* GRADE DE CAMPOS */}
                       {textSections.length > 0 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                           {textSections.map(({ key, label, value }) => {
                             const isAddress = label.toLowerCase().includes('endereço') || label.toLowerCase().includes('rua');
+                            const isWfc = label.toLowerCase().includes('wfc');
+                            const isHfc = label.toLowerCase().includes('hfc');
 
                             return (
                               <div
                                 key={key}
-                                className={`p-3 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col justify-between ${
-                                  isAddress ? 'sm:col-span-2 lg:col-span-2' : ''
-                                }`}
+                                className={`p-3 rounded-xl border flex flex-col justify-between ${
+                                  isWfc
+                                    ? 'bg-amber-500/10 border-amber-500/30'
+                                    : 'bg-white/[0.02] border-white/5'
+                                } ${isAddress ? 'sm:col-span-2 lg:col-span-2' : ''}`}
                               >
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-faint)] mb-1 flex items-center gap-1">
+                                <span
+                                  className={`text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1 ${
+                                    isWfc ? 'text-amber-300' : 'text-[var(--color-text-faint)]'
+                                  }`}
+                                >
+                                  {isWfc ? <ShieldCheck className="w-3 h-3 text-amber-400" /> : null}
                                   {isAddress ? <MapPin className="w-3 h-3 text-cyan-400" /> : null}
                                   {label}
                                 </span>
                                 <span className="text-xs font-semibold text-white/90 break-words">
-                                  {value}
+                                  {isHfc && value.toUpperCase() === 'HFC' ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[11px]">
+                                      HFC
+                                    </span>
+                                  ) : isHfc && value.toUpperCase() === 'FIBRA' ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px]">
+                                      Fibra
+                                    </span>
+                                  ) : (
+                                    value
+                                  )}
                                 </span>
                               </div>
                             );
@@ -663,7 +1039,7 @@ export default function FormulariosPage() {
                         </div>
                       )}
 
-                      {/* SEÇÃO DE EVIDÊNCIAS FOTOGRÁFICAS — ACCORDION GALLERY */}
+                      {/* SEÇÃO DE FOTOS COM ACCORDION */}
                       {photoSections.map((sec) => (
                         <div key={sec.key} className="pt-2">
                           <div className="flex items-center justify-between mb-2">
@@ -689,12 +1065,260 @@ export default function FormulariosPage() {
                       ))}
                     </Card>
                   );
-                })
-              )}
-            </div>
+                })}
+              </div>
+            )}
           </div>
         )}
       </Modal>
+
+      {/* MODAL DE EDIÇÃO DE RESPOSTA — COM CONTROLE DE WFC E DEMAIS INFORMAÇÕES */}
+      <Modal
+        open={!!editingResponse}
+        onClose={() => setEditingResponse(null)}
+        title={`Editar Resposta #${editingResponse?.id || ''}`}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditingResponse(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveResponse} disabled={isSavingResponse}>
+              {isSavingResponse ? 'Salvando...' : 'Salvar Alterações'}
+            </Button>
+          </>
+        }
+      >
+        {editResponseError && (
+          <div className="mb-4 rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger-dim)] px-4 py-3 text-sm text-[var(--color-danger)]">
+            {editResponseError}
+          </div>
+        )}
+
+        <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+          {/* Card Especial de Destaque: Controle de WFC (Preenchimento interno) */}
+          <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 flex flex-col gap-2 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5 uppercase tracking-wide">
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                Controle de WFC ( Preenchimento interno )
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Uso Interno
+              </span>
+            </div>
+            <p className="text-[11px] text-[var(--color-text-muted)]">
+              Insira ou atualize o código / status de controle de WFC para esta vistoria.
+            </p>
+            <Input
+              value={String(
+                editAnswers['Controle de WFC ( Preenchimento interno )'] ||
+                  editAnswers['Controle de WFC'] ||
+                  editAnswers['WFC'] ||
+                  ''
+              )}
+              onChange={(e) =>
+                setEditAnswers((prev) => ({
+                  ...prev,
+                  'Controle de WFC ( Preenchimento interno )': e.target.value,
+                }))
+              }
+              placeholder="Ex: WFC-2026-9842 / Aprovado / Em Análise"
+              className="border-amber-500/40 focus:border-amber-400 bg-amber-950/20"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Nome do Técnico">
+              <Input
+                value={editTechName}
+                onChange={(e) => setEditTechName(e.target.value)}
+                placeholder="Nome completo do técnico"
+              />
+            </Field>
+
+            <Field label="E-mail">
+              <Input
+                value={editTechEmail}
+                onChange={(e) => setEditTechEmail(e.target.value)}
+                placeholder="email@claro.com.br"
+              />
+            </Field>
+          </div>
+
+          {/* Mudança 1: Rede HFC ou Fibra */}
+          <Field label="Rede HFC ou Fibra">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-xl border border-white/10 hover:border-white/20 bg-white/[0.02]">
+                <input
+                  type="radio"
+                  name="edit_hfc_fibra"
+                  value="HFC"
+                  checked={String(editAnswers['Rede HFC ou Fibra'] || editAnswers['HFC ou Fibra'] || '').toUpperCase() === 'HFC'}
+                  onChange={() =>
+                    setEditAnswers((prev) => ({
+                      ...prev,
+                      'Rede HFC ou Fibra': 'HFC',
+                    }))
+                  }
+                  className="w-4 h-4 accent-blue-500"
+                />
+                <span className="text-xs font-bold text-blue-400">HFC</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-xl border border-white/10 hover:border-white/20 bg-white/[0.02]">
+                <input
+                  type="radio"
+                  name="edit_hfc_fibra"
+                  value="Fibra"
+                  checked={String(editAnswers['Rede HFC ou Fibra'] || editAnswers['HFC ou Fibra'] || '').toUpperCase() === 'FIBRA'}
+                  onChange={() =>
+                    setEditAnswers((prev) => ({
+                      ...prev,
+                      'Rede HFC ou Fibra': 'Fibra',
+                    }))
+                  }
+                  className="w-4 h-4 accent-emerald-500"
+                />
+                <span className="text-xs font-bold text-emerald-400">Fibra</span>
+              </label>
+            </div>
+          </Field>
+
+          {/* Mudança 2: Nome do Node ou rota de fibra */}
+          <Field label="Nome do Node ou rota de fibra">
+            <Input
+              value={String(
+                editAnswers['Nome do Node ou rota de fibra'] ||
+                  editAnswers['Node'] ||
+                  editAnswers['Rota de fibra'] ||
+                  ''
+              )}
+              onChange={(e) =>
+                setEditAnswers((prev) => ({
+                  ...prev,
+                  'Nome do Node ou rota de fibra': e.target.value,
+                }))
+              }
+              placeholder="Ex: NODE-CG04 / ROTA-FIBRA-NORTE"
+            />
+          </Field>
+
+          {/* Número task TOA */}
+          <Field label="Número task TOA">
+            <Input
+              value={String(
+                editAnswers['Número task TOA'] ||
+                  editAnswers['numero task TOA'] ||
+                  editAnswers['Task TOA'] ||
+                  ''
+              )}
+              onChange={(e) =>
+                setEditAnswers((prev) => ({
+                  ...prev,
+                  'Número task TOA': e.target.value,
+                }))
+              }
+              placeholder="Ex: 84920412"
+            />
+          </Field>
+
+          {/* Demais respostas dinâmicas cadastradas */}
+          {Object.entries(editAnswers).map(([k, v]) => {
+            if (
+              k.endsWith('_other') ||
+              k === 'form_slug' ||
+              k === 'Controle de WFC ( Preenchimento interno )' ||
+              k === 'Controle de WFC' ||
+              k === 'WFC' ||
+              k === 'Rede HFC ou Fibra' ||
+              k === 'HFC ou Fibra' ||
+              k === 'Nome do Node ou rota de fibra' ||
+              k === 'Node' ||
+              k === 'Rota de fibra' ||
+              k === 'Número task TOA' ||
+              k === 'numero task TOA' ||
+              k === 'Task TOA'
+            ) {
+              return null;
+            }
+
+            if (isPhotoField(v)) {
+              const urls = extractPhotoUrls(v);
+              return (
+                <div key={k} className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-faint)] block mb-2">
+                    {cleanLabel(k)} ({urls.length} fotos anexadas)
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {urls.map((u, i) => (
+                      <img
+                        key={i}
+                        src={u}
+                        alt="Foto"
+                        onClick={() => setPreviewPhotoUrl(u)}
+                        className="w-12 h-12 rounded-lg object-cover border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+                        title="Ampliar foto"
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <Field key={k} label={cleanLabel(k)}>
+                <Input
+                  value={Array.isArray(v) ? v.join(', ') : String(v || '')}
+                  onChange={(e) =>
+                    setEditAnswers((prev) => ({
+                      ...prev,
+                      [k]: e.target.value,
+                    }))
+                  }
+                />
+              </Field>
+            );
+          })}
+        </div>
+      </Modal>
+
+      {/* MODAL LIGHTBOX DE FOTO EM TELA CHEIA */}
+      {previewPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in"
+          onClick={() => setPreviewPhotoUrl(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-black/90 border border-white/20 rounded-2xl overflow-hidden p-2 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewPhotoUrl(null)}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center border border-white/20 transition-all z-10"
+              title="Fechar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={previewPhotoUrl}
+              alt="Visualização de evidência"
+              className="max-h-[82vh] w-auto mx-auto object-contain rounded-xl"
+            />
+            <div className="p-2 text-center">
+              <a
+                href={previewPhotoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-[var(--color-primary)] hover:underline inline-flex items-center gap-1 font-semibold"
+              >
+                Abrir imagem em alta resolução <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE IMPORTAÇÃO CSV */}
       <Modal

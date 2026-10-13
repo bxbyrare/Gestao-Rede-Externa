@@ -453,6 +453,75 @@ def init_db():
                 '/f/inventario-maquinario'
             ))
 
+        # Seed and synchronize default "Inspeção Visual" form with Mudanças 1, 2 e 3
+        try:
+            inspecao_default_questions = [
+                {"title": "E-mail", "type": "text", "options": [], "required": True},
+                {"title": "Data", "type": "date", "options": [], "required": True},
+                {"title": "Nome do Técnico", "type": "text", "options": [], "required": True},
+                {"title": "Região / Área", "type": "select", "options": ["METROPOLITANA", "CENTRO ZONA SUL", "NORTE 1", "NORTE 2", "NORTE 3", "ZONA OESTE", "BAIXADA FLUMINENSE", "REGIÃO DOS LAGOS", "SUL FLUMINENSE", "REGIÃO SERRANA"], "required": False},
+                {"title": "Cidade / Subcluster", "type": "text", "options": [], "required": False},
+                {"title": "Endereço / Logradouro", "type": "text", "options": [], "required": False},
+                {"title": "Número task TOA", "type": "text", "options": [], "required": False},
+                {"title": "Rede HFC ou Fibra", "type": "radio", "options": ["HFC", "Fibra"], "required": False},
+                {"title": "Nome do Node ou rota de fibra", "type": "text", "options": [], "required": False},
+                {"title": "Tipo de Ocorrência", "type": "select", "options": ["Vandalismo / Furto de Cabo", "Cabo Baixo / Rompimento", "Atenuação / Nível Baixo", "Curto Circuito / Caixa Danificada", "Inspeção Preventiva / Rotina", "Outro"], "required": False},
+                {"title": "Fotos para evidência", "type": "file", "options": [], "required": False},
+                {"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False},
+                {"title": "Observações", "type": "textarea", "options": [], "required": False}
+            ]
+
+            cur.execute("SELECT id, questions FROM forms WHERE slug = 'inspecao-visual' OR title ILIKE '%inspeção visual%' OR title ILIKE '%inspecao visual%';")
+            inspecao_row = cur.fetchone()
+            if not inspecao_row:
+                cur.execute("""
+                    INSERT INTO forms (title, slug, category, description, link, questions)
+                    VALUES (%s, %s, %s, %s, %s, %s);
+                """, (
+                    'Inspeção Visual',
+                    'inspecao-visual',
+                    'Inspeção',
+                    'Formulário oficial de inspeção visual de rede externa, registro de ocorrências, fotos para evidência e controle interno.',
+                    '/f/inspecao-visual',
+                    json.dumps(inspecao_default_questions, ensure_ascii=False)
+                ))
+            else:
+                q_raw = inspecao_row.get('questions')
+                q_list = json.loads(q_raw) if isinstance(q_raw, str) else (q_raw if isinstance(q_raw, list) else [])
+                if not q_list:
+                    cur.execute("UPDATE forms SET questions = %s WHERE id = %s;", (json.dumps(inspecao_default_questions, ensure_ascii=False), inspecao_row['id']))
+                else:
+                    titles = [str(q.get('title', '')).strip().lower() for q in q_list if isinstance(q, dict)]
+                    has_hfc = any('hfc ou fibra' in t or 'rede hfc' in t for t in titles)
+                    has_node = any('nome do node' in t or 'rota de fibra' in t for t in titles)
+                    has_wfc = any('controle de wfc' in t or 'wfc' in t for t in titles)
+
+                    if not (has_hfc and has_node and has_wfc):
+                        new_q = []
+                        for q in q_list:
+                            new_q.append(q)
+                            t = str(q.get('title', '')).strip().lower() if isinstance(q, dict) else ''
+                            if ('task toa' in t or 'numero task' in t or 'número task' in t) and not has_hfc:
+                                new_q.append({"title": "Rede HFC ou Fibra", "type": "radio", "options": ["HFC", "Fibra"], "required": False})
+                                new_q.append({"title": "Nome do Node ou rota de fibra", "type": "text", "options": [], "required": False})
+                                has_hfc = True
+                                has_node = True
+                            if ('fotos para evid' in t or 'evidência' in t or 'evidencia' in t or 'foto' in t) and not has_wfc:
+                                new_q.append({"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False})
+                                has_wfc = True
+
+                        if not has_hfc:
+                            new_q.append({"title": "Rede HFC ou Fibra", "type": "radio", "options": ["HFC", "Fibra"], "required": False})
+                        if not has_node:
+                            new_q.append({"title": "Nome do Node ou rota de fibra", "type": "text", "options": [], "required": False})
+                        if not has_wfc:
+                            new_q.append({"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False})
+
+                        cur.execute("UPDATE forms SET questions = %s WHERE id = %s;", (json.dumps(new_q, ensure_ascii=False), inspecao_row['id']))
+        except Exception as e_seed:
+            print("Error seeding/updating Inspeção Visual form:", e_seed)
+            conn.rollback()
+
         # 14. Password Reset Tokens Table (Link Criptografado por E-mail Brevo)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -2624,6 +2693,147 @@ def api_form_responses(form_id):
     except Exception as e:
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
+# --- UPDATE & DELETE SINGLE FORM RESPONSE ---
+@app.route('/api/forms/<int:form_id>/responses/<int:response_id>', methods=['PUT', 'DELETE'], strict_slashes=False)
+@login_required
+def api_form_response_detail(form_id, response_id):
+    if request.method == 'DELETE':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM form_responses WHERE id = %s AND form_id = %s;", (response_id, form_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+            log_action(session['user_id'], session['username'], f"Excluiu resposta #{response_id} do formulário #{form_id}")
+            return jsonify({"success": True})
+        except Exception as e:
+            print("Backend error log in delete form response:", e)
+            return jsonify({"error": "Erro ao excluir resposta."}), 500
+    else: # PUT
+        try:
+            data = request.get_json(silent=True) or {}
+            tech_name = data.get('technician_name')
+            tech_email = data.get('technician_email')
+            answers = data.get('answers')
+
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT answers, technician_name, technician_email FROM form_responses WHERE id = %s AND form_id = %s;", (response_id, form_id))
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Resposta não encontrada."}), 404
+
+            existing_answers = row['answers']
+            if isinstance(existing_answers, str):
+                try:
+                    existing_answers = json.loads(existing_answers)
+                except Exception:
+                    existing_answers = {}
+            if not isinstance(existing_answers, dict):
+                existing_answers = {}
+
+            if isinstance(answers, dict):
+                existing_answers.update(answers)
+
+            new_tech = tech_name.strip() if tech_name and tech_name.strip() else row['technician_name']
+            new_email = tech_email.strip() if tech_email and tech_email.strip() else row['technician_email']
+
+            cur.execute("""
+                UPDATE form_responses 
+                SET technician_name = %s,
+                    technician_email = %s,
+                    answers = %s
+                WHERE id = %s AND form_id = %s;
+            """, (new_tech, new_email, json.dumps(existing_answers, ensure_ascii=False), response_id, form_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session['user_id'], session['username'], f"Atualizou resposta #{response_id} do formulário #{form_id} (Técnico: {new_tech})")
+            return jsonify({
+                "success": True, 
+                "message": "Resposta atualizada com sucesso!",
+                "technician_name": new_tech,
+                "technician_email": new_email,
+                "answers": existing_answers
+            })
+        except Exception as e:
+            print("Backend error log in update form response:", e)
+            return jsonify({"error": "Erro ao atualizar resposta."}), 500
+
+@app.route('/api/form-responses/<int:response_id>', methods=['PUT', 'DELETE'], strict_slashes=False)
+@login_required
+def api_direct_form_response_detail(response_id):
+    if request.method == 'DELETE':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM form_responses WHERE id = %s;", (response_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            log_action(session['user_id'], session['username'], f"Excluiu resposta #{response_id}")
+            return jsonify({"success": True})
+        except Exception as e:
+            print("Backend error log in direct delete form response:", e)
+            return jsonify({"error": "Erro ao excluir resposta."}), 500
+    else: # PUT
+        try:
+            data = request.get_json(silent=True) or {}
+            tech_name = data.get('technician_name')
+            tech_email = data.get('technician_email')
+            answers = data.get('answers')
+
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT form_id, answers, technician_name, technician_email FROM form_responses WHERE id = %s;", (response_id,))
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Resposta não encontrada."}), 404
+
+            existing_answers = row['answers']
+            if isinstance(existing_answers, str):
+                try:
+                    existing_answers = json.loads(existing_answers)
+                except Exception:
+                    existing_answers = {}
+            if not isinstance(existing_answers, dict):
+                existing_answers = {}
+
+            if isinstance(answers, dict):
+                existing_answers.update(answers)
+
+            new_tech = tech_name.strip() if tech_name and tech_name.strip() else row['technician_name']
+            new_email = tech_email.strip() if tech_email and tech_email.strip() else row['technician_email']
+
+            cur.execute("""
+                UPDATE form_responses 
+                SET technician_name = %s,
+                    technician_email = %s,
+                    answers = %s
+                WHERE id = %s;
+            """, (new_tech, new_email, json.dumps(existing_answers, ensure_ascii=False), response_id))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session['user_id'], session['username'], f"Atualizou resposta #{response_id} (Técnico: {new_tech})")
+            return jsonify({
+                "success": True, 
+                "message": "Resposta atualizada com sucesso!",
+                "technician_name": new_tech,
+                "technician_email": new_email,
+                "answers": existing_answers
+            })
+        except Exception as e:
+            print("Backend error log in direct update form response:", e)
+            return jsonify({"error": "Erro ao atualizar resposta."}), 500
 
 @app.route('/api/forms/<int:form_id>/responses/export', methods=['GET'], strict_slashes=False)
 @login_required
