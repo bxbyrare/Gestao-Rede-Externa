@@ -3148,6 +3148,302 @@ def api_save_monthly_indicators():
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
+def get_default_indicators_dict():
+    areas = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
+    def pct_rows(vals):
+        return [{'area': a, 'total': vals.get(a, [0, 0])[0], 'fp': vals.get(a, [0, 0])[1], 'override_color': ''} for a in areas]
+    def time_rows(vals):
+        return [{'area': a, 'time': vals.get(a, '-'), 'override_color': ''} for a in areas]
+    return {
+        'ral': pct_rows({'Baixada': [82, 7], 'Metropolitana': [53, 5], 'Norte Fluminense': [20, 1], 'Serra Fluminense': [32, 3], 'Sul Fluminense': [48, 0], 'Lagos': [13, 0]}),
+        'rec': pct_rows({'Baixada': [75, 12], 'Metropolitana': [52, 13], 'Norte Fluminense': [8, 2], 'Serra Fluminense': [6, 0], 'Sul Fluminense': [25, 1], 'Lagos': [7, 1]}),
+        'hfc': pct_rows({'Baixada': [4, 0], 'Metropolitana': [7, 1], 'Norte Fluminense': [0, 0], 'Serra Fluminense': [0, 0], 'Sul Fluminense': [2, 0], 'Lagos': [0, 0]}),
+        'gpon': pct_rows({'Baixada': [5, 2], 'Metropolitana': [10, 6], 'Norte Fluminense': [1, 0], 'Serra Fluminense': [3, 0], 'Sul Fluminense': [6, 2], 'Lagos': [5, 1]}),
+        'me11': pct_rows({'Baixada': [0, 0], 'Metropolitana': [0, 0], 'Norte Fluminense': [0, 0], 'Serra Fluminense': [0, 0], 'Sul Fluminense': [0, 0], 'Lagos': [0, 0]}),
+        'me3_hfc': time_rows({'Baixada': '20.07', 'Metropolitana': '34.06', 'Norte Fluminense': '1.99', 'Serra Fluminense': '1.92', 'Sul Fluminense': '8.54', 'Lagos': '-'}),
+        'me3_gpon': time_rows({'Baixada': '48.53', 'Metropolitana': '5.97', 'Norte Fluminense': '17.15', 'Serra Fluminense': '0', 'Sul Fluminense': '1.58', 'Lagos': '0'}),
+        'justificativas': ''
+    }
+
+@app.route('/api/indicators/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_export_monthly_indicators():
+    try:
+        month = request.args.get('month', 'julho-26').strip().lower()
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM monthly_indicators WHERE reference_month = %s;", (month,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        data = row['data'] if row and row.get('data') else get_default_indicators_dict()
+
+        output = io.StringIO()
+        output.write('\ufeff')
+        writer = csv.writer(output, delimiter=';')
+
+        writer.writerow(['Indicador', 'Área', 'Total', 'FP', 'Percentual', 'Tempo', 'Meta'])
+
+        pct_indicators = [
+            ('RAL', 'ral', '≥ 90%'),
+            ('REC', 'rec', '≥ 85%'),
+            ('HFC', 'hfc', '≥ 80%'),
+            ('GPON', 'gpon', '≥ 70%'),
+            ('ME11', 'me11', '≥ 90%')
+        ]
+
+        for title, key, meta in pct_indicators:
+            rows = data.get(key, [])
+            for r in rows:
+                area = r.get('area', '')
+                tot = r.get('total', 0)
+                fp = r.get('fp', 0)
+                pct_str = f"{(((tot - fp) / tot) * 100):.2f}%".replace('.', ',') if tot > 0 else '-'
+                writer.writerow([title, area, tot, fp, pct_str, '', meta])
+
+        time_indicators = [
+            ('ME3 - HFC', 'me3_hfc', '≤ 25'),
+            ('ME3 - GPON', 'me3_gpon', '≤ 25')
+        ]
+
+        for title, key, meta in time_indicators:
+            rows = data.get(key, [])
+            for r in rows:
+                area = r.get('area', '')
+                t = r.get('time', '-')
+                writer.writerow([title, area, '', '', '', t, meta])
+
+        justificativas = data.get('justificativas', '').strip()
+        if justificativas:
+            writer.writerow([])
+            writer.writerow(['JUSTIFICATIVAS', justificativas, '', '', '', '', ''])
+
+        csv_content = output.getvalue()
+        output.close()
+
+        resp = Response(csv_content, mimetype='text/csv; charset=utf-8')
+        resp.headers['Content-Disposition'] = f'attachment; filename=indicadores_{month}.csv'
+        return resp
+    except Exception as e:
+        print("Backend error log in export indicators:", e)
+        return jsonify({"error": "Erro ao exportar indicadores em CSV."}), 500
+
+@app.route('/api/indicators/template', methods=['GET'], strict_slashes=False)
+@login_required
+def api_indicators_template():
+    try:
+        output = io.StringIO()
+        output.write('\ufeff')
+        writer = csv.writer(output, delimiter=';')
+        writer.writerow(['Indicador', 'Área', 'Total', 'FP', 'Tempo'])
+
+        areas = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
+        for ind in ['RAL', 'REC', 'HFC', 'GPON', 'ME11']:
+            for a in areas:
+                writer.writerow([ind, a, 0, 0, ''])
+
+        for ind in ['ME3 - HFC', 'ME3 - GPON']:
+            for a in areas:
+                writer.writerow([ind, a, '', '', '0,00'])
+
+        resp = Response(output.getvalue(), mimetype='text/csv; charset=utf-8')
+        resp.headers['Content-Disposition'] = 'attachment; filename=modelo_importacao_indicadores.csv'
+        return resp
+    except Exception as e:
+        print("Backend error log in indicators template:", e)
+        return jsonify({"error": "Erro ao gerar modelo de importação."}), 500
+
+@app.route('/api/indicators/import', methods=['POST'], strict_slashes=False)
+@login_required
+def api_import_monthly_indicators():
+    try:
+        import unicodedata
+
+        def _clean_str(s):
+            if not s: return ""
+            return unicodedata.normalize('NFKD', str(s)).encode('ASCII', 'ignore').decode('utf-8').strip().lower()
+
+        data = request.get_json(silent=True) or {}
+        month = data.get('month', '').strip().lower()
+        csv_data = data.get('csv_data', '').strip()
+
+        if not csv_data and 'file' in request.files:
+            f = request.files['file']
+            month = month or request.form.get('month', '').strip().lower()
+            try:
+                csv_data = f.read().decode('utf-8-sig', errors='replace').strip()
+            except Exception:
+                csv_data = f.read().decode('latin1', errors='replace').strip()
+
+        if not month:
+            return jsonify({"error": "Mês de referência é obrigatório."}), 400
+
+        if not csv_data:
+            return jsonify({"error": "Nenhum dado CSV informado para importação."}), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM monthly_indicators WHERE reference_month = %s;", (month,))
+        row = cur.fetchone()
+
+        if row and row.get('data'):
+            current_data = row['data']
+        else:
+            current_data = get_default_indicators_dict()
+
+        sample_lines = [l for l in csv_data.splitlines() if l.strip()][:5]
+        sample_txt = "\n".join(sample_lines)
+        if sample_txt.count(';') >= sample_txt.count(',') and sample_txt.count(';') >= sample_txt.count('\t'):
+            delim = ';'
+        elif sample_txt.count('\t') > sample_txt.count(','):
+            delim = '\t'
+        else:
+            delim = ','
+
+        reader = csv.reader(io.StringIO(csv_data), delimiter=delim)
+
+        valid_areas = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
+        
+        def match_area(txt):
+            clean = _clean_str(txt)
+            for a in valid_areas:
+                if clean == _clean_str(a):
+                    return a
+            if 'baixada' in clean: return 'Baixada'
+            if 'metro' in clean: return 'Metropolitana'
+            if 'norte' in clean: return 'Norte Fluminense'
+            if 'serra' in clean: return 'Serra Fluminense'
+            if 'sul' in clean: return 'Sul Fluminense'
+            if 'lago' in clean: return 'Lagos'
+            return None
+
+        def match_indicator(txt):
+            clean = _clean_str(txt).replace('_', ' ').replace('-', ' ')
+            if clean.startswith('ral'): return 'ral'
+            if clean.startswith('rec'): return 'rec'
+            if 'me3' in clean and 'gpon' in clean: return 'me3_gpon'
+            if 'me3' in clean and 'hfc' in clean: return 'me3_hfc'
+            if 'me11' in clean or 'me 11' in clean: return 'me11'
+            if 'gpon' in clean: return 'gpon'
+            if 'hfc' in clean: return 'hfc'
+            if 'me3' in clean: return 'me3_hfc'
+            return None
+
+        col_ind = 0
+        col_area = 1
+        col_total = 2
+        col_fp = 3
+        col_tempo = 4
+        imported_count = 0
+        warnings = []
+
+        for row_idx, r in enumerate(reader):
+            if not r or not any(cell.strip() for cell in r):
+                continue
+
+            first_cell = r[0].strip()
+            first_cell_clean = _clean_str(first_cell)
+
+            if 'justificativa' in first_cell_clean:
+                val = r[1].strip() if len(r) > 1 and r[1].strip() else ';'.join(r[1:]).strip()
+                if val:
+                    current_data['justificativas'] = val
+                    imported_count += 1
+                continue
+
+            row_clean = [_clean_str(c) for c in r]
+            if any('indicador' in c or 'kpi' in c for c in row_clean) or any('area' in c or 'regiao' in c for c in row_clean):
+                for idx, c in enumerate(row_clean):
+                    if 'indicador' in c or 'kpi' in c or 'metrica' in c:
+                        col_ind = idx
+                    elif 'area' in c or 'regiao' in c or 'regional' in c:
+                        col_area = idx
+                    elif 'total' in c or 'qtd' in c:
+                        col_total = idx
+                    elif 'fp' in c or 'fora' in c:
+                        col_fp = idx
+                    elif 'tempo' in c or 'hora' in c or 'time' in c:
+                        col_tempo = idx
+                continue
+
+            ind_raw = r[col_ind].strip() if col_ind < len(r) else ''
+            area_raw = r[col_area].strip() if col_area < len(r) else ''
+
+            ind_key = match_indicator(ind_raw)
+            matched_area = match_area(area_raw)
+
+            if not ind_key or not matched_area:
+                continue
+
+            if ind_key in ['ral', 'rec', 'hfc', 'gpon', 'me11']:
+                tot_val = r[col_total].strip() if col_total < len(r) else ''
+                fp_val = r[col_fp].strip() if col_fp < len(r) else ''
+
+                if ind_key not in current_data or not isinstance(current_data[ind_key], list):
+                    current_data[ind_key] = [{'area': a, 'total': 0, 'fp': 0, 'override_color': ''} for a in valid_areas]
+
+                for item in current_data[ind_key]:
+                    if item.get('area') == matched_area:
+                        if tot_val != '':
+                            try:
+                                item['total'] = int(float(tot_val.replace(',', '.')))
+                            except Exception:
+                                pass
+                        if fp_val != '':
+                            try:
+                                item['fp'] = int(float(fp_val.replace(',', '.')))
+                            except Exception:
+                                pass
+                        imported_count += 1
+                        break
+
+            elif ind_key in ['me3_hfc', 'me3_gpon']:
+                time_val = ''
+                if col_tempo < len(r) and r[col_tempo].strip():
+                    time_val = r[col_tempo].strip()
+                elif col_total < len(r) and r[col_total].strip():
+                    time_val = r[col_total].strip()
+
+                if ind_key not in current_data or not isinstance(current_data[ind_key], list):
+                    current_data[ind_key] = [{'area': a, 'time': '-', 'override_color': ''} for a in valid_areas]
+
+                for item in current_data[ind_key]:
+                    if item.get('area') == matched_area:
+                        if time_val != '':
+                            item['time'] = time_val
+                        imported_count += 1
+                        break
+
+        if imported_count == 0:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Nenhum registro válido de indicador foi encontrado no CSV. Verifique se as colunas estão corretas (Indicador;Área;Total;FP ou Tempo)."}), 400
+
+        cur.execute("""
+            INSERT INTO monthly_indicators (reference_month, data, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (reference_month) DO UPDATE
+            SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;
+        """, (month, json.dumps(current_data, ensure_ascii=False)))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(session['user_id'], session['username'], f"Importou {imported_count} registros de indicadores para o mês {month} via CSV")
+
+        return jsonify({
+            "success": True,
+            "month": month,
+            "imported": imported_count,
+            "data": current_data,
+            "warnings": warnings
+        })
+    except Exception as e:
+        print("Backend error log in import indicators:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao processar importação do arquivo CSV."}), 500
+
 # --- BULK IMPORT API (PESSOAS / TÉCNICOS) ---
 @app.route('/api/people/bulk', methods=['POST'], strict_slashes=False)
 @login_required

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../api/client';
-import { Card, PageHeader, Select, Textarea } from '../components/ui';
+import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { api, ApiError } from '../api/client';
+import { Button, Card, Field, PageHeader, Select, Textarea } from '../components/ui';
+import Modal from '../components/Modal';
 
 const AREAS = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos'];
 
@@ -177,6 +179,15 @@ export default function IndicatorsPage() {
   const [status, setStatus] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // CSV Import State
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     setStatus('');
     api.get<{ month: string; data: IndicatorData | null }>('/api/indicators', { month }).then((res) => {
@@ -205,17 +216,102 @@ export default function IndicatorsPage() {
     });
   }
 
+  function handleExportCsv() {
+    window.location.href = `/api/indicators/export?month=${encodeURIComponent(month)}`;
+  }
+
+  function handleDownloadTemplate() {
+    window.location.href = '/api/indicators/template';
+  }
+
+  function openImport() {
+    setCsvText('');
+    setImportError(null);
+    setImportSuccess(null);
+    setImportModalOpen(true);
+  }
+
+  function handleFileRead(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      setCsvText(text);
+      setImportError(null);
+    };
+    reader.onerror = () => {
+      setImportError('Erro ao ler o arquivo selecionado.');
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleFileRead(file);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileRead(file);
+  }
+
+  async function submitImport() {
+    if (!csvText.trim()) {
+      setImportError('Insira ou carregue os dados em formato CSV para importar.');
+      return;
+    }
+    setIsImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+    try {
+      const res = await api.post<{ success: boolean; month: string; imported: number; data: IndicatorData }>(
+        '/api/indicators/import',
+        { month, csv_data: csvText }
+      );
+      if (res.data) {
+        setData(res.data);
+      }
+      setImportSuccess(`${res.imported} registro(s) de indicador importado(s) com sucesso para ${month.toUpperCase()}!`);
+      setTimeout(() => {
+        setImportModalOpen(false);
+        setImportSuccess(null);
+        setCsvText('');
+      }, 1400);
+    } catch (err) {
+      setImportError(err instanceof ApiError ? err.message : 'Erro ao processar arquivo CSV.');
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
         title="Indicadores"
         subtitle="Acompanhamento mensal de metas por área"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {status && <span className="text-xs text-[var(--color-text-faint)]">{status}</span>}
             <Select value={month} onChange={(e) => setMonth(e.target.value)} className="!w-auto">
               {MONTHS_LIST.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
             </Select>
+            <Button
+              variant="outline"
+              onClick={handleExportCsv}
+              title={`Exportar indicadores de ${month.toUpperCase()} em formato CSV`}
+            >
+              <Download className="w-4 h-4 text-[var(--color-primary)]" />
+              <span>Exportar CSV</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={openImport}
+              title="Importar indicadores via planilha ou texto CSV"
+            >
+              <Upload className="w-4 h-4 text-[var(--color-accent)]" />
+              <span>Importar CSV</span>
+            </Button>
           </div>
         }
       />
@@ -234,6 +330,92 @@ export default function IndicatorsPage() {
         <h3 className="font-bold text-sm mb-2">Justificativas</h3>
         <Textarea rows={4} value={data.justificativas} onChange={(e) => updateField('justificativas', e.target.value)} placeholder="Justificativas sobre os indicadores do mês..." />
       </Card>
+
+      {/* MODAL DE IMPORTAÇÃO CSV */}
+      <Modal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        title={`Importar Indicadores (CSV) - ${month.toUpperCase()}`}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setImportModalOpen(false)} disabled={isImporting}>
+              Cancelar
+            </Button>
+            <Button onClick={submitImport} disabled={isImporting}>
+              {isImporting ? 'Processando...' : 'Processar Importação'}
+            </Button>
+          </>
+        }
+      >
+        {importError && (
+          <div className="mb-4 rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger-dim)] px-4 py-3 text-sm text-[var(--color-danger)] flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <span>{importError}</span>
+          </div>
+        )}
+
+        {importSuccess && (
+          <div className="mb-4 rounded-xl border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 px-4 py-3 text-sm text-[var(--color-success)] flex items-start gap-2">
+            <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+            <span>{importSuccess}</span>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Carregue uma planilha CSV ou cole o conteúdo abaixo para atualizar os dados de <strong className="text-[var(--color-text)]">{month.toUpperCase()}</strong>.
+          </p>
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="text-xs text-[var(--color-primary)] hover:underline inline-flex items-center gap-1.5 shrink-0"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" /> Baixar Modelo CSV
+          </button>
+        </div>
+
+        {/* Upload drag/drop area */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-4 mb-4 text-center cursor-pointer transition-colors ${
+            dragActive
+              ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+              : 'border-white/10 hover:border-white/25 hover:bg-white/[0.02]'
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.txt"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <Upload className="w-6 h-6 mx-auto mb-2 text-[var(--color-text-muted)]" />
+          <p className="text-sm font-medium text-[var(--color-text)]">
+            Clique para selecionar o arquivo .csv ou arraste para cá
+          </p>
+          <p className="text-xs text-[var(--color-text-faint)] mt-1">
+            Formatos aceitos: CSV ou TXT delimitado por ponto e vírgula (;) ou vírgula (,)
+          </p>
+        </div>
+
+        <Field
+          label="Ou cole / edite o conteúdo CSV diretamente"
+          hint="Colunas: Indicador;Área;Total;FP;Tempo (ex: RAL;Baixada;82;7 ou ME3 - HFC;Baixada;;;20.07)"
+        >
+          <Textarea
+            rows={7}
+            value={csvText}
+            onChange={(e) => setCsvText(e.target.value)}
+            placeholder={`Indicador;Área;Total;FP;Tempo\nRAL;Baixada;82;7;\nREC;Metropolitana;52;13;\nME3 - HFC;Baixada;;;20.07\nJUSTIFICATIVAS;Observações do mês...`}
+            className="font-mono text-xs"
+          />
+        </Field>
+      </Modal>
     </div>
   );
 }
