@@ -64,6 +64,7 @@ export default function ProjectsPage() {
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [search, setSearch] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -219,13 +220,16 @@ export default function ProjectsPage() {
 
   const filteredProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((p) =>
-      p.name.toLowerCase().includes(q) ||
-      (p.description || '').toLowerCase().includes(q) ||
-      (p.area || '').toLowerCase().includes(q)
-    );
-  }, [projects, search]);
+    return projects.filter((p) => {
+      if (areaFilter && !(p.area || '').toLowerCase().includes(areaFilter.toLowerCase())) return false;
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.area || '').toLowerCase().includes(q)
+      );
+    });
+  }, [projects, search, areaFilter]);
 
   return (
     <div>
@@ -264,6 +268,21 @@ export default function ProjectsPage() {
             Buscando por "{debouncedSearch}" em todas as pastas
           </span>
         )}
+        <div className="flex gap-2 p-1 bg-[#0F1422] rounded-xl border border-white/10 ml-auto">
+          {['', 'Capital', 'Interior'].map((ar) => (
+            <button
+              key={ar || 'all'}
+              onClick={() => setAreaFilter(ar)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                areaFilter === ar
+                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {ar || 'Todas as Áreas'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {!debouncedSearch && (

@@ -37,6 +37,12 @@ export interface Technician {
   imei_1: string | null;
   imei_2: string | null;
   email: string | null;
+  nr10_expiration?: string | null;
+  nr35_expiration?: string | null;
+  aso_expiration?: string | null;
+  nr10_file?: string | null;
+  nr35_file?: string | null;
+  aso_file?: string | null;
   created_at: string | null;
 }
 
@@ -97,6 +103,14 @@ export interface Evaluation {
   created_at: string;
 }
 
+export interface TaskAttachment {
+  id: number;
+  filename: string;
+  filepath: string;
+  filesize: number;
+  created_at?: string;
+}
+
 export interface UserTask {
   id: number;
   title: string;
@@ -106,6 +120,11 @@ export interface UserTask {
   assigned_tech_name: string;
   description: string;
   status: string;
+  region?: string;
+  ticket?: string;
+  event_type?: string;
+  measurement?: string;
+  attachments?: TaskAttachment[];
   created_at: string;
 }
 
@@ -168,6 +187,8 @@ export interface RouteLine {
   cable_type: string | null;
   notes: string | null;
   address: string | null;
+  event_type?: string | null;
+  measurement?: string | null;
   created_at: string;
 }
 
@@ -234,3 +255,38 @@ export interface Aceitacao {
   created_at: string;
 }
 
+export interface EstratificacaoData {
+  total_records: number;
+  reincidencia_count: number;
+  reincidencia_rate: string;
+  top_ofensor: string;
+  top_causa: string;
+  reincidencias_routes: Array<{
+    name: string;
+    count: number;
+    tickets: string[];
+    subcluster: string;
+    last_address: string;
+    last_date: string;
+  }>;
+  reincidencias_addresses: Array<{
+    address: string;
+    full_address: string;
+    count: number;
+    route: string;
+    tickets: string[];
+    last_date: string;
+  }>;
+  maiores_ofensores: Array<{
+    name: string;
+    count: number;
+    pct: string;
+  }>;
+  principais_causas: Array<{
+    name: string;
+    count: number;
+    pct: string;
+  }>;
+  by_topic: Record<string, number>;
+  last_updated: string;
+}

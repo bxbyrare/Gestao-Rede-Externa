@@ -133,6 +133,8 @@ ALLOWED_PROJECT_EXTENSIONS = {'pdf', 'kmz', 'kml', 'zip', 'doc', 'docx', 'xls', 
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'projetos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'auditorias'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'aceitacoes'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'documentos_pessoas'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'workspace_anexos'), exist_ok=True)
 
 # Helper function to get PostgreSQL connection
 def get_db():
@@ -216,7 +218,13 @@ def init_db():
             ('phone_model', 'VARCHAR(100)'),
             ('imei_1', 'VARCHAR(50)'),
             ('imei_2', 'VARCHAR(50)'),
-            ('email', 'VARCHAR(150)')
+            ('email', 'VARCHAR(150)'),
+            ('nr10_expiration', 'DATE'),
+            ('nr35_expiration', 'DATE'),
+            ('aso_expiration', 'DATE'),
+            ('nr10_file', 'VARCHAR(500)'),
+            ('nr35_file', 'VARCHAR(500)'),
+            ('aso_file', 'VARCHAR(500)')
         ]:
             try:
                 cur.execute(f"ALTER TABLE technicians ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -353,10 +361,11 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        try:
-            cur.execute("ALTER TABLE route_lines ADD COLUMN IF NOT EXISTS address TEXT;")
-        except Exception:
-            conn.rollback()
+        for col, coltype in [("address", "TEXT"), ("event_type", "VARCHAR(50)"), ("measurement", "VARCHAR(255)")]:
+            try:
+                cur.execute(f"ALTER TABLE route_lines ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
 
         # 10.1 Route Folders & Route Files Tables
         cur.execute("""
@@ -646,6 +655,23 @@ def init_db():
                 assigned_tech_name VARCHAR(150),
                 description TEXT,
                 status VARCHAR(30) NOT NULL DEFAULT 'Pendente',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        for col, coltype in [('region', 'VARCHAR(50)'), ('ticket', 'VARCHAR(100)'), ('event_type', 'VARCHAR(50)'), ('measurement', 'VARCHAR(255)')]:
+            try:
+                cur.execute(f"ALTER TABLE user_tasks ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS task_attachments (
+                id SERIAL PRIMARY KEY,
+                task_id INT REFERENCES user_tasks(id) ON DELETE CASCADE,
+                filename VARCHAR(255) NOT NULL,
+                filepath VARCHAR(500) NOT NULL,
+                filesize BIGINT DEFAULT 0,
+                uploaded_by INT REFERENCES users(id) ON DELETE SET NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
@@ -1301,6 +1327,16 @@ def honeypot_trap():
 # --------------------------------------------------------------------------
 
 # --- 1. TECHNICIANS (PESSOAS) ---
+
+def _save_technician_doc(file_obj, prefix):
+    if file_obj and getattr(file_obj, 'filename', None) and allowed_file(file_obj.filename, {'pdf', 'png', 'jpg', 'jpeg', 'webp', 'doc', 'docx'}):
+        fname = secure_filename(file_obj.filename)
+        unique_name = f"{prefix}_{int(time.time())}_{fname}"
+        save_path = os.path.join(UPLOAD_FOLDER, 'documentos_pessoas', unique_name)
+        file_obj.save(save_path)
+        return f"documentos_pessoas/{unique_name}"
+    return None
+
 @app.route('/api/technicians', methods=['GET'])
 @login_required
 def api_get_technicians():
@@ -1333,11 +1369,12 @@ def api_get_technicians():
         
         # Format dates safely
         for t in techs:
-            if t['dob']:
-                try:
-                    t['dob'] = t['dob'].strftime('%Y-%m-%d')
-                except Exception:
-                    t['dob'] = None
+            for dfield in ['dob', 'nr10_expiration', 'nr35_expiration', 'aso_expiration']:
+                if t.get(dfield):
+                    try:
+                        t[dfield] = t[dfield].strftime('%Y-%m-%d')
+                    except Exception:
+                        t[dfield] = None
             if t['created_at']:
                 try:
                     t['created_at'] = t['created_at'].strftime('%Y-%m-%d %H:%M:%S')
@@ -1375,16 +1412,31 @@ def api_create_technician():
         imei_2 = str(data.get('imei_2') or '').strip() or None
         email = str(data.get('email') or '').strip() or None
         
+        nr10_expiration = str(data.get('nr10_expiration') or '').strip() or None
+        nr35_expiration = str(data.get('nr35_expiration') or '').strip() or None
+        aso_expiration = str(data.get('aso_expiration') or '').strip() or None
+
+        nr10_file = _save_technician_doc(request.files.get('nr10_file'), 'nr10') if request.files else None
+        nr35_file = _save_technician_doc(request.files.get('nr35_file'), 'nr35') if request.files else None
+        aso_file = _save_technician_doc(request.files.get('aso_file'), 'aso') if request.files else None
+        
         if not name:
             return jsonify({"error": "Nome completo é obrigatório."}), 400
 
-        if dob:
-            try:
-                yr = int(dob.split('-')[0])
-                if yr < 1900 or yr > 2100:
-                    dob = None
-            except Exception:
-                dob = None
+        for d_var, d_name in [(dob, 'dob'), (nr10_expiration, 'nr10_expiration'), (nr35_expiration, 'nr35_expiration'), (aso_expiration, 'aso_expiration')]:
+            if d_var:
+                try:
+                    yr = int(d_var.split('-')[0])
+                    if yr < 1900 or yr > 2100:
+                        if d_name == 'dob': dob = None
+                        elif d_name == 'nr10_expiration': nr10_expiration = None
+                        elif d_name == 'nr35_expiration': nr35_expiration = None
+                        elif d_name == 'aso_expiration': aso_expiration = None
+                except Exception:
+                    if d_name == 'dob': dob = None
+                    elif d_name == 'nr10_expiration': nr10_expiration = None
+                    elif d_name == 'nr35_expiration': nr35_expiration = None
+                    elif d_name == 'aso_expiration': aso_expiration = None
             
         conn = get_db()
         cur = conn.cursor()
@@ -1403,13 +1455,15 @@ def api_create_technician():
                 name, cpf, phone, identity, dob, role, area, team_type, 
                 shirt_size, boot_size, pants_size, jacket_size, team, company, 
                 registration_claro, registration_third, toa_login, phone_model, 
-                imei_1, imei_2, email, created_by
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                imei_1, imei_2, email, nr10_expiration, nr35_expiration, aso_expiration,
+                nr10_file, nr35_file, aso_file, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
             """,
             (name, cpf, phone, identity, dob, role, area, team_type, 
              shirt_size, boot_size, pants_size, jacket_size, team, company, 
              registration_claro, registration_third, toa_login, phone_model, 
-             imei_1, imei_2, email, session['user_id'])
+             imei_1, imei_2, email, nr10_expiration, nr35_expiration, aso_expiration,
+             nr10_file, nr35_file, aso_file, session['user_id'])
         )
         tech_id = cur.fetchone()['id']
         conn.commit()
@@ -1449,16 +1503,31 @@ def api_update_technician(tech_id):
         imei_2 = str(data.get('imei_2') or '').strip() or None
         email = str(data.get('email') or '').strip() or None
         
+        nr10_expiration = str(data.get('nr10_expiration') or '').strip() or None
+        nr35_expiration = str(data.get('nr35_expiration') or '').strip() or None
+        aso_expiration = str(data.get('aso_expiration') or '').strip() or None
+
+        new_nr10_file = _save_technician_doc(request.files.get('nr10_file'), 'nr10') if request.files else None
+        new_nr35_file = _save_technician_doc(request.files.get('nr35_file'), 'nr35') if request.files else None
+        new_aso_file = _save_technician_doc(request.files.get('aso_file'), 'aso') if request.files else None
+        
         if not name:
             return jsonify({"error": "Nome completo é obrigatório."}), 400
 
-        if dob:
-            try:
-                yr = int(dob.split('-')[0])
-                if yr < 1900 or yr > 2100:
-                    dob = None
-            except Exception:
-                dob = None
+        for d_var, d_name in [(dob, 'dob'), (nr10_expiration, 'nr10_expiration'), (nr35_expiration, 'nr35_expiration'), (aso_expiration, 'aso_expiration')]:
+            if d_var:
+                try:
+                    yr = int(d_var.split('-')[0])
+                    if yr < 1900 or yr > 2100:
+                        if d_name == 'dob': dob = None
+                        elif d_name == 'nr10_expiration': nr10_expiration = None
+                        elif d_name == 'nr35_expiration': nr35_expiration = None
+                        elif d_name == 'aso_expiration': aso_expiration = None
+                except Exception:
+                    if d_name == 'dob': dob = None
+                    elif d_name == 'nr10_expiration': nr10_expiration = None
+                    elif d_name == 'nr35_expiration': nr35_expiration = None
+                    elif d_name == 'aso_expiration': aso_expiration = None
             
         conn = get_db()
         cur = conn.cursor()
@@ -1478,13 +1547,18 @@ def api_update_technician(tech_id):
                 area = %s, team_type = %s, shirt_size = %s, boot_size = %s, 
                 pants_size = %s, jacket_size = %s, team = %s, company = %s,
                 registration_claro = %s, registration_third = %s, toa_login = %s,
-                phone_model = %s, imei_1 = %s, imei_2 = %s, email = %s
+                phone_model = %s, imei_1 = %s, imei_2 = %s, email = %s,
+                nr10_expiration = %s, nr35_expiration = %s, aso_expiration = %s,
+                nr10_file = COALESCE(%s, nr10_file),
+                nr35_file = COALESCE(%s, nr35_file),
+                aso_file = COALESCE(%s, aso_file)
             WHERE id = %s;
             """,
             (name, cpf, phone, identity, dob, role, area, team_type, 
              shirt_size, boot_size, pants_size, jacket_size, team, company, 
              registration_claro, registration_third, toa_login, phone_model, 
-             imei_1, imei_2, email, tech_id)
+             imei_1, imei_2, email, nr10_expiration, nr35_expiration, aso_expiration,
+             new_nr10_file, new_nr35_file, new_aso_file, tech_id)
         )
         conn.commit()
         cur.close()
@@ -2090,7 +2164,7 @@ def api_route_detail(route_id):
                 conn.close()
                 return jsonify({"error": "Rota não encontrada."}), 404
                 
-            cur.execute("SELECT id, route_id, stretch_name, pop_box, cable_type, notes, address, created_at FROM route_lines WHERE route_id = %s ORDER BY id ASC;", (route_id,))
+            cur.execute("SELECT id, route_id, stretch_name, pop_box, cable_type, notes, address, event_type, measurement, created_at FROM route_lines WHERE route_id = %s ORDER BY id ASC;", (route_id,))
             lines = cur.fetchall()
             cur.close()
             conn.close()
@@ -2155,6 +2229,8 @@ def api_add_route_line(route_id):
         cable_type = data.get('cable_type', '').strip()
         notes = data.get('notes', '').strip()
         address = data.get('address', '').strip()
+        event_type = data.get('event_type', '').strip()
+        measurement = data.get('measurement', '').strip() or cable_type
         
         if not stretch_name:
             return jsonify({"error": "Data da medição é obrigatória."}), 400
@@ -2162,9 +2238,9 @@ def api_add_route_line(route_id):
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO route_lines (route_id, stretch_name, pop_box, cable_type, notes, address) "
-            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
-            (route_id, stretch_name, pop_box, cable_type, notes, address)
+            "INSERT INTO route_lines (route_id, stretch_name, pop_box, cable_type, notes, address, event_type, measurement) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+            (route_id, stretch_name, pop_box, cable_type, notes, address, event_type, measurement)
         )
         new_id = cur.fetchone()['id']
         conn.commit()
@@ -2201,6 +2277,8 @@ def api_route_line_detail(line_id):
             cable_type = data.get('cable_type', '').strip()
             notes = data.get('notes', '').strip()
             address = data.get('address', '').strip()
+            event_type = data.get('event_type', '').strip()
+            measurement = data.get('measurement', '').strip() or cable_type
             
             if not stretch_name:
                 return jsonify({"error": "Data da medição é obrigatória."}), 400
@@ -2208,8 +2286,8 @@ def api_route_line_detail(line_id):
             conn = get_db()
             cur = conn.cursor()
             cur.execute(
-                "UPDATE route_lines SET stretch_name = %s, pop_box = %s, cable_type = %s, notes = %s, address = %s WHERE id = %s;",
-                (stretch_name, pop_box, cable_type, notes, address, line_id)
+                "UPDATE route_lines SET stretch_name = %s, pop_box = %s, cable_type = %s, notes = %s, address = %s, event_type = %s, measurement = %s WHERE id = %s;",
+                (stretch_name, pop_box, cable_type, notes, address, event_type, measurement, line_id)
             )
             conn.commit()
             cur.close()
@@ -2230,19 +2308,21 @@ def api_export_route_lines(route_id):
         r = cur.fetchone()
         route_name = r['name'] if r else f"Rota_{route_id}"
 
-        cur.execute("SELECT stretch_name, pop_box, cable_type, notes, address FROM route_lines WHERE route_id = %s ORDER BY id ASC;", (route_id,))
+        cur.execute("SELECT stretch_name, pop_box, cable_type, event_type, measurement, notes, address FROM route_lines WHERE route_id = %s ORDER BY id ASC;", (route_id,))
         lines = cur.fetchall()
         cur.close()
         conn.close()
 
-        csv_output = "Data;Local da Medição;Medição;Observações Técnicas;Endereço\n"
+        csv_output = "\ufeffData;Local / Caixa POP;Tipo de Cabo;Tipo de Evento;Medição;Endereço;Observações Técnicas\n"
         for line in lines:
             s_name = (line.get('stretch_name') or '').replace(';', ',').replace('\n', ' ')
             pop = (line.get('pop_box') or '').replace(';', ',').replace('\n', ' ')
-            med = (line.get('cable_type') or '').replace(';', ',').replace('\n', ' ')
-            obs = (line.get('notes') or '').replace(';', ',').replace('\n', ' ')
+            cab = (line.get('cable_type') or '').replace(';', ',').replace('\n', ' ')
+            ev = (line.get('event_type') or '').replace(';', ',').replace('\n', ' ')
+            med = (line.get('measurement') or cab).replace(';', ',').replace('\n', ' ')
             addr = (line.get('address') or '').replace(';', ',').replace('\n', ' ')
-            csv_output += f"{s_name};{pop};{med};{obs};{addr}\n"
+            obs = (line.get('notes') or '').replace(';', ',').replace('\n', ' ')
+            csv_output += f"{s_name};{pop};{cab};{ev};{med};{addr};{obs}\n"
 
         from flask import Response
         filename = f"medicoes_{route_name.lower().replace(' ', '_')}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
@@ -2278,16 +2358,38 @@ def api_export_all_routes():
         writer = csv.writer(output, delimiter=';')
         writer.writerow(["ID", "Nome da Rota", "Tipo", "Descrição", "Qtd Medições", "Data Cadastro"])
 
-        for r in routes:
-            dta = r['created_at'].strftime('%d/%m/%Y %H:%M') if r['created_at'] else ''
-            writer.writerow([
-                r['id'],
-                r['name'] or '',
-                r['type'] or '',
-                (r['description'] or '').replace('\n', ' ').replace('\r', ''),
-                r['lines_count'],
+        # Fetch comprehensive route lines detail
+        cur_all = get_db().cursor()
+        cur_all.execute("""
+            SELECT r.id AS route_id, r.name AS route_name, r.type AS route_type,
+                   rl.stretch_name, rl.pop_box, rl.cable_type, rl.event_type, rl.measurement, rl.address, rl.notes, rl.created_at
+            FROM routes r
+            LEFT JOIN route_lines rl ON r.id = rl.route_id
+            ORDER BY r.name ASC, rl.id ASC;
+        """)
+        all_lines = cur_all.fetchall()
+        cur_all.close()
+
+        output_detail = io.StringIO()
+        output_detail.write('\ufeff')
+        writer_d = csv.writer(output_detail, delimiter=';')
+        writer_d.writerow(["ID Rota", "Nome da Rota", "Tipo da Rota", "Data/Trecho", "Caixa POP", "Tipo de Cabo", "Tipo Evento", "Medição", "Endereço", "Observações", "Data Cadastro"])
+        for al in all_lines:
+            dta = al['created_at'].strftime('%d/%m/%Y %H:%M') if al.get('created_at') else ''
+            writer_d.writerow([
+                al['route_id'],
+                al['route_name'] or '',
+                al['route_type'] or '',
+                al.get('stretch_name') or '',
+                al.get('pop_box') or '',
+                al.get('cable_type') or '',
+                al.get('event_type') or '',
+                al.get('measurement') or '',
+                (al.get('address') or '').replace('\n', ' ').replace('\r', ''),
+                (al.get('notes') or '').replace('\n', ' ').replace('\r', ''),
                 dta
             ])
+        output = output_detail
 
         from flask import Response
         filename = f"relatorio_todas_rotas_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
@@ -2330,14 +2432,16 @@ def api_bulk_import_route_lines(route_id):
             cable_type = parts[2] if len(parts) > 2 else ''
             notes = parts[3] if len(parts) > 3 else ''
             address = parts[4] if len(parts) > 4 else ''
+            event_type = parts[5] if len(parts) > 5 else ''
+            measurement = parts[6] if len(parts) > 6 else cable_type
 
             if not stretch_name:
                 continue
 
             cur.execute(
-                "INSERT INTO route_lines (route_id, stretch_name, pop_box, cable_type, notes, address) "
-                "VALUES (%s, %s, %s, %s, %s, %s);",
-                (route_id, stretch_name, pop_box, cable_type, notes, address)
+                "INSERT INTO route_lines (route_id, stretch_name, pop_box, cable_type, notes, address, event_type, measurement) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s);",
+                (route_id, stretch_name, pop_box, cable_type, notes, address, event_type, measurement)
             )
             imported += 1
 
@@ -6165,19 +6269,210 @@ def api_mapa_eventos_projection():
 # ==========================================================================
 # USER TASKS API (ÁREA DE TRABALHO PESSOAL POR USUÁRIO)
 # ==========================================================================
-@app.route('/api/user-tasks', methods=['GET'])
+
+@app.route('/api/estratificacao/data', methods=['GET'], strict_slashes=False)
+@app.route('/api/mapa-eventos/estratificacao', methods=['GET'], strict_slashes=False)
+@login_required
+def api_estratificacao_data():
+    """
+    Returns stratified operational reports based on fault_searcher_records (RAL, REC, Outage, etc.):
+    - Reincidências (repetição por rota, nó e endereço)
+    - Maiores Ofensores e Causas Raiz
+    """
+    topic = request.args.get('topic', '').strip().upper()
+    area = request.args.get('area', '').strip()
+    month = request.args.get('month', '').strip()
+
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        conditions = []
+        params = []
+        if topic and topic != 'TODAS':
+            conditions.append("UPPER(topic) = %s")
+            params.append(topic)
+        if area and area != 'TODAS':
+            conditions.append("(col4 ILIKE %s OR col6 ILIKE %s)")
+            params.append(f"%{area}%")
+            params.append(f"%{area}%")
+        if month:
+            conditions.append("(col7 ILIKE %s OR col3 ILIKE %s)")
+            params.append(f"%{month}%")
+            params.append(f"%{month}%")
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        cur.execute(f"""
+            SELECT id, topic, col1, col2, col3, col4, col5, col6, col7, col8, col9
+            FROM fault_searcher_records
+            {where_clause}
+            ORDER BY id DESC
+            LIMIT 10000;
+        """, tuple(params))
+        rows = cur.fetchall()
+
+        cur.execute("SELECT MAX(last_updated) AS lu FROM fault_searcher_logs;")
+        log_row = cur.fetchone()
+        last_updated = (log_row['lu'].strftime('%d/%m/%Y %H:%M:%S') if log_row and log_row['lu']
+                        else datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+
+        total_records = len(rows)
+        if total_records == 0:
+            return jsonify({
+                "total_records": 0,
+                "reincidencia_count": 0,
+                "reincidencia_rate": "0.0%",
+                "top_ofensor": "N/D",
+                "top_causa": "N/D",
+                "reincidencias_routes": [],
+                "reincidencias_addresses": [],
+                "maiores_ofensores": [],
+                "principais_causas": [],
+                "by_topic": {},
+                "last_updated": last_updated
+            })
+
+        from collections import defaultdict
+        routes_map = defaultdict(list)
+        address_map = defaultdict(list)
+        ofensor_counts = defaultdict(int)
+        causa_counts = defaultdict(int)
+        topic_counts = defaultdict(int)
+
+        for r in rows:
+            t = (r['topic'] or 'OUTRO').upper()
+            topic_counts[t] += 1
+
+            c1 = (r['col1'] or '').strip()
+            if c1 and c1 != '-' and len(c1) > 2:
+                routes_map[c1].append(r)
+
+            c6 = (r['col6'] or '').strip()
+            if c6 and c6 != '-' and len(c6) > 4:
+                addr_key = c6.upper().split(',')[0].strip()
+                address_map[addr_key].append(r)
+
+            of = (r['col8'] or '').strip().upper()
+            if of and of != '-':
+                ofensor_counts[of] += 1
+            else:
+                ofensor_counts['NÃO INFORMADO'] += 1
+
+            causa = (r['col9'] or '').strip().upper()
+            if causa and causa != '-':
+                causa_counts[causa] += 1
+            else:
+                causa_counts['NÃO INFORMADA'] += 1
+
+        reinc_routes = []
+        total_reinc_events = 0
+        for r_name, group in routes_map.items():
+            if len(group) > 1:
+                total_reinc_events += len(group)
+                tickets = [g['col2'] for g in group if g['col2'] and g['col2'] != '-'][:5]
+                last_dt = group[0]['col3'] or '-'
+                sub = group[0]['col4'] or '-'
+                addr = group[0]['col6'] or '-'
+                reinc_routes.append({
+                    "name": r_name,
+                    "count": len(group),
+                    "tickets": tickets,
+                    "subcluster": sub,
+                    "last_address": addr,
+                    "last_date": last_dt
+                })
+        reinc_routes.sort(key=lambda x: x['count'], reverse=True)
+
+        reinc_addresses = []
+        for addr, group in address_map.items():
+            if len(group) > 1:
+                tickets = [g['col2'] for g in group if g['col2'] and g['col2'] != '-'][:5]
+                last_dt = group[0]['col3'] or '-'
+                route_id = group[0]['col1'] or '-'
+                reinc_addresses.append({
+                    "address": addr,
+                    "full_address": group[0]['col6'] or addr,
+                    "count": len(group),
+                    "route": route_id,
+                    "tickets": tickets,
+                    "last_date": last_dt
+                })
+        reinc_addresses.sort(key=lambda x: x['count'], reverse=True)
+
+        maiores_ofensores = []
+        for of, count in sorted(ofensor_counts.items(), key=lambda x: x[1], reverse=True)[:15]:
+            pct = round((count / total_records) * 100, 1)
+            maiores_ofensores.append({"name": of, "count": count, "pct": f"{pct}%"})
+
+        principais_causas = []
+        for causa, count in sorted(causa_counts.items(), key=lambda x: x[1], reverse=True)[:15]:
+            pct = round((count / total_records) * 100, 1)
+            principais_causas.append({"name": causa, "count": count, "pct": f"{pct}%"})
+
+        reinc_rate = round((total_reinc_events / total_records) * 100, 1) if total_records > 0 else 0.0
+
+        top_ofensor = maiores_ofensores[0]['name'] if maiores_ofensores else 'N/D'
+        top_causa = principais_causas[0]['name'] if principais_causas else 'N/D'
+
+        return jsonify({
+            "total_records": total_records,
+            "reincidencia_count": total_reinc_events,
+            "reincidencia_rate": f"{reinc_rate}%",
+            "top_ofensor": top_ofensor,
+            "top_causa": top_causa,
+            "reincidencias_routes": reinc_routes[:30],
+            "reincidencias_addresses": reinc_addresses[:30],
+            "maiores_ofensores": maiores_ofensores,
+            "principais_causas": principais_causas,
+            "by_topic": dict(topic_counts),
+            "last_updated": last_updated
+        })
+    except Exception as e:
+        print("Backend error in estratificacao:", e)
+        return jsonify({"error": "Erro ao estratificar dados."}), 500
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
+
+
+@app.route('/api/user-tasks', methods=['GET'], strict_slashes=False)
 @login_required
 def api_get_user_tasks():
     user_id = session.get('user_id')
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status, created_at
+        SELECT id, title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status,
+               region, ticket, event_type, measurement, created_at
         FROM user_tasks
         WHERE user_id = %s
         ORDER BY CASE WHEN status = 'Pendente' THEN 1 WHEN status = 'Em Andamento' THEN 2 ELSE 3 END, created_at DESC;
     """, (user_id,))
     rows = cur.fetchall()
+
+    task_ids = [r['id'] for r in rows]
+    attachments_map = {}
+    if task_ids:
+        cur.execute("""
+            SELECT id, task_id, filename, filepath, filesize, created_at
+            FROM task_attachments
+            WHERE task_id = ANY(%s)
+            ORDER BY created_at ASC;
+        """, (task_ids,))
+        for att in cur.fetchall():
+            tid = att['task_id']
+            if tid not in attachments_map:
+                attachments_map[tid] = []
+            attachments_map[tid].append({
+                'id': att['id'],
+                'filename': att['filename'],
+                'filepath': f"/uploads/{att['filepath']}" if not att['filepath'].startswith('/') else att['filepath'],
+                'filesize': att['filesize'],
+                'created_at': att['created_at'].strftime('%d/%m/%Y %H:%M') if att.get('created_at') else ''
+            })
+
     cur.close()
     conn.close()
     
@@ -6192,15 +6487,20 @@ def api_get_user_tasks():
             'assigned_tech_name': r['assigned_tech_name'] or '',
             'description': r['description'] or '',
             'status': r['status'] or 'Pendente',
+            'region': r.get('region') or '',
+            'ticket': r.get('ticket') or '',
+            'event_type': r.get('event_type') or '',
+            'measurement': r.get('measurement') or '',
+            'attachments': attachments_map.get(r['id'], []),
             'created_at': r['created_at'].strftime('%d/%m/%Y %H:%M') if r['created_at'] else ''
         })
     return jsonify(tasks)
 
-@app.route('/api/user-tasks', methods=['POST'])
+@app.route('/api/user-tasks', methods=['POST'], strict_slashes=False)
 @login_required
 def api_create_user_task():
     user_id = session.get('user_id')
-    data = request.json or {}
+    data = request.form.to_dict() if request.form else (request.get_json(silent=True) or {})
     title = (data.get('title') or '').strip()
     if not title:
         return jsonify({'error': 'Título é obrigatório.'}), 400
@@ -6211,24 +6511,44 @@ def api_create_user_task():
     assigned_tech_name = data.get('assigned_tech_name') or ''
     description = data.get('description') or ''
     status = data.get('status') or 'Pendente'
+    region = data.get('region') or ''
+    ticket = data.get('ticket') or ''
+    event_type = data.get('event_type') or ''
+    measurement = data.get('measurement') or ''
     
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO user_tasks (user_id, title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
-    """, (user_id, title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status))
+        INSERT INTO user_tasks (user_id, title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status, region, ticket, event_type, measurement)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+    """, (user_id, title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status, region, ticket, event_type, measurement))
     new_id = cur.fetchone()['id']
+
+    # Process attachments
+    files = request.files.getlist('attachments') or request.files.getlist('files')
+    if files:
+        for f in files:
+            if f and f.filename and allowed_file(f.filename, ALLOWED_PROJECT_EXTENSIONS):
+                fname = secure_filename(f.filename)
+                unique_name = f"task_{new_id}_{int(time.time())}_{fname}"
+                save_path = os.path.join(UPLOAD_FOLDER, 'workspace_anexos', unique_name)
+                f.save(save_path)
+                f_size = os.path.getsize(save_path)
+                cur.execute("""
+                    INSERT INTO task_attachments (task_id, filename, filepath, filesize, uploaded_by)
+                    VALUES (%s, %s, %s, %s, %s);
+                """, (new_id, fname, f"workspace_anexos/{unique_name}", f_size, user_id))
+
     conn.commit()
     cur.close()
     conn.close()
     return jsonify({'id': new_id, 'message': 'Tarefa criada com sucesso!'}), 201
 
-@app.route('/api/user-tasks/<int:task_id>', methods=['PUT'])
+@app.route('/api/user-tasks/<int:task_id>', methods=['PUT', 'POST'], strict_slashes=False)
 @login_required
 def api_update_user_task(task_id):
     user_id = session.get('user_id')
-    data = request.json or {}
+    data = request.form.to_dict() if request.form else (request.get_json(silent=True) or {})
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT id FROM user_tasks WHERE id = %s AND user_id = %s;", (task_id, user_id))
@@ -6244,6 +6564,10 @@ def api_update_user_task(task_id):
     assigned_tech_name = data.get('assigned_tech_name') or ''
     description = data.get('description') or ''
     status = data.get('status') or 'Pendente'
+    region = data.get('region') or ''
+    ticket = data.get('ticket') or ''
+    event_type = data.get('event_type') or ''
+    measurement = data.get('measurement') or ''
     
     cur.execute("""
         UPDATE user_tasks 
@@ -6253,13 +6577,83 @@ def api_update_user_task(task_id):
             assigned_tech_id = %s,
             assigned_tech_name = %s,
             description = %s,
-            status = %s
+            status = %s,
+            region = %s,
+            ticket = %s,
+            event_type = %s,
+            measurement = %s
         WHERE id = %s AND user_id = %s;
-    """, (title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status, task_id, user_id))
+    """, (title, priority, due_date, assigned_tech_id, assigned_tech_name, description, status, region, ticket, event_type, measurement, task_id, user_id))
+
+    files = request.files.getlist('attachments') or request.files.getlist('files')
+    if files:
+        for f in files:
+            if f and f.filename and allowed_file(f.filename, ALLOWED_PROJECT_EXTENSIONS):
+                fname = secure_filename(f.filename)
+                unique_name = f"task_{task_id}_{int(time.time())}_{fname}"
+                save_path = os.path.join(UPLOAD_FOLDER, 'workspace_anexos', unique_name)
+                f.save(save_path)
+                f_size = os.path.getsize(save_path)
+                cur.execute("""
+                    INSERT INTO task_attachments (task_id, filename, filepath, filesize, uploaded_by)
+                    VALUES (%s, %s, %s, %s, %s);
+                """, (task_id, fname, f"workspace_anexos/{unique_name}", f_size, user_id))
+
     conn.commit()
     cur.close()
     conn.close()
     return jsonify({'message': 'Tarefa atualizada com sucesso!'})
+
+@app.route('/api/user-tasks/<int:task_id>/attachments', methods=['POST'], strict_slashes=False)
+@login_required
+def api_add_task_attachment(task_id):
+    user_id = session.get('user_id')
+    files = request.files.getlist('attachments') or request.files.getlist('files') or request.files.getlist('file')
+    if not files:
+        return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    saved = []
+    for f in files:
+        if f and f.filename and allowed_file(f.filename, ALLOWED_PROJECT_EXTENSIONS):
+            fname = secure_filename(f.filename)
+            unique_name = f"task_{task_id}_{int(time.time())}_{fname}"
+            save_path = os.path.join(UPLOAD_FOLDER, 'workspace_anexos', unique_name)
+            f.save(save_path)
+            f_size = os.path.getsize(save_path)
+            cur.execute("""
+                INSERT INTO task_attachments (task_id, filename, filepath, filesize, uploaded_by)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id;
+            """, (task_id, fname, f"workspace_anexos/{unique_name}", f_size, user_id))
+            saved.append({
+                'id': cur.fetchone()['id'],
+                'filename': fname,
+                'filepath': f"/uploads/workspace_anexos/{unique_name}",
+                'filesize': f_size
+            })
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'success': True, 'attachments': saved}), 201
+
+@app.route('/api/user-tasks/attachments/<int:attachment_id>', methods=['DELETE'], strict_slashes=False)
+@login_required
+def api_delete_task_attachment(attachment_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT filepath FROM task_attachments WHERE id = %s;", (attachment_id,))
+    row = cur.fetchone()
+    if row and row.get('filepath'):
+        disk_path = os.path.join(UPLOAD_FOLDER, row['filepath'])
+        if os.path.exists(disk_path):
+            try: os.remove(disk_path)
+            except Exception: pass
+    cur.execute("DELETE FROM task_attachments WHERE id = %s;", (attachment_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Anexo excluído com sucesso.'})
 
 @app.route('/api/user-tasks/<int:task_id>', methods=['DELETE'])
 @login_required
