@@ -22,11 +22,6 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return url.toString();
 }
 
-// A session can expire mid-use (12h lifetime, or the server restarting).
-// Without this, an expired session just makes every page's data fetch fail
-// silently (most callers do .catch(() => setX([]))), leaving the user
-// staring at an empty page with no indication they were logged out.
-// /api/auth/me is exempt so AuthContext's own check can see the 401 itself.
 function handleUnauthorized(path: string, status: number): boolean {
   if (status === 401 && !path.startsWith('/api/auth/') && window.location.pathname !== '/login') {
     window.location.href = '/login';
@@ -45,56 +40,69 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body = JSON.stringify(options.body);
   }
 
-  const res = await fetch(buildUrl(path, options.query), {
-    method,
-    headers,
-    body,
-    credentials: 'include',
-  });
+  try {
+    const res = await fetch(buildUrl(path, options.query), {
+      method,
+      headers,
+      body,
+      credentials: 'include',
+    });
 
-  if (handleUnauthorized(path, res.status)) return new Promise(() => {});
+    if (handleUnauthorized(path, res.status)) return new Promise(() => {});
 
-  if (res.status === 204) return undefined as T;
+    if (res.status === 204) return undefined as T;
 
-  const isJson = res.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await res.json() : undefined;
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await res.json().catch(() => undefined) : undefined;
 
-  if (!res.ok) {
-    const message = (data && (data.error as string)) || `Erro ${res.status}`;
-    throw new ApiError(res.status, message);
+    if (!res.ok) {
+      const message = (data && (data.error as string)) || `Falha na requisição (${res.status})`;
+      throw new ApiError(res.status, message);
+    }
+
+    return data as T;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(0, 'Falha de comunicação com o servidor. Verifique sua conexão com a rede.');
   }
-
-  return data as T;
 }
 
-// Some legacy endpoints (e.g. /api/technicians) read request.form rather than JSON —
-// this sends a real multipart/form-data body for those instead of api.post's JSON.
 async function requestForm<T>(path: string, method: string, fields: Record<string, string | undefined>): Promise<T> {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) {
     if (value !== undefined) form.append(key, value);
   }
-  const res = await fetch(buildUrl(path), { method, body: form, credentials: 'include' });
-  if (handleUnauthorized(path, res.status)) return new Promise(() => {});
-  const isJson = res.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await res.json() : undefined;
-  if (!res.ok) {
-    const message = (data && (data.error as string)) || `Erro ${res.status}`;
-    throw new ApiError(res.status, message);
+  try {
+    const res = await fetch(buildUrl(path), { method, body: form, credentials: 'include' });
+    if (handleUnauthorized(path, res.status)) return new Promise(() => {});
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await res.json().catch(() => undefined) : undefined;
+    if (!res.ok) {
+      const message = (data && (data.error as string)) || `Falha na requisição (${res.status})`;
+      throw new ApiError(res.status, message);
+    }
+    return data as T;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(0, 'Falha de comunicação com o servidor. Verifique sua conexão com a rede.');
   }
-  return data as T;
 }
 
 async function requestFormData<T>(path: string, method: string, formData: FormData): Promise<T> {
-  const res = await fetch(buildUrl(path), { method, body: formData, credentials: 'include' });
-  if (handleUnauthorized(path, res.status)) return new Promise(() => {});
-  const isJson = res.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await res.json() : undefined;
-  if (!res.ok) {
-    const message = (data && (data.error as string)) || `Erro ${res.status}`;
-    throw new ApiError(res.status, message);
+  try {
+    const res = await fetch(buildUrl(path), { method, body: formData, credentials: 'include' });
+    if (handleUnauthorized(path, res.status)) return new Promise(() => {});
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await res.json().catch(() => undefined) : undefined;
+    if (!res.ok) {
+      const message = (data && (data.error as string)) || `Falha na requisição (${res.status})`;
+      throw new ApiError(res.status, message);
+    }
+    return data as T;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(0, 'Falha de comunicação com o servidor. Verifique sua conexão com a rede.');
   }
-  return data as T;
 }
 
 export const api = {

@@ -20,7 +20,7 @@ from werkzeug.utils import secure_filename
 from flask import (
     Flask, render_template, request, 
     redirect, url_for, session, jsonify, send_from_directory,
-    make_response, Response, send_file
+    make_response, Response, send_file, g, has_request_context
 )
 
 from collections import defaultdict
@@ -293,7 +293,7 @@ def set_security_headers(response):
     return response
 
 # Configuration for Database and Upload Directories
-DATABASE_URL = os.environ['DATABASE_URL']
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
 # Guard: strip accidental "DATABASE_URL=" prefix from the value
 if DATABASE_URL.upper().startswith("DATABASE_URL="):
     DATABASE_URL = DATABASE_URL.split("=", 1)[1]
@@ -310,10 +310,27 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'aceitacoes'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'documentos_pessoas'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'workspace_anexos'), exist_ok=True)
 
-# Helper function to get PostgreSQL connection
+# Leak-proof PostgreSQL connection manager with automatic request teardown
 def get_db():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL não configurada no ambiente do servidor.")
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    if has_request_context():
+        if not hasattr(g, '_active_db_conns'):
+            g._active_db_conns = []
+        g._active_db_conns.append(conn)
     return conn
+
+@app.teardown_appcontext
+def close_db_connections(exception=None):
+    conns = getattr(g, '_active_db_conns', None)
+    if conns:
+        for c in conns:
+            try:
+                if hasattr(c, 'closed') and not c.closed:
+                    c.close()
+            except Exception:
+                pass
 
 # Helper function to check allowed file extensions
 def allowed_file(filename, extensions):
@@ -1052,8 +1069,12 @@ def init_db():
         print("Database initialization failed with traceback:")
         traceback.print_exc()
 
-# Run DB initialization on import
-init_db()
+# Run DB initialization on import if database URL is configured
+if DATABASE_URL:
+    try:
+        init_db()
+    except Exception as e_init:
+        print("[WARNING] init_db falhou na inicialização:", e_init)
 
 # --------------------------------------------------------------------------
 # HELPER FUNCTIONS & DECORATORS
@@ -8847,3 +8868,36 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
 
+
+# --------------------------------------------------------------------------
+# GLOBAL ERROR HANDLERS (CRASH RESILIENCE & JSON INTEGRITY)
+# --------------------------------------------------------------------------
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({"error": "Recurso solicitado não encontrado.", "status": 404}), 404
+    return render_template('dashboard.html'), 404
+
+@app.errorhandler(403)
+def handle_403(e):
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({"error": "Acesso negado. Permissões insuficientes para esta operação.", "status": 403}), 403
+    return redirect(url_for('login'))
+
+@app.errorhandler(413)
+def handle_413(e):
+    return jsonify({"error": "O arquivo enviado excede o limite máximo permitido (500 MB).", "status": 413}), 413
+
+@app.errorhandler(500)
+def handle_500(e):
+    traceback.print_exc()
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({"error": "Instabilidade interna temporária no servidor. A equipe técnica foi informada.", "status": 500}), 500
+    return render_template('dashboard.html'), 500
+
+@app.errorhandler(Exception)
+def handle_uncaught_exception(e):
+    traceback.print_exc()
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({"error": "Ocorreu uma falha no processamento da solicitação.", "status": 500}), 500
+    return render_template('dashboard.html'), 500
