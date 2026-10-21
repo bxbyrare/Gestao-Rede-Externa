@@ -9,6 +9,8 @@ import traceback
 import threading
 import base64
 import re
+import html
+import secrets
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -34,19 +36,25 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', _DEFAULT_RESEND_KEY)
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'Gestão Rede Externa <onboarding@resend.dev>')
 
 def render_executive_email_template(category_badge, title, message_html, cta_text=None, cta_url=None):
+    safe_badge = html.escape(str(category_badge or 'COMUNICADO'))
+    safe_title = html.escape(str(title or 'Claro Gestão Rede Externa'))
     cta_block = ""
     if cta_text and cta_url:
-        cta_block = f'''
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 28px 0 16px 0;">
-            <tr>
-                <td align="center">
-                    <a href="{cta_url}" target="_blank" style="background: linear-gradient(135deg, #E11D48 0%, #BE123C 100%); color: #ffffff; text-decoration: none; padding: 13px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; letter-spacing: 0.3px; display: inline-block; box-shadow: 0 4px 14px rgba(225, 29, 72, 0.35);">
-                        {cta_text} &rarr;
-                    </a>
-                </td>
-            </tr>
-        </table>
-        '''
+        safe_cta_text = html.escape(str(cta_text))
+        clean_url = str(cta_url).strip()
+        if clean_url.startswith(('https://', 'http://')):
+            safe_cta_url = html.escape(clean_url, quote=True)
+            cta_block = f'''
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 28px 0 16px 0;">
+                <tr>
+                    <td align="center">
+                        <a href="{safe_cta_url}" target="_blank" style="background: linear-gradient(135deg, #E11D48 0%, #BE123C 100%); color: #ffffff; text-decoration: none; padding: 13px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; letter-spacing: 0.3px; display: inline-block; box-shadow: 0 4px 14px rgba(225, 29, 72, 0.35);">
+                            {safe_cta_text} &rarr;
+                        </a>
+                    </td>
+                </tr>
+            </table>
+            '''
 
     current_year = datetime.datetime.now().year
     now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
@@ -133,7 +141,13 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
     if not to_email or '@' not in to_email:
         return False
 
-    clean_target = to_email.strip()
+    clean_target = str(to_email).strip().lower()
+    # RFC 5322 compatible email validation
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', clean_target):
+        print(f"[RESEND REJECTED] Endereço de email com formato inválido ignorado: {clean_target}")
+        return False
+
+    safe_subject = str(subject or 'Comunicado Claro Gestão Rede Externa').replace('\r', '').replace('\n', ' ').strip()
 
     def _worker():
         try:
@@ -153,17 +167,22 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
                 json={
                     'from': RESEND_FROM_EMAIL,
                     'to': [clean_target],
-                    'subject': subject,
+                    'subject': safe_subject,
                     'html': full_html
                 },
                 timeout=10
             )
             if resp.status_code in [200, 201]:
-                print(f"[RESEND SUCCESS] Email enviado para {clean_target}: {resp.json().get('id')}")
+                res_data = resp.json() if resp.text else {}
+                print(f"[RESEND SUCCESS] Email entregue ao provedor para {clean_target} | ID: {res_data.get('id')}")
+            elif resp.status_code == 403:
+                print(f"[RESEND DOMAIN NOTICE] Resend free-tier restringe envio para {clean_target}. Cadastre um domínio verificado em resend.com/domains: {resp.text}")
+            elif resp.status_code == 429:
+                print(f"[RESEND RATE-LIMIT] Limite de envios do Resend atingido momentaneamente: {resp.text}")
             else:
                 print(f"[RESEND NOTICE] Tentativa de envio para {clean_target} retornou status {resp.status_code}: {resp.text}")
         except Exception as ex:
-            print(f"[RESEND ERROR] Exceção no envio para {clean_target}: {ex}")
+            print(f"[RESEND ERROR] Exceção de rede no envio para {clean_target}: {ex}")
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
@@ -225,7 +244,7 @@ def enforce_security_policies():
     RATE_LIMIT_STORE[client_ip].append(now)
     
     # 3. Strict Auth Rate Limiting (/login and password resets)
-    if request.path in ['/login', '/api/auth/login', '/forgot-password', '/reset-password']:
+    if request.path in ['/login', '/api/auth/login', '/forgot-password', '/reset-password', '/api/auth/forgot-password', '/api/auth/reset-password']:
         AUTH_RATE_LIMIT_STORE[client_ip] = [t for t in AUTH_RATE_LIMIT_STORE[client_ip] if now - t < 60]
         if len(AUTH_RATE_LIMIT_STORE[client_ip]) >= AUTH_RATE_LIMIT_MAX:
             if request.path.startswith('/api/') or request.is_json:
@@ -1449,6 +1468,160 @@ def api_logout():
         session.clear()
     return jsonify({"success": True})
 
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def api_forgot_password():
+    data = request.get_json(silent=True) or {}
+    identifier = (data.get('identifier') or '').strip().lower()
+
+    if not identifier:
+        return jsonify({"error": "Por favor, informe seu usuário ou e-mail cadastrado."}), 400
+
+    # Consistent generic response for anti-enumeration security
+    success_msg = "Se as credenciais informadas estiverem cadastradas, enviamos um código de verificação para o e-mail registrado."
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.username, u.email as u_email, t.email as t_email, u.name as u_name, t.name as t_name
+            FROM users u
+            LEFT JOIN technicians t ON u.tech_id = t.id
+            WHERE LOWER(u.username) = %s OR LOWER(COALESCE(u.email, '')) = %s OR LOWER(COALESCE(t.email, '')) = %s;
+        """, (identifier, identifier, identifier))
+        user = cur.fetchone()
+
+        if user:
+            target_email = (user.get('u_email') or user.get('t_email') or '').strip().lower()
+            if target_email and '@' in target_email and '.' in target_email:
+                user_id = user['id']
+                user_display = html.escape(str(user.get('u_name') or user.get('t_name') or user['username']))
+                
+                # Invalidate existing unused tokens for this user
+                cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE user_id = %s AND used = FALSE;", (user_id,))
+                
+                # Generate crypto-secure 6-digit numeric token
+                code = f"{secrets.randbelow(900000) + 100000}"
+                
+                expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
+                cur.execute("""
+                    INSERT INTO password_reset_tokens (user_id, token, email, expires_at, used)
+                    VALUES (%s, %s, %s, %s, FALSE);
+                """, (user_id, code, target_email, expires_at))
+                conn.commit()
+
+                # Dispatch Resend Executive Email
+                send_resend_email(
+                    to_email=target_email,
+                    subject=f"[Claro Rede Externa] Código de Recuperação: {code}",
+                    category_badge="RECUPERAÇÃO DE ACESSO",
+                    title="Código de Recuperação de Senha",
+                    message_html=f'''
+                        <p>Olá, <strong>{user_display}</strong>.</p>
+                        <p>Recebemos uma solicitação de redefinição de senha para sua conta no sistema <strong>Claro Gestão Rede Externa</strong>.</p>
+                        <p>Utilize o código de verificação de uso único abaixo para redefinir suas credenciais:</p>
+                        <div style="background: #172033; border: 1px solid #1E293B; border-radius: 10px; padding: 22px; margin: 24px 0; text-align: center;">
+                            <span style="font-family: Consolas, 'JetBrains Mono', Courier, monospace; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #FDA4AF; text-shadow: 0 0 20px rgba(225, 29, 72, 0.45);">
+                                {code}
+                            </span>
+                            <p style="margin: 10px 0 0 0; color: #94A3B8; font-size: 12px; font-weight: 500;">Este código expira em 15 minutos</p>
+                        </div>
+                        <p style="font-size: 13px; color: #CBD5E1; line-height: 1.6;">
+                            Se você <strong>não solicitou</strong> esta alteração, desconsidere esta mensagem. Sua conta permanece segura e sua senha atual não foi modificada.
+                        </p>
+                    '''
+                )
+                log_action(user_id, user['username'], f"Solicitou código de recuperação de senha enviado por email.")
+
+        cur.close()
+        conn.close()
+        return jsonify({"success": True, "message": success_msg})
+    except Exception as e:
+        print("[AUTH FORGOT PASSWORD ERROR]", e)
+        return jsonify({"success": True, "message": success_msg})
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def api_reset_password():
+    data = request.get_json(silent=True) or {}
+    identifier = (data.get('identifier') or '').strip().lower()
+    code = (data.get('code') or '').strip()
+    new_password = data.get('new_password') or ''
+
+    if not identifier or not code or not new_password:
+        return jsonify({"error": "Por favor, preencha todos os campos obrigatórios."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"error": "A nova senha deve ter no mínimo 6 caracteres."}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.username, u.email as u_email, t.email as t_email, u.name as u_name
+            FROM users u
+            LEFT JOIN technicians t ON u.tech_id = t.id
+            WHERE LOWER(u.username) = %s OR LOWER(COALESCE(u.email, '')) = %s OR LOWER(COALESCE(t.email, '')) = %s;
+        """, (identifier, identifier, identifier))
+        user = cur.fetchone()
+
+        if not user:
+            cur.close()
+            conn.close()
+            time.sleep(1)
+            return jsonify({"error": "Código de recuperação inválido ou expirado."}), 400
+
+        user_id = user['id']
+
+        cur.execute("""
+            SELECT id, token, expires_at, used
+            FROM password_reset_tokens
+            WHERE user_id = %s AND token = %s AND used = FALSE AND expires_at > NOW()
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """, (user_id, code))
+        token_row = cur.fetchone()
+
+        if not token_row:
+            cur.close()
+            conn.close()
+            time.sleep(1)
+            return jsonify({"error": "Código de verificação incorreto ou expirado. Solicite um novo código."}), 400
+
+        # Mark token as used
+        cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE id = %s;", (token_row['id'],))
+
+        # Update password hash
+        hashed_pw = generate_password_hash(new_password)
+        cur.execute("UPDATE users SET password_hash = %s WHERE id = %s;", (hashed_pw, user_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(user_id, user['username'], "Redefiniu sua senha de acesso com sucesso via código por e-mail.")
+
+        # Dispatch confirmation email via Resend
+        target_email = (user.get('u_email') or user.get('t_email') or '').strip().lower()
+        if target_email and '@' in target_email:
+            now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
+            safe_name = html.escape(str(user.get('u_name') or user['username']))
+            send_resend_email(
+                to_email=target_email,
+                subject="[Claro Rede Externa] Senha Redefinida com Sucesso",
+                category_badge="SEGURANÇA DA CONTA",
+                title="Sua Senha foi Redefinida",
+                message_html=f'''
+                    <p>Olá, <strong>{safe_name}</strong>.</p>
+                    <p>Confirmamos que a senha de acesso para a conta de usuário <strong>{html.escape(user['username'])}</strong> foi redefinida com sucesso em <strong>{now_str}</strong>.</p>
+                    <p>Se você realizou esta operação, nenhuma ação adicional é necessária. Caso não reconheça esta alteração, contate imediatamente a coordenação operacional.</p>
+                ''',
+                cta_text="Acessar o Sistema",
+                cta_url="https://gestaoredeexterna.shardweb.app/"
+            )
+
+        return jsonify({"success": True, "message": "Sua senha foi redefinida com sucesso! Você já pode efetuar login."})
+    except Exception as e:
+        print("[AUTH RESET PASSWORD ERROR]", e)
+        return jsonify({"error": "Erro ao redefinir senha. Tente novamente mais tarde."}), 500
+
 def get_user_info_dict(user_id):
     try:
         conn = get_db()
@@ -1626,6 +1799,24 @@ def api_update_my_profile():
                     <p style="margin: 0; color: #38BDF8; font-weight: 600; font-size: 15px;">{email}</p>
                 </div>
                 <p>Este e-mail será utilizado para envio de comunicados operacionais importantes, avisos de manutenções, menções em ocorrências e recuperação segura de credenciais.</p>
+            ''',
+            cta_text="Acessar Minha Conta",
+            cta_url="https://gestaoredeexterna.shardweb.app/"
+        )
+
+    if hashed_pw and (email or old_email):
+        target_notify = (email or old_email).strip().lower()
+        now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
+        safe_name = html.escape(str(name or user['username']))
+        send_resend_email(
+            to_email=target_notify,
+            subject="[Claro Rede Externa] Alteração de Senha Realizada",
+            category_badge="SEGURANÇA DA CONTA",
+            title="Sua Senha foi Modificada",
+            message_html=f'''
+                <p>Olá, <strong>{safe_name}</strong>.</p>
+                <p>Informamos que a senha de acesso da sua conta (<strong>{html.escape(user['username'])}</strong>) foi alterada através do painel de perfil em <strong>{now_str}</strong>.</p>
+                <p>Se você realizou essa alteração, nenhuma ação é necessária. Se você <strong>não reconhece</strong> essa operação, redefina sua senha imediatamente.</p>
             ''',
             cta_text="Acessar Minha Conta",
             cta_url="https://gestaoredeexterna.shardweb.app/"

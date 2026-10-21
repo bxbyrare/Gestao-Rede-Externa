@@ -5,6 +5,7 @@ import { useAuth } from '../state/AuthContext';
 import { ApiError } from '../api/client';
 import LiquidEther from '../components/LiquidEther';
 import FullScreenCinematicIntro from '../components/FullScreenCinematicIntro';
+import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [introFinished, setIntroFinished] = useState(false);
+  const [isForgotOpen, setIsForgotOpen] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -101,12 +103,21 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2"
-              >
-                Senha de Acesso
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label
+                  htmlFor="password"
+                  className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider"
+                >
+                  Senha de Acesso
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsForgotOpen(true)}
+                  className="text-[11px] font-medium text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-red-400 transition-colors" />
                 <input
@@ -159,6 +170,16 @@ export default function LoginPage() {
       <div className="absolute bottom-5 text-center text-[11px] text-slate-500 font-medium">
         &copy; 2026 Claro Brasil. Todos os direitos reservados.
       </div>
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal
+        isOpen={isForgotOpen}
+        onClose={() => setIsForgotOpen(false)}
+        onSuccess={(id) => {
+          setUsername(id);
+          setIsForgotOpen(false);
+        }}
+      />
     </div>
   );
 }
