@@ -4,10 +4,12 @@ import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, FolderKanban, FileText, Route as RouteIcon, BarChart3,
   Settings, Menu, X, LogOut, BellRing, ShieldCheck, CheckSquare,
+  UserCheck, AlertTriangle, ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import LiquidEther from './LiquidEther';
 import GlassIcon from './GlassIcon';
+import MandatoryEmailModal from './MandatoryEmailModal';
 
 const COMPANY_LOGOS: Record<string, string> = {
   claro: '/claro-icon.png',
@@ -34,8 +36,6 @@ function companyLogoNeedsWhiteBg(company: string | null | undefined): boolean {
   return COMPANY_LOGO_NEEDS_WHITE_BG[company.trim().toLowerCase()] ?? false;
 }
 
-
-
 const NAV_ITEMS = [
   { to: '/', label: 'Favoritos', icon: Star, end: true },
   { to: '/area-de-trabalho', label: 'Área de Trabalho', icon: Briefcase },
@@ -53,6 +53,7 @@ const NAV_ITEMS = [
   { to: '/escala', label: 'Escala', icon: CalendarDays, inDev: true },
   { to: '/financeiro', label: 'Financeiro', icon: Wallet, inDev: true },
   { to: '/notificacoes', label: 'Notificações', icon: BellRing },
+  { to: '/perfil', label: 'Meu Perfil', icon: UserCheck },
   { to: '/gerenciamento', label: 'Gerenciamento', icon: Settings },
 ];
 
@@ -60,6 +61,7 @@ export default function DashboardLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [dismissBanner, setDismissBanner] = useState(false);
 
   const items = NAV_ITEMS;
 
@@ -68,9 +70,15 @@ export default function DashboardLayout() {
     navigate('/login');
   }
 
+  const hasMissingProfile = !!(user && !user.needs_email && user.profile_complete === false && !dismissBanner);
+
   return (
     <div className="app-shell-bg min-h-screen flex relative">
       <LiquidEther />
+
+      {/* Mandatory Blocking Modal if user has no email registered */}
+      <MandatoryEmailModal />
+
       {/* Mobile overlay */}
       {mobileNavOpen && (
         <div
@@ -105,6 +113,9 @@ export default function DashboardLayout() {
           {items.map((item) => {
             const Icon = item.icon;
             const isInDev = !!item.inDev;
+            const isProfileItem = item.to === '/perfil';
+            const showProfileAlertDot = isProfileItem && user?.profile_complete === false;
+
             return (
               <NavLink
                 key={item.to}
@@ -135,6 +146,12 @@ export default function DashboardLayout() {
                         DEV
                       </span>
                     )}
+                    {showProfileAlertDot && (
+                      <span className="ml-auto flex h-2 w-2 relative" title="Perfil com pendências">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                      </span>
+                    )}
                   </>
                 )}
               </NavLink>
@@ -142,8 +159,14 @@ export default function DashboardLayout() {
           })}
         </nav>
 
-        <div className="p-3 border-t border-white/5">
-          <div className="flex items-center gap-3 px-3 py-2 mb-1">
+        <div className="p-3 border-t border-white/5 space-y-2">
+          {/* User profile card link */}
+          <NavLink
+            to="/perfil"
+            onClick={() => setMobileNavOpen(false)}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.05] transition-all group border border-transparent hover:border-white/5"
+            title="Acessar Meu Perfil"
+          >
             {companyLogoUrl(user?.company) ? (
               companyLogoNeedsWhiteBg(user?.company) ? (
                 <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1 shrink-0"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
@@ -155,16 +178,24 @@ export default function DashboardLayout() {
                 {(user?.username || '?').charAt(0).toUpperCase()}
               </div>
             )}
-            <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">{user?.username}</div>
-              <div className="text-[11px] text-[var(--color-text-faint)] uppercase tracking-wide">{user?.role}</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold truncate text-white group-hover:text-rose-400 transition-colors">
+                {user?.name || user?.username}
+              </div>
+              <div className="text-[11px] text-[var(--color-text-faint)] uppercase tracking-wide flex items-center gap-1.5">
+                <span>{user?.role}</span>
+                {user?.profile_complete === false && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Perfil com dados pendentes" />
+                )}
+              </div>
             </div>
-          </div>
+          </NavLink>
+
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-xs font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
           >
-            <LogOut className="w-[18px] h-[18px]" /> Sair
+            <LogOut className="w-4 h-4" /> Sair do Sistema
           </button>
         </div>
       </aside>
@@ -189,6 +220,40 @@ export default function DashboardLayout() {
         </header>
 
         <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
+          {/* Missing Profile Notification Banner */}
+          {hasMissingProfile && (
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[#1E1710] to-[#141824] border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm animate-fade-in shadow-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-bold text-white text-sm">Aviso de Cadastro Incompleto</div>
+                  <div className="text-amber-300/80 text-xs mt-0.5 truncate">
+                    Faltam informações no seu perfil: <span className="font-semibold text-white">{user.missing_fields?.join(', ')}</span>.
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                <NavLink
+                  to="/perfil"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-amber-500 text-black hover:bg-amber-400 transition-colors shadow-sm"
+                >
+                  <span>Completar Perfil</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </NavLink>
+                <button
+                  type="button"
+                  onClick={() => setDismissBanner(true)}
+                  className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                  title="Fechar aviso temporariamente"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           <Outlet />
         </main>
       </div>

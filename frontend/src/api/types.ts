@@ -3,6 +3,23 @@ export interface User {
   username: string;
   role: string;
   company: string | null;
+  name?: string;
+  email?: string;
+  phone?: string;
+  tech_id?: number | null;
+  needs_email?: boolean;
+  profile_complete?: boolean;
+  missing_fields?: string[];
+  registration_claro?: string | null;
+  toa_login?: string | null;
+}
+
+export interface ProfileUpdatePayload {
+  name?: string;
+  email?: string;
+  phone?: string;
+  current_password?: string;
+  new_password?: string;
 }
 
 export interface Favorite {

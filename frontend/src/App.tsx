@@ -21,6 +21,7 @@ import FormulariosPage from './pages/FormulariosPage';
 import EscalaPage from './pages/EscalaPage';
 import RotasPage from './pages/RotasPage';
 import NotificacoesPage from './pages/NotificacoesPage';
+import ProfilePage from './pages/ProfilePage';
 
 export default function App() {
   return (
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="indicadores" element={<IndicatorsPage />} />
             <Route path="gerenciamento" element={<UsersPage />} />
             <Route path="notificacoes" element={<NotificacoesPage />} />
+            <Route path="perfil" element={<ProfilePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

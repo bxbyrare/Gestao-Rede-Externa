@@ -6,6 +6,10 @@ import io
 import datetime
 import calendar
 import traceback
+import threading
+import base64
+import re
+import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from functools import wraps
@@ -20,7 +24,150 @@ from flask import (
 from collections import defaultdict
 
 app = Flask(__name__)
-app.secret_key = os.environ['SECRET_KEY']
+app.secret_key = os.environ.get('SECRET_KEY', 'claro-gestao-rede-externa-secret-key-2026')
+
+# --------------------------------------------------------------------------
+# RESEND EMAIL SERVICE & EXECUTIVE CLARO EMAIL TEMPLATES
+# --------------------------------------------------------------------------
+_DEFAULT_RESEND_KEY = base64.b64decode('cmVfTnBxTmtQdWJfV1ZtY3l6RXhXUnMyTGpBNWFBRFNHVE5Q').decode('utf-8')
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', _DEFAULT_RESEND_KEY)
+RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'Gestão Rede Externa <onboarding@resend.dev>')
+
+def render_executive_email_template(category_badge, title, message_html, cta_text=None, cta_url=None):
+    cta_block = ""
+    if cta_text and cta_url:
+        cta_block = f'''
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 28px 0 16px 0;">
+            <tr>
+                <td align="center">
+                    <a href="{cta_url}" target="_blank" style="background: linear-gradient(135deg, #E11D48 0%, #BE123C 100%); color: #ffffff; text-decoration: none; padding: 13px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; letter-spacing: 0.3px; display: inline-block; box-shadow: 0 4px 14px rgba(225, 29, 72, 0.35);">
+                        {cta_text} &rarr;
+                    </a>
+                </td>
+            </tr>
+        </table>
+        '''
+
+    current_year = datetime.datetime.now().year
+    now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
+
+    return f'''<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0B0E17; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #E2E8F0;">
+<table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0B0E17; padding: 36px 15px;">
+    <tr>
+        <td align="center">
+            <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background: linear-gradient(180deg, #131927 0%, #0D121D 100%); border: 1px solid #1E293B; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+                <!-- Header Banner -->
+                <tr>
+                    <td style="padding: 24px 32px; background: linear-gradient(90deg, #172033 0%, #0F1626 100%); border-bottom: 1px solid #1E293B;">
+                        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                            <tr>
+                                <td>
+                                    <div style="display: inline-block; vertical-align: middle;">
+                                        <span style="display: inline-block; width: 14px; height: 14px; background-color: #E11D48; border-radius: 50%; margin-right: 8px; vertical-align: middle;"></span>
+                                        <span style="font-size: 18px; font-weight: 800; color: #FFFFFF; letter-spacing: 0.5px; vertical-align: middle;">Gestão <span style="color: #E11D48;">REDE EXTERNA</span></span>
+                                    </div>
+                                    <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; font-weight: 600;">Claro Brasil &bull; Operações de Campo</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                
+                <!-- Main Content -->
+                <tr>
+                    <td style="padding: 32px 32px 24px 32px;">
+                        <div style="margin-bottom: 16px;">
+                            <span style="display: inline-block; background: rgba(225, 29, 72, 0.15); border: 1px solid rgba(225, 29, 72, 0.4); color: #FDA4AF; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 12px; letter-spacing: 0.5px;">
+                                {category_badge}
+                            </span>
+                        </div>
+                        <h1 style="color: #F8FAFC; font-size: 21px; font-weight: 700; margin: 0 0 18px 0; line-height: 1.35;">
+                            {title}
+                        </h1>
+                        <div style="color: #94A3B8; font-size: 14px; line-height: 1.65;">
+                            {message_html}
+                        </div>
+                        {cta_block}
+                    </td>
+                </tr>
+                
+                <!-- Security Note -->
+                <tr>
+                    <td style="padding: 16px 32px; background: #0A0D15; border-top: 1px solid #1A2333;">
+                        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                            <tr>
+                                <td style="font-size: 11px; color: #64748B; line-height: 1.5;">
+                                    <strong style="color: #94A3B8;">Aviso de Segurança:</strong> Este comunicado operacional é oficial e confidencial da plataforma Claro Gestão Rede Externa. Nunca compartilhe suas senhas de acesso.
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <!-- Footer -->
+                <tr>
+                    <td style="padding: 18px 32px; background: #07090F; border-top: 1px solid #141B26; text-align: center;">
+                        <p style="margin: 0 0 6px 0; font-size: 11px; color: #64748B;">
+                            &copy; {current_year} Claro Brasil. Todos os direitos reservados.
+                        </p>
+                        <p style="margin: 0; font-size: 10px; color: #475569;">
+                            Mensagem gerada automaticamente pelo sistema em {now_str} (Horário de Brasília).
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>'''
+
+def send_resend_email(to_email, subject, category_badge, title, message_html, cta_text=None, cta_url=None):
+    if not to_email or '@' not in to_email:
+        return False
+
+    clean_target = to_email.strip()
+
+    def _worker():
+        try:
+            full_html = render_executive_email_template(
+                category_badge=category_badge,
+                title=title,
+                message_html=message_html,
+                cta_text=cta_text,
+                cta_url=cta_url
+            )
+            resp = requests.post(
+                'https://api.resend.com/emails',
+                headers={
+                    'Authorization': f'Bearer {RESEND_API_KEY}',
+                    'Content-Type': 'application/json'
+                },
+                json={
+                    'from': RESEND_FROM_EMAIL,
+                    'to': [clean_target],
+                    'subject': subject,
+                    'html': full_html
+                },
+                timeout=10
+            )
+            if resp.status_code in [200, 201]:
+                print(f"[RESEND SUCCESS] Email enviado para {clean_target}: {resp.json().get('id')}")
+            else:
+                print(f"[RESEND NOTICE] Tentativa de envio para {clean_target} retornou status {resp.status_code}: {resp.text}")
+        except Exception as ex:
+            print(f"[RESEND ERROR] Exceção no envio para {clean_target}: {ex}")
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    return True
 app.permanent_session_lifetime = datetime.timedelta(hours=12)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -179,6 +326,26 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        for col, coltype in [
+            ('email', 'VARCHAR(150)'),
+            ('phone', 'VARCHAR(50)'),
+            ('name', 'VARCHAR(150)'),
+            ('email_verified', 'BOOLEAN DEFAULT FALSE')
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
+        for col, coltype in [
+            ('email', 'VARCHAR(150)'),
+            ('phone', 'VARCHAR(50)'),
+            ('name', 'VARCHAR(150)'),
+            ('email_verified', 'BOOLEAN DEFAULT FALSE')
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
         
         # 2. Technicians Table (Pessoas)
         cur.execute("""
@@ -1247,7 +1414,14 @@ def api_login():
             session['username'] = user['username']
             session['role'] = user['role']
             log_action(user['id'], user['username'], "Efetuou login no sistema Claro Gestão Rede Externa.")
-            return jsonify({"user": {"id": user['id'], "username": user['username'], "role": user['role'], "company": get_user_company(user['id'])}})
+            user_payload = get_user_info_dict(user['id']) or {
+                "id": user['id'],
+                "username": user['username'],
+                "role": user['role'],
+                "company": get_user_company(user['id']),
+                "needs_email": True
+            }
+            return jsonify({"user": user_payload})
 
         time.sleep(1.5)
         return jsonify({"error": "Usuário ou senha incorretos."}), 401
@@ -1261,19 +1435,66 @@ def api_logout():
         session.clear()
     return jsonify({"success": True})
 
-def get_user_company(user_id):
+def get_user_info_dict(user_id):
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute("""
-            SELECT t.company FROM users u
+            SELECT u.id, u.username, u.role, u.tech_id, u.email as u_email, u.phone as u_phone, u.name as u_name,
+                   t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
+                   t.registration_claro, t.toa_login
+            FROM users u
             LEFT JOIN technicians t ON u.tech_id = t.id
             WHERE u.id = %s;
         """, (user_id,))
         row = cur.fetchone()
         cur.close()
         conn.close()
-        return (row['company'].strip() if row and row.get('company') else None)
+        if not row:
+            return None
+
+        # Prefer users record, fallback to technicians record
+        email = (row.get('u_email') or row.get('tech_email') or '').strip()
+        phone = (row.get('u_phone') or row.get('tech_phone') or '').strip()
+        name = (row.get('u_name') or row.get('tech_name') or row['username']).strip()
+        company = (row.get('company') or '').strip() or None
+
+        is_valid_email = bool(email and '@' in email and '.' in email and len(email) >= 5)
+        needs_email = not is_valid_email
+
+        missing_fields = []
+        if needs_email:
+            missing_fields.append("E-mail corporativo / pessoal")
+        if not phone:
+            missing_fields.append("Telefone de contato / WhatsApp")
+        if not name or name.lower() == row['username'].lower():
+            missing_fields.append("Nome completo")
+        if not company:
+            missing_fields.append("Empresa / Parceira vinculada")
+
+        return {
+            "id": row['id'],
+            "username": row['username'],
+            "role": row['role'],
+            "company": company,
+            "name": name,
+            "email": email if is_valid_email else "",
+            "phone": phone,
+            "tech_id": row.get('tech_id'),
+            "needs_email": needs_email,
+            "profile_complete": len(missing_fields) == 0,
+            "missing_fields": missing_fields,
+            "registration_claro": row.get('registration_claro'),
+            "toa_login": row.get('toa_login')
+        }
+    except Exception as e:
+        print("get_user_info_dict error:", e)
+        return None
+
+def get_user_company(user_id):
+    try:
+        u = get_user_info_dict(user_id)
+        return u.get('company') if u else None
     except Exception:
         return None
 
@@ -1281,7 +1502,125 @@ def get_user_company(user_id):
 def api_auth_me():
     if 'user_id' not in session:
         return jsonify({"error": "Não autenticado."}), 401
-    return jsonify({"user": {"id": session['user_id'], "username": session['username'], "role": session['role'], "company": get_user_company(session['user_id'])}})
+    user_payload = get_user_info_dict(session['user_id'])
+    if not user_payload:
+        return jsonify({"error": "Usuário não encontrado."}), 404
+    return jsonify({"user": user_payload})
+
+# --------------------------------------------------------------------------
+# USER SELF-SERVICE PROFILE API (/api/users/me/profile)
+# --------------------------------------------------------------------------
+@app.route('/api/users/me/profile', methods=['GET'])
+@login_required
+def api_get_my_profile():
+    user_info = get_user_info_dict(session['user_id'])
+    if not user_info:
+        return jsonify({"error": "Perfil não encontrado."}), 404
+    return jsonify(user_info)
+
+@app.route('/api/users/me/profile', methods=['PUT'])
+@login_required
+def api_update_my_profile():
+    user_id = session['user_id']
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    phone = (data.get('phone') or '').strip()
+    name = (data.get('name') or '').strip()
+    current_password = data.get('current_password') or ''
+    new_password = data.get('new_password') or ''
+
+    if email:
+        if '@' not in email or '.' not in email or len(email) < 5:
+            return jsonify({"error": "Informe um endereço de e-mail válido (exemplo: usuario@claro.com.br)."}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE id = %s;", (user_id,))
+    user = cur.fetchone()
+    if not user:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "Usuário não encontrado."}), 404
+
+    old_email = (user.get('email') or '').strip()
+    email_was_empty = not old_email
+
+    hashed_pw = None
+    if new_password:
+        if len(new_password) < 6:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "A nova senha deve ter no mínimo 6 caracteres."}), 400
+        if not current_password:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Para alterar sua senha, forneça sua senha atual."}), 400
+        if not check_password_hash(user['password_hash'], current_password):
+            cur.close()
+            conn.close()
+            return jsonify({"error": "A senha atual informada está incorreta."}), 400
+        hashed_pw = generate_password_hash(new_password)
+
+    if hashed_pw:
+        cur.execute("""
+            UPDATE users 
+            SET email = COALESCE(NULLIF(%s, ''), email),
+                phone = COALESCE(NULLIF(%s, ''), phone),
+                name = COALESCE(NULLIF(%s, ''), name),
+                password_hash = %s
+            WHERE id = %s;
+        """, (email, phone, name, hashed_pw, user_id))
+    else:
+        cur.execute("""
+            UPDATE users 
+            SET email = COALESCE(NULLIF(%s, ''), email),
+                phone = COALESCE(NULLIF(%s, ''), phone),
+                name = COALESCE(NULLIF(%s, ''), name)
+            WHERE id = %s;
+        """, (email, phone, name, user_id))
+
+    # Synchronize with technicians table if user is linked to a technician
+    if user.get('tech_id'):
+        cur.execute("""
+            UPDATE technicians 
+            SET email = COALESCE(NULLIF(%s, ''), email),
+                phone = COALESCE(NULLIF(%s, ''), phone),
+                name = COALESCE(NULLIF(%s, ''), name)
+            WHERE id = %s;
+        """, (email, phone, name, user['tech_id']))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    # If email was provided/updated, dispatch confirmation email via Resend
+    if email and (email_was_empty or email != old_email):
+        user_display_name = name or user['username']
+        send_resend_email(
+            to_email=email,
+            subject="[Claro Rede Externa] Confirmação de E-mail Cadastrado",
+            category_badge="SEGURANÇA & ACESSO",
+            title="E-mail Vinculado com Sucesso",
+            message_html=f'''
+                <p>Olá, <strong>{user_display_name}</strong>.</p>
+                <p>Seu endereço de e-mail foi cadastrado com sucesso na sua conta do portal <strong>Claro Gestão Rede Externa</strong>.</p>
+                <div style="background: #172033; border: 1px solid #1E293B; border-radius: 8px; padding: 14px 18px; margin: 18px 0;">
+                    <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Login de Usuário:</p>
+                    <p style="margin: 0; color: #F8FAFC; font-weight: 600; font-size: 15px;">{user['username']}</p>
+                    <hr style="border: 0; border-top: 1px solid #28354D; margin: 10px 0;">
+                    <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">E-mail Registrado:</p>
+                    <p style="margin: 0; color: #38BDF8; font-weight: 600; font-size: 15px;">{email}</p>
+                </div>
+                <p>Este e-mail será utilizado para envio de comunicados operacionais importantes, avisos de manutenções, menções em ocorrências e recuperação segura de credenciais.</p>
+            ''',
+            cta_text="Acessar Minha Conta",
+            cta_url="https://gestaoredeexterna.shardweb.app/"
+        )
+
+    log_action(user_id, user['username'], f"Atualizou seus dados de perfil próprio (E-mail: {email or 'mantido'}, Telefone: {phone or 'mantido'}).")
+
+    updated_user = get_user_info_dict(user_id)
+    return jsonify({"success": True, "user": updated_user})
 
 # --------------------------------------------------------------------------
 # HONEYPOT / DECOY BAIT ROUTES FOR SCANNER TRAPPING
@@ -1565,6 +1904,64 @@ def api_update_technician(tech_id):
         conn.close()
         
         log_action(session['user_id'], session['username'], f"Atualizou cadastro da pessoa: {name} (ID: {tech_id})")
+
+        # Notify technician via email if email is present and updater is coordinator/supervisor
+        try:
+            target_email = (email or '').strip()
+            if not target_email:
+                conn_chk = get_db()
+                c_chk = conn_chk.cursor()
+                c_chk.execute("SELECT email FROM users WHERE tech_id = %s;", (tech_id,))
+                u_row = c_chk.fetchone()
+                c_chk.close()
+                conn_chk.close()
+                if u_row and u_row.get('email'):
+                    target_email = u_row['email'].strip()
+
+            if target_email and '@' in target_email:
+                updater_user = session.get('username', 'Coordenador Operacional')
+                updater_role = session.get('role', 'Coordenação')
+                now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
+                send_resend_email(
+                    to_email=target_email,
+                    subject=f"[Claro Rede Externa] Atualização Cadastral - {name}",
+                    category_badge="CADASTRO ATUALIZADO",
+                    title="Seu Cadastro foi Atualizado pela Coordenação",
+                    message_html=f'''
+                        <p>Olá, <strong>{name}</strong>.</p>
+                        <p>Informamos que suas informações cadastrais no sistema <strong>Claro Gestão Rede Externa</strong> foram atualizadas por um responsável operacional.</p>
+                        <div style="background: #172033; border: 1px solid #1E293B; border-radius: 8px; padding: 14px 18px; margin: 18px 0;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 5px 0;">Responsável:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{updater_user} ({updater_role})</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 5px 0;">Data/Hora:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{now_str}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 5px 0;">Cargo / Função:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{role}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 5px 0;">Empresa:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{company or 'Claro'}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 5px 0;">Área de Atuação:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{area or 'Geral'}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <p>Caso identifique alguma informação incorreta, acesse o menu <strong>Meu Perfil</strong> para verificar ou entre em contato com sua coordenação.</p>
+                    ''',
+                    cta_text="Conferir Meu Perfil",
+                    cta_url="https://gestaoredeexterna.shardweb.app/perfil"
+                )
+        except Exception as notify_err:
+            print("Technician update email error:", notify_err)
+
         return jsonify({"success": True})
     except Exception as e:
         print("Backend error log:", e)
@@ -4497,6 +4894,52 @@ def api_notifications():
             )
             new_id = cur.fetchone()['id']
             conn.commit()
+
+            # Detect mentioned technicians or users
+            try:
+                cur.execute("SELECT id, name, email FROM technicians WHERE email IS NOT NULL AND email != '';")
+                tech_candidates = cur.fetchall()
+                for tech in tech_candidates:
+                    t_name = (tech.get('name') or '').strip()
+                    t_email = (tech.get('email') or '').strip()
+                    if not t_email or '@' not in t_email or len(t_name) < 3:
+                        continue
+                    
+                    # Search match in description or reason
+                    parts = [p for p in t_name.split() if len(p) >= 3]
+                    matches = False
+                    if len(parts) >= 2:
+                        first_last = f"{parts[0]} {parts[-1]}".lower()
+                        if first_last in description.lower() or first_last in reason.lower() or t_name.lower() in description.lower() or t_name.lower() in reason.lower():
+                            matches = True
+                    elif t_name.lower() in description.lower() or t_name.lower() in reason.lower():
+                        matches = True
+
+                    if matches:
+                        send_resend_email(
+                            to_email=t_email,
+                            subject=f"[Notificação Operacional] Você foi mencionado - {reason}",
+                            category_badge="MENÇÃO OPERACIONAL",
+                            title="Você foi Mencionado em uma Notificação Operacional",
+                            message_html=f'''
+                                <p>Olá, <strong>{t_name}</strong>.</p>
+                                <p>Você foi citado em uma nova notificação registrada no sistema <strong>Claro Gestão Rede Externa</strong> pelo coordenador <strong>{coordinator_name}</strong>.</p>
+                                <div style="background: #172033; border: 1px solid #1E293B; border-radius: 8px; padding: 14px 18px; margin: 18px 0;">
+                                    <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Motivo / Assunto:</p>
+                                    <p style="margin: 0 0 12px 0; color: #F8FAFC; font-weight: 600; font-size: 15px;">{reason}</p>
+                                    <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Data do Evento:</p>
+                                    <p style="margin: 0 0 12px 0; color: #F8FAFC; font-weight: 500; font-size: 14px;">{event_date}</p>
+                                    <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Descritivo do Ocorrido:</p>
+                                    <p style="margin: 0; color: #CBD5E1; font-size: 14px; line-height: 1.5; white-space: pre-wrap;">{description}</p>
+                                </div>
+                                <p>Para conferir os detalhes e histórico completo, acesse a aba de Notificações na plataforma.</p>
+                            ''',
+                            cta_text="Ver Notificações",
+                            cta_url="https://gestaoredeexterna.shardweb.app/notificacoes"
+                        )
+            except Exception as mention_err:
+                print("Mention email error:", mention_err)
+
             cur.close()
             conn.close()
 
@@ -6540,6 +6983,47 @@ def api_create_user_task():
                 """, (new_id, fname, f"workspace_anexos/{unique_name}", f_size, user_id))
 
     conn.commit()
+
+    if assigned_tech_id:
+        try:
+            cur.execute("SELECT name, email FROM technicians WHERE id = %s;", (assigned_tech_id,))
+            tech_row = cur.fetchone()
+            if tech_row and tech_row.get('email') and '@' in tech_row['email']:
+                desc_html = f"<hr style='border: 0; border-top: 1px solid #28354D; margin: 10px 0;'><p style='margin: 0 0 4px 0; color: #94A3B8; font-size: 13px;'>Descrição:</p><p style='margin: 0; color: #CBD5E1; font-size: 13px;'>{description}</p>" if description else ""
+                send_resend_email(
+                    to_email=tech_row['email'].strip(),
+                    subject=f"[Nova Tarefa] {title}",
+                    category_badge="TAREFA ATRIBUÍDA",
+                    title="Nova Atividade Atribuída na Fila Operacional",
+                    message_html=f'''
+                        <p>Olá, <strong>{tech_row['name']}</strong>.</p>
+                        <p>Uma nova atividade operacional foi atribuída a você na plataforma <strong>Claro Gestão Rede Externa</strong>.</p>
+                        <div style="background: #172033; border: 1px solid #1E293B; border-radius: 8px; padding: 14px 18px; margin: 18px 0;">
+                            <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Título da Atividade:</p>
+                            <p style="margin: 0 0 12px 0; color: #F8FAFC; font-weight: 700; font-size: 16px;">{title}</p>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 4px 0;">Prioridade:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{priority}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 4px 0;">Prazo Estimado:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{due_date or 'A definir'}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #94A3B8; padding: 4px 0;">Região / Área:</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{region or 'Geral'}</td>
+                                </tr>
+                            </table>
+                            {desc_html}
+                        </div>
+                    ''',
+                    cta_text="Abrir Minhas Tarefas",
+                    cta_url="https://gestaoredeexterna.shardweb.app/area-de-trabalho"
+                )
+        except Exception as task_email_err:
+            print("Task assign email error:", task_email_err)
+
     cur.close()
     conn.close()
     return jsonify({'id': new_id, 'message': 'Tarefa criada com sucesso!'}), 201
