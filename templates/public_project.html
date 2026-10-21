@@ -134,7 +134,7 @@
 <body>
 
   <div class="project-wrapper">
-    <!-- Header Banner -->
+    
     <div class="banner-container">
       <svg width="150" height="46" viewBox="0 0 150 46" fill="none" xmlns="http://www.w3.org/2000/svg">
         <text x="10" y="35" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-weight="800" font-size="36" fill="#ffffff" letter-spacing="-1.5">Claro</text>
@@ -145,7 +145,7 @@
       </svg>
     </div>
 
-    <!-- Project Details Card -->
+    
     <div class="project-card">
       <h1 class="project-title">{{ project.name }}</h1>
       {% if project.area %}
@@ -153,7 +153,7 @@
       {% endif %}
       <p class="project-desc">{{ project.description or 'Nenhuma descrição detalhada fornecida para este projeto.' }}</p>
 
-      <!-- Mapas KMZ/KML -->
+      
       <h3 class="section-title">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px; color: #f59e0b;">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
@@ -180,7 +180,7 @@
         <p style="font-size: 0.85rem; color: #64748b; font-style: italic;">Nenhum mapa (.kmz/.kml) anexado.</p>
       {% endif %}
 
-      <!-- Documentação Técnica -->
+      
       <h3 class="section-title">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px; color: #3b82f6;">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>

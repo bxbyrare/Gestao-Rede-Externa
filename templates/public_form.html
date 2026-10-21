@@ -152,7 +152,7 @@
 <body>
 
   <div class="form-wrapper">
-    <!-- Banner Header -->
+    
     <div class="banner-container">
       <svg width="150" height="50" viewBox="0 0 150 50" fill="none" xmlns="http://www.w3.org/2000/svg">
         <text x="10" y="38" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-weight="800" font-size="38" fill="#ffffff" letter-spacing="-1.5">Claro</text>
@@ -163,7 +163,7 @@
       </svg>
     </div>
 
-    <!-- Title Card -->
+    
     <div class="form-card">
       <h1 style="font-size: 1.6rem; font-weight: 800; color: #0f172a; margin-bottom: 6px;">{{ form.title }}</h1>
       <p style="font-size: 0.92rem; color: #64748b; line-height: 1.5;">{{ form.description or 'Preencha as informações solicitadas abaixo.' }}</p>
@@ -172,7 +172,7 @@
       </div>
     </div>
 
-    <!-- Success Screen -->
+    
     <div id="success-screen" class="success-container">
       <svg class="success-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -182,23 +182,23 @@
       <button onclick="window.location.reload();" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">Enviar outra resposta</button>
     </div>
 
-    <!-- Main Form -->
+    
     <form id="public-form" style="display: block;">
       <input type="hidden" name="form_slug" value="{{ form.slug }}">
 
-      <!-- 1. E-mail -->
+      
       <div class="question-card">
         <div class="question-title">E-mail <span class="required-star">*</span></div>
         <input type="email" name="email" class="text-input" placeholder="Seu e-mail de contato" required>
       </div>
 
-      <!-- 2. Data -->
+      
       <div class="question-card">
         <div class="question-title">Data <span class="required-star">*</span></div>
         <input type="date" name="date" class="text-input" required>
       </div>
 
-      <!-- 3. REGIÃO -->
+      
       <div class="question-card">
         <div class="question-title">REGIÃO</div>
         <div class="options-list">
@@ -222,7 +222,7 @@
         </div>
       </div>
 
-      <!-- 4. Motivo do inventário -->
+      
       <div class="question-card">
         <div class="question-title">Motivo do inventário <span class="required-star">*</span></div>
         <div class="options-list">
@@ -244,19 +244,19 @@
         </div>
       </div>
 
-      <!-- 5. Técnico -->
+      
       <div class="question-card">
         <div class="question-title">Técnico <span class="required-star">*</span></div>
         <input type="text" name="technician" class="text-input" placeholder="Nome completo do técnico" required>
       </div>
 
-      <!-- 6. Carro ou Local -->
+      
       <div class="question-card">
         <div class="question-title">Carro ou Local <span class="required-star">*</span></div>
         <input type="text" name="vehicle_location" class="text-input" placeholder="Identificação do veículo ou base" required>
       </div>
 
-      <!-- 7. Quantidade de escada no carro -->
+      
       <div class="question-card">
         <div class="question-title">Quantidade de escada no carro</div>
         <div class="options-list">
@@ -273,7 +273,7 @@
         </div>
       </div>
 
-      <!-- 8. Carro tem inversor ? -->
+      
       <div class="question-card">
         <div class="question-title">Carro tem inversor ?</div>
         <div class="options-list">
@@ -286,7 +286,7 @@
         </div>
       </div>
 
-      <!-- 9. Barraca para fusão -->
+      
       <div class="question-card">
         <div class="question-title">Barraca para fusão</div>
         <div class="options-list">
@@ -299,7 +299,7 @@
         </div>
       </div>
 
-      <!-- 10. Carro tem mesa e duas cadeiras -->
+      
       <div class="question-card">
         <div class="question-title">Carro tem mesa e duas cadeiras</div>
         <div class="options-list">
@@ -313,14 +313,14 @@
         </div>
       </div>
 
-      <!-- 11. Máquina de fusão -->
+      
       <div class="question-card">
         <div class="question-title">Máquina de fusão</div>
         <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE (Ex: Fitel 8417 - 33760 - MERCOSAT)</div>
         <input type="text" name="fusion_machine" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 12. Proprietário da Máquina de fusão -->
+      
       <div class="question-card">
         <div class="question-title">Proprietário da Máquina de fusão</div>
         <div class="options-list">
@@ -331,14 +331,14 @@
         </div>
       </div>
 
-      <!-- 13. CLIVADOR -->
+      
       <div class="question-card">
         <div class="question-title">CLIVADOR</div>
         <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE (Ex: SUMITOMO FC6S - 33760 - MERCOSAT)</div>
         <input type="text" name="cleaver" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 14. Proprietário do Clivador -->
+      
       <div class="question-card">
         <div class="question-title">Proprietário do Clivador</div>
         <div class="options-list">
@@ -349,7 +349,7 @@
         </div>
       </div>
 
-      <!-- 15. Carro tem alicate decapador? -->
+      
       <div class="question-card">
         <div class="question-title">Carro tem alicate decapador?</div>
         <div class="options-list">
@@ -359,14 +359,14 @@
         </div>
       </div>
 
-      <!-- 16. Carro tem luz visivel? -->
+      
       <div class="question-card">
         <div class="question-title">Carro tem luz visivel?</div>
         <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
         <input type="text" name="vfl_light" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 17. Proprietário da luz visivel -->
+      
       <div class="question-card">
         <div class="question-title">Proprietário da luz visivel</div>
         <div class="options-list">
@@ -377,14 +377,14 @@
         </div>
       </div>
 
-      <!-- 18. OTDR -->
+      
       <div class="question-card">
         <div class="question-title">OTDR</div>
         <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
         <input type="text" name="otdr" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 19. Proprietário do OTDR -->
+      
       <div class="question-card">
         <div class="question-title">Proprietário do OTDR</div>
         <div class="options-list">
@@ -395,14 +395,14 @@
         </div>
       </div>
 
-      <!-- 20. POWER METER -->
+      
       <div class="question-card">
         <div class="question-title">POWER METER</div>
         <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
         <input type="text" name="power_meter" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 21. Proprietário do Power Meter -->
+      
       <div class="question-card">
         <div class="question-title">Proprietário do Power Meter</div>
         <div class="options-list">
@@ -413,7 +413,7 @@
         </div>
       </div>
 
-      <!-- 22. Roletador -->
+      
       <div class="question-card">
         <div class="question-title">Roletador</div>
         <div class="options-list">
@@ -422,14 +422,14 @@
         </div>
       </div>
 
-      <!-- 23. Testador de Fibra ativa -->
+      
       <div class="question-card">
         <div class="question-title">Testador de Fibra ativa</div>
         <div class="question-subtitle">MARCA - MODELO - NÚMERO DE SÉRIE</div>
         <input type="text" name="active_fiber_tester" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 24. Proprietário do Testador de Fibra Ativa -->
+      
       <div class="question-card">
         <div class="question-title">Proprietário do Testador de Fibra Ativa</div>
         <div class="options-list">
@@ -440,13 +440,13 @@
         </div>
       </div>
 
-      <!-- 25. Medidor - Marca / Modelo /Número de Serie -->
+      
       <div class="question-card">
         <div class="question-title">Medidor - Marca / Modelo /Número de Serie</div>
         <input type="text" name="meter_details" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 26. Etiquetadora -->
+      
       <div class="question-card">
         <div class="question-title">Etiquetadora</div>
         <div class="options-list">
@@ -460,26 +460,26 @@
         </div>
       </div>
 
-      <!-- 27. O que precisamos comprar ou providenciar? -->
+      
       <div class="question-card">
         <div class="question-title">O que precisamos comprar ou providenciar?</div>
         <input type="text" name="items_to_buy" class="text-input" placeholder="Sua resposta">
       </div>
 
-      <!-- 28. Foto importante quando solicitado -->
+      
       <div class="question-card">
         <div class="question-title">Foto importante quando solicitado</div>
         <div class="question-subtitle">Faça upload ou tire foto dos equipamentos (até 10 fotos).</div>
         <input type="file" name="photos" id="photos-input" multiple accept="image/*" class="text-input" style="padding: 10px; cursor: pointer;">
       </div>
 
-      <!-- 29. Observação : -->
+      
       <div class="question-card">
         <div class="question-title">Observação :</div>
         <textarea name="notes" class="text-input" rows="3" placeholder="Sua resposta"></textarea>
       </div>
 
-      <!-- Submit Button -->
+      
       <button type="submit" id="submit-btn" class="btn-submit">Enviar Resposta</button>
     </form>
   </div>

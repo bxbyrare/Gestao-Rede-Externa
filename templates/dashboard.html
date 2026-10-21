@@ -4,24 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestão Rede Externa - Claro Dashboard</title>
-  <!-- Google Fonts -->
+  
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <!-- Stylesheet -->
+  
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style_v2.css') }}?v=6.3.0">
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" integrity="sha384-JUh163oCRItcbPme8pYnROHQMC6fNKTBWtRG3I3I0erJkzNgL7uxKlNwcrcFKeqF" crossorigin="anonymous"></script>
 </head>
 <body class="dashboard-body">
 
-  <!-- ==========================================================================
-       HEADER
-       ========================================================================== -->
+  
   <header class="dash-header">
-    <!-- Hamburger button (mobile only) -->
+    
     <button class="sidebar-hamburger" id="sidebar-hamburger" aria-label="Abrir menu" onclick="toggleSidebar()">
       <span></span><span></span><span></span>
     </button>
@@ -41,13 +39,11 @@
       </a>
     </div>
   </header>
-  <!-- Sidebar overlay (mobile) -->
+  
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
   <div class="dash-layout">
-    <!-- ==========================================================================
-         SIDEBAR
-         ========================================================================== -->
+    
     <aside class="dash-sidebar" id="dash-sidebar">
       <button class="sidebar-close-btn" onclick="toggleSidebar()" aria-label="Fechar menu">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -190,14 +186,10 @@
       </ul>
     </aside>
 
-    <!-- ==========================================================================
-         MAIN CONTENT AREA
-         ========================================================================== -->
+    
     <main class="dash-content">
 
-      <!-- ==========================================================================
-           TAB 1: PESSOAS (TECNICOS)
-           ========================================================================== -->
+      
       <section class="tab-pane" id="pessoas-tab">
         <div class="filter-bar">
           <div class="filter-inputs">
@@ -235,15 +227,13 @@
               </tr>
             </thead>
             <tbody id="techs-table-body">
-              <!-- Content loaded via JS -->
+              
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB 2: VEÍCULOS
-           ========================================================================== -->
+      
       <section class="tab-pane" id="veiculos-tab">
         <div class="filter-bar">
           <div class="filter-inputs">
@@ -284,15 +274,13 @@
               </tr>
             </thead>
             <tbody id="vehicles-table-body">
-              <!-- Content loaded via JS -->
+              
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: BUSCADOR DE FALHAS
-           ========================================================================== -->
+      
       <section class="tab-pane" id="buscador-tab">
         <div class="section-header-flex gx-18">
           <div>
@@ -301,7 +289,7 @@
           </div>
         </div>
 
-        <!-- Topic Selection Header Buttons -->
+        
         <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
           <button class="sub-tab-btn btn-buscador-topic active" data-topic="RAL" style="padding: 10px 28px; font-weight: 800; border-radius: 8px; cursor: pointer; font-size: 0.95rem; background: #23232b; color: #ffffff; border: 1px solid var(--border);">RAL</button>
           <button class="sub-tab-btn btn-buscador-topic gx-33" data-topic="REC">REC</button>
@@ -309,7 +297,7 @@
           <button class="sub-tab-btn btn-buscador-topic gx-33" data-topic="GPON">GPON</button>
         </div>
 
-        <!-- Update Info Status Box & Actions -->
+        
         <div style="background-color: #16161a; border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
           <div>
             <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Última Atualização da Base</div>
@@ -344,14 +332,14 @@
           </div>
         </div>
 
-        <!-- Search & Filter Bar Input -->
+        
         <div class="filter-bar" style="margin-bottom: 15px; background: #16161a; padding: 12px 18px; border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
           <div style="flex: 1; display: flex; align-items: center; gap: 12px; min-width: 280px;">
             <label for="buscador-search-input" style="font-weight: 800; color: #ffffff; font-size: 0.9rem; min-width: 75px;">Buscador:</label>
             <input type="text" id="buscador-search-input" class="search-input" placeholder="Digite termos para pesquisar em tempo real nas colunas..." style="width: 100%; max-width: 600px; background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 10px 14px; border-radius: 8px; font-size: 0.9rem;">
           </div>
 
-          <!-- Filtro de Rota (Visível para HFC e tópicos com rotas) -->
+          
           <div id="buscador-route-wrapper" class="u-flex-35">
             <label for="buscador-route-select" style="font-weight: 800; color: #ffffff; font-size: 0.9rem; white-space: nowrap;">Filtro de Rota:</label>
             <select id="buscador-route-select" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; min-width: 180px; max-width: 300px; cursor: pointer;">
@@ -360,27 +348,25 @@
           </div>
         </div>
 
-        <!-- Data Table Container -->
+        
         <div class="table-container" style="background-color: #16161a; border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow);">
           <table class="data-table" id="buscador-table">
             <thead>
               <tr id="buscador-table-header">
-                <!-- Dynamically injected via JS -->
+                
               </tr>
             </thead>
             <tbody id="buscador-table-body">
-              <!-- Dynamically loaded via JS -->
+              
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: MAPA DE EVENTOS
-           ========================================================================== -->
+      
       <section class="tab-pane" id="mapa-eventos-tab">
 
-        <!-- Power BI Header Bar -->
+        
         <div style="background: #18181f; border-bottom: 2px solid var(--border); padding: 14px 20px; border-radius: 12px 12px 0 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 15px;">
           <div class="u2-flex-36">
             <img src="{{ url_for('static', filename='img/logo_flat.png') }}" alt="Claro" style="height: 24px;" onerror="this.style.display='none'">
@@ -389,7 +375,7 @@
             </h3>
           </div>
 
-          <!-- Center: View Toggle (MAPA / PROJEÇÃO) -->
+          
           <div style="display: flex; align-items: center; gap: 4px; background: #121216; padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
             <button id="mapa-view-btn-mapa" class="mapa-view-toggle-btn active" onclick="switchMapaView('mapa')"
               style="padding: 7px 22px; font-weight: 800; font-size: 0.82rem; border-radius: 6px; border: none; background: #e11d48; color: #ffffff; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px;">
@@ -401,7 +387,7 @@
             </button>
           </div>
 
-          <!-- Right: Event Type Filters -->
+          
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <button class="mapa-event-type-btn active" data-event-type="CURTO CIRCUITO"
               style="padding: 6px 14px; font-weight: 800; font-size: 0.78rem; border-radius: 6px; border: 2px solid #1e40af; background: #1e40af; color: #ffffff; cursor: pointer; transition: all 0.2s;">
@@ -429,12 +415,12 @@
           </div>
         </div>
 
-        <!-- ===== VIEW: MAPA (default) ===== -->
+        
         <div id="mapa-view-mapa" class="mapa-eventos-grid" style="gap: 15px; min-height: 680px;">
-          <!-- Left Sidebar Filters -->
+          
           <div style="background: #16161c; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto;">
 
-            <!-- Date Filter: Year & Month -->
+            
             <div class="u-flex-6">
               <div class="gy-43">
                 <label class="u2-font-7">Ano</label>
@@ -465,7 +451,7 @@
               </div>
             </div>
 
-            <!-- Filter: Origem -->
+            
             <div>
               <label class="gx-36">Origem</label>
               <div class="mapa-origem-selector u-flex-37">
@@ -478,7 +464,7 @@
               </div>
             </div>
 
-            <!-- Filter: Região -->
+            
             <div>
               <label class="gx-36">Região</label>
               <div class="mapa-regiao-selector u-flex-37">
@@ -488,7 +474,7 @@
               </div>
             </div>
 
-            <!-- Filter: Área -->
+            
             <div>
               <label class="gx-36">Área</label>
               <div class="mapa-area-selector u-flex-37">
@@ -501,7 +487,7 @@
               </div>
             </div>
 
-            <!-- Footer Mini-Chart -->
+            
             <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <span style="font-size: 0.72rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Evento por Mês</span>
@@ -510,10 +496,10 @@
             </div>
           </div>
 
-          <!-- Right: Leaflet Map -->
+          
           <div style="position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); min-height: 600px; background: #121216;">
             <div id="mapa-eventos-leaflet" style="width: 100%; height: 100%; min-height: 650px; z-index: 1;"></div>
-            <!-- Map Legend Overlay -->
+            
             <div style="position: absolute; bottom: 20px; right: 20px; z-index: 1000; background: rgba(18,18,22,0.92); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); padding: 12px 16px; border-radius: 10px; font-size: 0.78rem; color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
               <div style="font-weight: 800; margin-bottom: 8px; color: #f8fafc; letter-spacing: 0.5px;">LEGENDA DO MAPA</div>
               <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -525,10 +511,10 @@
           </div>
         </div>
 
-        <!-- ===== VIEW: PROJEÇÃO (Power BI style charts) ===== -->
+        
         <div id="mapa-view-projecao" class="u-hidden">
 
-          <!-- Filter bar (Region + Origem - mirrors Power BI) -->
+          
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; padding: 12px 16px; background: #18181f; border-radius: 10px; border: 1px solid var(--border);">
             <span class="gx-39">Região:</span>
             <button class="proj-regiao-btn active gx-40" data-regiao="">ES</button>
@@ -546,10 +532,10 @@
             <button class="proj-event-btn gx-14" data-event-type="VANDALISMO">VANDALISMO</button>
           </div>
 
-          <!-- TOP ROW: Projeção e Qtde (2 cards) -->
+          
           <div class="proj-charts-grid u-mb-17">
 
-            <!-- Card 1: Projeção e Qtde Evento por Área (current month) -->
+            
             <div class="gx-19">
               <div id="proj-month-label-1" class="u2-font-12">julho</div>
               <div class="gx-20">Projeção e Qtde Evento por Área</div>
@@ -562,7 +548,7 @@
               </div>
             </div>
 
-            <!-- Card 2: Projeção e Qtde por SubCluster (current month) -->
+            
             <div class="gx-19">
               <div id="proj-month-label-2" class="u2-font-12">julho</div>
               <div class="gx-20">Projeção e Qtde por SubCluster</div>
@@ -576,10 +562,10 @@
             </div>
           </div>
 
-          <!-- BOTTOM ROW: Últimos 3 meses (2 cards) -->
+          
           <div class="proj-charts-grid">
 
-            <!-- Card 3: Últimos 3 meses por Área -->
+            
             <div class="gx-19">
               <div class="gx-20">Últimos 3 meses por Área</div>
               <div class="gy-40">
@@ -587,7 +573,7 @@
               </div>
             </div>
 
-            <!-- Card 4: Últimos 3 meses por SubCluster -->
+            
             <div class="gx-19">
               <div class="gx-20">Últimos 3 meses por SubCluster</div>
               <div class="gy-40">
@@ -596,12 +582,10 @@
             </div>
           </div>
 
-        </div><!-- /mapa-view-projecao -->
+        </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB 2: FINANCEIRO
-           ========================================================================== -->
+      
       <section class="tab-pane" id="financial-tab">
         <div class="section-header-flex" style="margin-bottom: 25px; background: linear-gradient(145deg, rgba(25, 25, 30, 0.8), rgba(20, 20, 25, 0.6)); border: 1px solid rgba(255,255,255,0.06); padding: 20px 24px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); backdrop-filter: blur(12px);">
           <div>
@@ -620,14 +604,14 @@
           </div>
         </div>
 
-        <!-- Sub-tabs nav -->
-        <!-- Sub-tabs nav -->
+        
+        
         <div style="display: flex; gap: 12px; margin-bottom: 25px;">
           <button class="sub-tab-btn active" data-subtab="fin-teams-subtab" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-weight: 800; padding: 10px 24px; border-radius: 30px; cursor: pointer; font-size: 0.95rem; box-shadow: 0 0 12px rgba(239, 68, 68, 0.15); transition: all 0.2s ease;">Equipes</button>
           <button class="sub-tab-btn" data-subtab="fin-consumables-subtab" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: #94a3b8; font-weight: 700; padding: 10px 24px; border-radius: 30px; cursor: pointer; font-size: 0.95rem; transition: all 0.2s ease;">Consumíveis</button>
         </div>
 
-        <!-- Sub-tab 1: Equipes -->
+        
         <div class="subtab-pane active" id="fin-teams-subtab">
           <div class="filter-bar" style="background: rgba(22, 22, 26, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px 16px 0 0; padding: 18px 24px; border-bottom: 1px solid rgba(255,255,255,0.02);">
             <h4 style="font-weight: 800; font-size: 1.1rem; color: #ffffff;">Faturamento de Equipes Externas</h4>
@@ -646,13 +630,13 @@
                 </tr>
               </thead>
               <tbody id="fin-teams-table-body">
-                <!-- Javascript populated -->
+                
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- Sub-tab 2: Consumíveis -->
+        
         <div class="subtab-pane" id="fin-consumables-subtab">
           <div class="filter-bar" style="background: rgba(25, 25, 30, 0.5); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px 12px 0 0; padding: 18px 24px; border-bottom: none;">
             <h4 style="font-weight: 800; font-size: 1.1rem; color: #f4f4f5;">Custos de Consumíveis</h4>
@@ -670,16 +654,14 @@
                 </tr>
               </thead>
               <tbody id="fin-consumables-table-body">
-                <!-- Javascript populated -->
+                
               </tbody>
             </table>
           </div>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: ESCALA DE TRABALHO
-           ========================================================================== -->
+      
       <section class="tab-pane" id="escala-tab">
         <div class="section-header-flex gx-18">
           <div>
@@ -697,26 +679,26 @@
           </div>
         </div>
 
-        <!-- Top Filters Bar -->
+        
         <div class="filter-bar gx-42">
           <div class="u-flex-43">
             
-            <!-- Filter 1: Mês -->
+            
             <div class="u-flex-12">
               <label for="escala-filter-month" class="gx-44">Mês:</label>
               <input type="month" id="escala-filter-month" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem; cursor: pointer; font-weight: 700;">
             </div>
 
-            <!-- Filter 2: Área (REQUIRED) -->
+            
             <div class="u-flex-12">
               <label for="escala-filter-area" class="gx-44">Área <span class="gx-45">*</span>:</label>
               <select id="escala-filter-area" style="background: #1a1a1e; border: 1.5px solid var(--primary); color: #ffffff; padding: 8px 14px; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; min-width: 190px;">
                 <option value="">-- Selecione a Área --</option>
-                <!-- Populated dynamically via JS -->
+                
               </select>
             </div>
 
-            <!-- Filter 3: Empresa -->
+            
             <div class="u-flex-12">
               <label for="escala-filter-company" class="gx-44">Empresa:</label>
               <select id="escala-filter-company" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem; cursor: pointer;">
@@ -727,17 +709,17 @@
               </select>
             </div>
 
-            <!-- Filter 4: Nome Search -->
+            
             <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; max-width: 300px;">
               <input type="text" id="escala-filter-search" placeholder="Buscar por nome..." style="width: 100%; background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem;">
             </div>
           </div>
         </div>
 
-        <!-- Toolbar / Painter & Horário Customizável -->
+        
         <div id="escala-painter-bar" style="display: none; margin-bottom: 20px; background: #16161c; padding: 14px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
           
-          <!-- Status Painter Palette Buttons -->
+          
           <div class="u2-flex-33">
             <span style="font-weight: 800; font-size: 0.82rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Selecione para Pintar o Dia:</span>
             
@@ -762,7 +744,7 @@
             </button>
           </div>
 
-          <!-- Horário de Trabalho Editable Selector -->
+          
           <div class="u2-flex-33">
             <label for="escala-work-hours-input" style="font-weight: 800; font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Horário Padrão:</label>
             <select id="escala-work-preset" style="background: #1a1a1e; border: 1px solid var(--border); color: #ffffff; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
@@ -777,7 +759,7 @@
           </div>
         </div>
 
-        <!-- Informative State Container (When Area not selected) -->
+        
         <div id="escala-empty-notice" style="background: rgba(22, 22, 26, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 8px 32px rgba(0,0,0,0.2); border-radius: 20px; padding: 60px 20px; text-align: center; margin-top: 20px;">
           <div style="width: 72px; height: 72px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05)); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 24px; transform: rotate(-5deg); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);">
             <div style="transform: rotate(5deg);">
@@ -790,27 +772,25 @@
           </p>
         </div>
 
-        <!-- Schedule Grid Table Container -->
+        
         <div id="escala-table-wrapper" style="display: none; background: rgba(22, 22, 26, 0.5); backdrop-filter: blur(12px); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 8px 32px rgba(0,0,0,0.2); overflow-x: auto; margin-top: 16px; padding-bottom: 8px;">
           <table class="data-table" id="escala-grid-table" style="width: 100%; border-collapse: separate; border-spacing: 0;">
             <thead>
               <tr id="escala-table-header-days">
-                <!-- Dynamically generated via JS -->
+                
               </tr>
               <tr id="escala-table-header-weekdays">
-                <!-- Dynamically generated via JS -->
+                
               </tr>
             </thead>
             <tbody id="escala-table-body">
-              <!-- Dynamically populated via JS -->
+              
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: INVENTÁRIO
-           ========================================================================== -->
+      
       <section class="tab-pane" id="inventario-tab">
         <div class="section-header-flex" style="margin-bottom: 25px;">
           <div>
@@ -819,7 +799,7 @@
           </div>
         </div>
 
-                <!-- Category cards -->
+                
         <div class="financial-grid" style="margin-bottom: 25px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
           <div class="inventory-card-btn active" data-category="Cabos">
             <h4 class="gx-22">Cabos</h4>
@@ -856,21 +836,19 @@
               </tr>
             </thead>
             <tbody id="inventory-table-body">
-              <!-- Loaded via JS -->
+              
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB 3: PROJETOS
-           ========================================================================== -->
+      
       <section class="tab-pane" id="projects-tab">
         <div id="project-breadcrumbs" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); padding: 10px 15px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-          <!-- Breadcrumbs injectados por JS -->
+          
         </div>
 
-        <!-- Dropzone de arrastar/soltar e copiar/colar arquivos -->
+        
         <div id="projects-dropzone" style="margin-bottom: 15px; border: 2px dashed rgba(255,255,255,0.15); border-radius: 12px; padding: 18px 24px; text-align: center; background: rgba(255,255,255,0.01); transition: all 0.25s ease; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px;">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 22px; height: 22px; color: var(--primary);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
           <span style="font-size: 0.88rem; color: var(--text-muted); font-weight: 600;">Arraste arquivos e solte aqui <strong>ou use Ctrl + V (Copiar/Colar)</strong> para salvar nesta pasta</span>
@@ -904,15 +882,13 @@
               </tr>
             </thead>
             <tbody id="projects-table-body">
-              <!-- Content loaded via JS -->
+              
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB 4: GERENCIAMENTO DO SISTEMA
-           ========================================================================== -->
+      
       <section class="tab-pane" id="data-tab">
         <div class="section-header-flex" style="margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 15px;">
           <div>
@@ -921,7 +897,7 @@
           </div>
         </div>
 
-        <!-- Gerenciamento de Contas -->
+        
         <div style="background-color: #16161a; border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); margin-bottom: 30px;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
             <div class="u-flex-35">
@@ -949,13 +925,13 @@
                 </tr>
               </thead>
               <tbody id="users-table-body">
-                <!-- Content loaded via JS -->
+                
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- Logs de Auditoria -->
+        
         <div style="background-color: #16161a; border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: var(--shadow);">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 14px; flex-wrap: wrap;">
             <div class="u-flex-35">
@@ -983,16 +959,14 @@
                 </tr>
               </thead>
               <tbody id="logs-table-body">
-                <!-- Content loaded via JS -->
+                
               </tbody>
             </table>
           </div>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: FAVORITOS
-           ========================================================================== -->
+      
       <section class="tab-pane active" id="favorites-tab">
         <div class="filter-bar">
           <div class="filter-inputs">
@@ -1009,17 +983,13 @@
         </div>
 
         <div id="favorites-container" class="favorites-grid">
-          <!-- Dynamic cards injected via JS -->
+          
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: FORMULÁRIOS (ENTRE PROJETOS E ROTAS)
-           ========================================================================== -->
       
-      <!-- ==========================================================================
-           TAB: NOTIFICAÇÃO (CONTROLE DE OCORRÊNCIAS E PENDÊNCIAS OPERACIONAIS)
-           ========================================================================== -->
+      
+      
       <section class="tab-pane" id="notificacoes-tab">
         <div class="section-header-flex gx-18">
           <div>
@@ -1041,7 +1011,7 @@
           </div>
         </div>
 
-        <!-- Filter Bar -->
+        
         <div class="filter-bar">
           <div class="filter-inputs" style="display: flex; gap: 12px; align-items: center; flex: 1; flex-wrap: wrap;">
             <div class="search-input-wrapper" style="max-width: 420px; flex: 1;">
@@ -1062,7 +1032,7 @@
           </div>
         </div>
 
-        <!-- Notificações Table matching user's green header style -->
+        
         <div class="table-container" style="background: rgba(22, 22, 26, 0.7); backdrop-filter: blur(12px); border-radius: 14px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto;">
           <table class="data-table" id="notificacoes-table" style="width: 100%;">
             <thead>
@@ -1076,7 +1046,7 @@
               </tr>
             </thead>
             <tbody id="notificacoes-table-body">
-              <!-- Loaded via JS -->
+              
             </tbody>
           </table>
         </div>
@@ -1107,15 +1077,13 @@
         </div>
 
         <div id="forms-container" class="routes-grid">
-          <!-- Dynamic form cards injected via JS -->
+          
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: ROTAS (EMPRESARIAL / RESIDENCIAL + SUB-PÁGINA DE LINHAS)
-           ========================================================================== -->
+      
       <section class="tab-pane" id="rotas-tab">
-        <!-- 1. MAIN LIST VIEW -->
+        
         <div id="routes-main-view">
           <div class="filter-bar">
             <div class="filter-inputs">
@@ -1137,11 +1105,11 @@
           </div>
 
           <div id="routes-container" class="routes-grid">
-            <!-- Dynamic route cards injected via JS -->
+            
           </div>
         </div>
 
-        <!-- 2. SUB-PAGE DETAIL VIEW (SUB-PÁGINA DA ROTA) -->
+        
         <div id="route-detail-subpage" class="u-hidden">
           <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <button class="btn btn-outline" id="btn-back-routes">
@@ -1197,7 +1165,7 @@
             </div>
           </div>
 
-          <!-- Drag and Drop / Paste Upload Zone -->
+          
           <div id="route-dropzone" style="border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 22px 18px; text-align: center; background: rgba(22, 22, 26, 0.6); margin-bottom: 20px; cursor: pointer; transition: all 0.2s ease;">
             <div style="display: flex; align-items: center; justify-content: center; gap: 12px; color: #94a3b8; font-size: 0.9rem; font-weight: 500;">
               <span>Arraste arquivos e solte aqui ou use Ctrl+V (Copiar/Colar) para salvar nesta pasta</span>
@@ -1206,7 +1174,7 @@
             <input type="file" id="route-file-input" multiple class="u-hidden">
           </div>
 
-          <!-- Route Folders & Files Explorer -->
+          
           <div id="route-explorer-container" style="margin-bottom: 24px; display: none;">
             <div id="route-breadcrumbs" style="margin-bottom: 12px; font-size: 0.85rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;"></div>
             <div id="route-folders-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
@@ -1226,16 +1194,14 @@
                 </tr>
               </thead>
               <tbody id="route-lines-table-body">
-                <!-- Lines injected via JS -->
+                
               </tbody>
             </table>
           </div>
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB 5: INDICADORES INTERIOR
-           ========================================================================== -->
+      
       <section class="tab-pane" id="metrics-tab">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 24px; background: rgba(255,255,255,0.03); padding: 16px 20px; border-radius: 12px; border: 1px solid var(--border);">
           <div>
@@ -1244,32 +1210,32 @@
           </div>
 
           <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-            <!-- Auto-save Status Badge -->
+            
             <span id="auto-save-status" style="font-size: 0.8rem; font-weight: 700; color: #4ade80; display: flex; align-items: center; gap: 6px; background: rgba(22, 163, 74, 0.15); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(22, 163, 74, 0.3); opacity: 0; transition: all 0.3s ease;">
               ✓ Salvo automaticamente
             </span>
 
-            <!-- Modern Month Selector Control -->
+            
             <div class="month-selector-bar" style="display: flex; align-items: center; gap: 8px; background: rgba(239, 68, 68, 0.1); backdrop-filter: blur(8px); padding: 8px 14px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);">
               <label for="indicator-month-select" style="font-size: 0.8rem; font-weight: 800; color: #f87171; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; margin-right: 4px;">📅 MÊS REFERÊNCIA:</label>
               <select id="indicator-month-select" style="background: rgba(22, 22, 26, 0.8); color: #ffffff; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.88rem; outline: none; cursor: pointer; padding: 6px 12px; border-radius: 8px; color-scheme: dark; transition: all 0.2s ease;">
-                <!-- Generated via JS -->
+                
               </select>
             </div>
           </div>
         </div>
 
-        <!-- 4 COLUMNS GRID OF TABLES -->
+        
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; align-items: start;">
           
-          <!-- COLUMN 1: INDICADORES EMPRESARIAIS -->
+          
           <div class="u-flex-24">
             <div class="gx-25">
               <div class="gx-26">
                 <h4 class="gx-27">Indicadores Empresariais</h4>
               </div>
               
-              <!-- Tabela 1.1: RAL -->
+              
               <div class="u-pad-28">
                 <table class="data-table indicator-table gx-8">
                   <thead>
@@ -1281,12 +1247,12 @@
                     </tr>
                   </thead>
                   <tbody id="tbl-ral-body">
-                    <!-- JS Injected -->
+                    
                   </tbody>
                 </table>
               </div>
 
-              <!-- Tabela 1.2: REC -->
+              
               <div class="gx-48">
                 <table class="data-table indicator-table gx-8">
                   <thead>
@@ -1298,21 +1264,21 @@
                     </tr>
                   </thead>
                   <tbody id="tbl-rec-body">
-                    <!-- JS Injected -->
+                    
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
 
-          <!-- COLUMN 2: INDICADORES RESIDENCIAIS -->
+          
           <div class="u-flex-24">
             <div class="gx-25">
               <div class="gx-26">
                 <h4 class="gx-27">Indicadores Residenciais</h4>
               </div>
 
-              <!-- Tabela 2.1: HFC -->
+              
               <div class="u-pad-28">
                 <table class="data-table indicator-table gx-8">
                   <thead>
@@ -1324,12 +1290,12 @@
                     </tr>
                   </thead>
                   <tbody id="tbl-hfc-body">
-                    <!-- JS Injected -->
+                    
                   </tbody>
                 </table>
               </div>
 
-              <!-- Tabela 2.2: GPON -->
+              
               <div class="gx-48">
                 <table class="data-table indicator-table gx-8">
                   <thead>
@@ -1341,21 +1307,21 @@
                     </tr>
                   </thead>
                   <tbody id="tbl-gpon-body">
-                    <!-- JS Injected -->
+                    
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
 
-          <!-- COLUMN 3: TEMPO - RESIDENCIAL -->
+          
           <div class="u-flex-24">
             <div class="gx-25">
               <div class="gx-26">
                 <h4 class="gx-27">Tempo - Residencial</h4>
               </div>
 
-              <!-- Tabela 3.1: ME3 - HFC -->
+              
               <div class="u-pad-28">
                 <table class="data-table indicator-table gx-8">
                   <thead>
@@ -1365,12 +1331,12 @@
                     </tr>
                   </thead>
                   <tbody id="tbl-me3-hfc-body">
-                    <!-- JS Injected -->
+                    
                   </tbody>
                 </table>
               </div>
 
-              <!-- Tabela 3.2: ME3 - GPON -->
+              
               <div class="gx-48">
                 <table class="data-table indicator-table gx-8">
                   <thead>
@@ -1380,21 +1346,21 @@
                     </tr>
                   </thead>
                   <tbody id="tbl-me3-gpon-body">
-                    <!-- JS Injected -->
+                    
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
 
-          <!-- COLUMN 4: HFC -->
+          
           <div class="u-flex-24">
             <div class="gx-25">
               <div class="gx-26">
                 <h4 class="gx-27">HFC</h4>
               </div>
 
-              <!-- Tabela 4.1: ME1.1 -->
+              
               <div class="u-pad-28">
                 <table class="data-table indicator-table gx-8">
                   <thead>
@@ -1406,7 +1372,7 @@
                     </tr>
                   </thead>
                   <tbody id="tbl-me11-body">
-                    <!-- JS Injected -->
+                    
                   </tbody>
                 </table>
               </div>
@@ -1415,7 +1381,7 @@
 
         </div>
 
-        <!-- JUSTIFICATIVAS BLOCK -->
+        
         <div style="margin-top: 28px; background: #16161a; border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: var(--shadow);">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="gx-46">
@@ -1431,9 +1397,7 @@
 
       </section>
 
-      <!-- ==========================================================================
-           TAB: ÁREA DE TRABALHO (TAREFAS & NOTAS EXCLUSIVAS DO USUÁRIO)
-           ========================================================================== -->
+      
       <section class="tab-pane" id="workspace-tab">
         <div class="section-header-flex gx-18">
           <div>
@@ -1451,7 +1415,7 @@
           </div>
         </div>
 
-        <!-- Task Stats Cards -->
+        
         <div class="stats-grid gy-19">
           <div class="stat-card u2-bg-10">
             <div class="u2-font-21">Total de Atividades</div>
@@ -1471,7 +1435,7 @@
           </div>
         </div>
 
-        <!-- Filter Bar -->
+        
         <div class="filter-bar gx-42">
           <div class="u-flex-43">
             <input type="text" id="task-search-input" placeholder="Buscar por título ou descrição..." class="gy-3">
@@ -1490,15 +1454,13 @@
           </div>
         </div>
 
-        <!-- Task List Container -->
+        
         <div id="task-list-wrapper" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
-          <!-- Loaded dynamically via JS -->
+          
         </div>
       </section>
 
-      <!-- ==========================================================================
-           TAB: AVALIAÇÃO TÉCNICA (FFA & PROCISA)
-           ========================================================================== -->
+      
       <section class="tab-pane" id="evaluation-tab">
         <div class="section-header-flex gx-18">
           <div>
@@ -1520,7 +1482,7 @@
           </div>
         </div>
 
-        <!-- Evaluation Summary Cards -->
+        
         <div class="stats-grid gy-19">
           <div class="stat-card u2-bg-10">
             <div class="u2-font-21">Total Avaliações</div>
@@ -1540,7 +1502,7 @@
           </div>
         </div>
 
-        <!-- Evaluation Filter Bar -->
+        
         <div class="filter-bar gx-42">
           <div class="u-flex-43">
             <input type="text" id="eval-search-input" placeholder="Buscar por colaborador..." class="gy-3">
@@ -1553,7 +1515,7 @@
           </div>
         </div>
 
-        <!-- Evaluation Table Wrapper -->
+        
         <div class="table-container" style="background: rgba(22, 22, 26, 0.5); backdrop-filter: blur(12px); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); overflow-x: auto;">
           <table class="data-table" id="evaluation-table">
             <thead>
@@ -1572,7 +1534,7 @@
               </tr>
             </thead>
             <tbody id="evaluation-table-body">
-              <!-- Dynamically populated via JS -->
+              
             </tbody>
           </table>
         </div>
@@ -1581,9 +1543,7 @@
     </main>
   </div>
 
-  <!-- ==========================================================================
-       MODAL 1: CADASTRAR/EDITAR TÉCNICO
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="tech-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -1751,9 +1711,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       SUB-MODAL: SELEÇÃO DE ÁREAS DE ATUAÇÃO
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="area-modal" style="z-index: 1100;">
     <div class="modal-card modal-card-small" style="max-width: 440px;">
       <div class="modal-header">
@@ -1846,9 +1804,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL 2: ADICIONAR/EDITAR VEÍCULO
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="vehicle-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -1881,7 +1837,7 @@
           <label for="vehicle-responsible">Responsável (Membro da Equipe)</label>
           <select id="vehicle-responsible">
             <option value="">Sem responsável cadastrado</option>
-            <!-- Carregado via JS -->
+            
           </select>
         </div>
 
@@ -1964,12 +1920,8 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL 4: NOVO PROJETO DE REDE EXTERNA
-       ========================================================================== -->
-  <!-- ==========================================================================
-       MODAL 4: NOVO/EDITAR PROJETO DE REDE EXTERNA
-       ========================================================================== -->
+  
+  
   <div class="modal-overlay" id="project-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -2042,9 +1994,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL 5: USUÁRIOS
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="user-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2093,9 +2043,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: TÉCNICOS EM MASSA
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="tech-bulk-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -2116,9 +2064,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: VEÍCULOS EM MASSA
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="vehicle-bulk-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -2148,9 +2094,7 @@
   </div>
 
 
-  <!-- ==========================================================================
-       MODAL: NOVA PASTA DE PROJETOS
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="folder-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2171,9 +2115,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: NOVA PASTA EM ROTAS
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="route-folder-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2194,9 +2136,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: FAVORITOS (CADASTRAR / EDITAR)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="favorite-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2250,9 +2190,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: FORMULÁRIOS (CADASTRAR / EDITAR FORMULÁRIO)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="form-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2297,9 +2235,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: FORMULÁRIOS - INDICADORES E RESPOSTAS (ESCALA INDUSTRIAL)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="form-responses-modal">
     <div class="modal-card" style="max-width: 1000px; width: 95%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; padding: 24px;">
       <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; shrink: 0;">
@@ -2310,7 +2246,7 @@
         <button class="btn-close-modal">&times;</button>
       </div>
 
-      <!-- Action Bar & Tabs -->
+      
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid var(--border); shrink: 0;">
         <div class="u2-flex-41">
           <button class="btn btn-outline active" id="tab-btn-form-analytics" style="font-size: 0.82rem; padding: 7px 14px; background: var(--primary); color: #ffffff; border-color: var(--primary); display: flex; align-items: center; gap: 6px;">
@@ -2342,9 +2278,9 @@
         </div>
       </div>
 
-      <!-- VIEW 1: MASSA DE RESPOSTAS (INDICADORES) -->
+      
       <div id="form-view-analytics" class="custom-scrollbar" style="display: block; flex: 1; overflow-y: auto; padding-right: 8px; margin-bottom: 10px;">
-        <!-- KPI Cards -->
+        
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px;">
           <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-left: 4px solid #e62319; border-radius: 8px; padding: 16px;">
             <span class="gx-52">Total de Respostas</span>
@@ -2360,7 +2296,7 @@
           </div>
         </div>
 
-        <!-- Breakdown Analytics Grids -->
+        
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
           <div class="u2-bg-13">
             <div class="u2-flex-30">
@@ -2371,7 +2307,7 @@
               <h4 class="u2-font-32">Distribuição por Região</h4>
             </div>
             <div id="analytics-regions-list" class="u2-flex-29">
-              <!-- Injected via JS -->
+              
             </div>
           </div>
 
@@ -2383,13 +2319,13 @@
               <h4 class="u2-font-32">Motivos do Inventário</h4>
             </div>
             <div id="analytics-reasons-list" class="u2-flex-29">
-              <!-- Injected via JS -->
+              
             </div>
           </div>
         </div>
       </div>
 
-      <!-- VIEW 2: RESPOSTAS INDIVIDUAIS -->
+      
       <div id="form-view-individual" class="custom-scrollbar" style="display: none; flex: 1; overflow-y: auto; padding-right: 8px; margin-bottom: 10px;">
         <div class="table-container" style="max-height: 400px; overflow-y: auto;">
           <table class="data-table">
@@ -2403,7 +2339,7 @@
               </tr>
             </thead>
             <tbody id="form-responses-table-body">
-              <!-- Content loaded via JS -->
+              
             </tbody>
           </table>
         </div>
@@ -2415,9 +2351,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: IMPORTAR RESPOSTAS DO GOOGLE FORMS / EXCEL
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="form-responses-import-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2449,9 +2383,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: FICHA DETALHADA DE RESPOSTA INDIVIDUAL
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="form-single-response-modal">
     <div class="modal-card" style="max-width: 700px; width: 90%;">
       <div class="modal-header">
@@ -2459,7 +2391,7 @@
         <button class="btn-close-modal">&times;</button>
       </div>
       <div id="single-response-content" style="max-height: 500px; overflow-y: auto; padding: 14px 0;">
-        <!-- Injected via JS -->
+        
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline btn-cancel-modal">Fechar Ficha</button>
@@ -2467,9 +2399,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: ROTAS (INCLUIR / EDITAR ROTA)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="route-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2505,9 +2435,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: LINHAS DA ROTA (ADICIONAR / EDITAR LINHA)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="route-line-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2550,9 +2478,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: IMPORTAR LINHAS / MEDIÇÕES DA ROTA
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="route-lines-import-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -2575,9 +2501,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: FATURAMENTO DE EQUIPE (FINANCEIRO)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="fin-team-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2590,14 +2514,14 @@
           <label for="fin-team-tech1">Pessoa 1 (Técnico / Responsável)</label>
           <select id="fin-team-tech1" required>
             <option value="">Selecione o colaborador...</option>
-            <!-- Injetado por JS -->
+            
           </select>
         </div>
         <div class="form-group">
           <label for="fin-team-tech2">Pessoa 2 (Auxiliar / Técnico)</label>
           <select id="fin-team-tech2" required>
             <option value="">Selecione o colaborador...</option>
-            <!-- Injetado por JS -->
+            
           </select>
         </div>
         <div class="form-group">
@@ -2639,9 +2563,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: CONSUMÍVEIS (FINANCEIRO)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="fin-consumable-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2693,9 +2615,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: LANÇAMENTO INVENTÁRIO
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="inventory-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2734,9 +2654,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: UPLOAD BASE BUSCADOR
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="buscador-upload-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2760,9 +2678,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: EDITAR DISTÂNCIA (BUSCADOR)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="buscador-edit-distance-modal">
     <div class="modal-card modal-card-small">
       <div class="modal-header">
@@ -2787,9 +2703,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: ÁREA DE TRABALHO (CADASTRAR TAREFA / NOTA)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="task-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -2823,7 +2737,7 @@
           <label for="task-assigned-tech">Acionar Colaborador (Opcional)</label>
           <select id="task-assigned-tech">
             <option value="">Nenhum colaborador acionado</option>
-            <!-- Loaded dynamically via JS -->
+            
           </select>
         </div>
 
@@ -2849,9 +2763,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: NOVA AVALIAÇÃO TÉCNICA (FFA & PROCISA)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="evaluation-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -2910,14 +2822,14 @@
     </div>
   </div>
 
-  <!-- Scripts -->
+  
   <script>
     window.currentUserRole = "{{ role }}";
     window.currentUsername = "{{ username }}";
     window.currentUserCompany = "{{ company }}";
   </script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}?v=6.3.0"></script>
   <script>
     // ---- Mobile sidebar toggle ----
@@ -2950,9 +2862,7 @@
     });
   </script>
 
-  <!-- ==========================================================================
-       MODAL: INCLUIR / EDITAR NOTIFICAÇÃO
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="notification-modal">
     <div class="modal-card" style="max-width: 580px;">
       <div class="modal-header">
@@ -3004,9 +2914,7 @@
     </div>
   </div>
 
-  <!-- ==========================================================================
-       MODAL: VISUALIZAR ROTA (DESCRIÇÃO NÍTIDA & DETALHADA)
-       ========================================================================== -->
+  
   <div class="modal-overlay" id="route-view-modal">
     <div class="modal-card" style="max-width: 640px;">
       <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px;">

@@ -171,6 +171,8 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
 app.permanent_session_lifetime = datetime.timedelta(hours=12)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = True
+app.jinja_env.autoescape = True
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
 def safe_int(val, default=0):
@@ -237,32 +239,38 @@ def enforce_security_policies():
 
 @app.after_request
 def set_security_headers(response):
+    # Core OWASP Security Headers
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
-    # Scoped per resource type instead of a blanket "https: data: blob:" default-src,
-    # which previously let the page load a script/style/frame from ANY https origin.
-    # 'unsafe-inline' remains on script-src/style-src because the UI still relies on
-    # hundreds of onclick="..." attributes and style="..." attributes throughout
-    # dashboard.html/main.js — dropping it would break virtually every button on the
-    # page until those are migrated to addEventListener + CSS classes. 'unsafe-eval'
-    # is dropped outright: nothing in this codebase calls eval()/new Function().
-    response.headers['Content-Security-Policy'] = "; ".join([
+    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=(), payment=()'
+    response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
+    response.headers['Server'] = 'Secure-Gateway'
+
+    # Strict Cache-Control directives based on route sensitivity
+    if request.path.startswith('/api/') or 'user_id' in session or request.path == '/login':
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    elif request.path.startswith('/assets/') or request.path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.svg', '.woff2', '.webp', '.ico')):
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+
+    # Hardened Content-Security-Policy (Removes unsafe-inline from script-src)
+    csp_directives = [
         "default-src 'self'",
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
-        "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data: https://*.basemaps.cartocdn.com",
-        "connect-src 'self' https://cloudflareinsights.com",
+        "font-src 'self' https://fonts.gstatic.com data:",
+        "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org",
+        "connect-src 'self' https://cloudflareinsights.com https://api.resend.com",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'self'",
-        "upgrade-insecure-requests",
-    ]) + ";"
-    response.headers['Server'] = 'WAF-Protected'
+        "upgrade-insecure-requests"
+    ]
+    response.headers['Content-Security-Policy'] = "; ".join(csp_directives) + ";"
     return response
 
 # Configuration for Database and Upload Directories
@@ -1051,7 +1059,9 @@ def login_required(f):
         if 'user_id' not in session:
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Sessão expirada. Redirecionando para login...", "redirect": "/login"}), 401
-            return redirect(url_for('login'))
+            r = redirect(url_for('login'))
+            r.data = b''
+            return r
         return f(*args, **kwargs)
     return decorated_function
 
@@ -1097,7 +1107,9 @@ def coordenador_claro_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            return redirect(url_for('login'))
+            r = redirect(url_for('login'))
+            r.data = b''
+            return r
         if not is_user_coordenador_claro(session['user_id']):
             return jsonify({"error": "Acesso restrito: Apenas Coordenadores da Claro possuem permissão para exportar esta base."}), 403
         return f(*args, **kwargs)
@@ -1288,7 +1300,9 @@ def logout():
     if 'user_id' in session:
         log_action(session['user_id'], session['username'], "Efetuou logout do sistema.")
         session.clear()
-    return redirect(url_for('login'))
+    r = redirect(url_for('login'))
+    r.data = b''
+    return r
 
 @app.route('/login', endpoint='login')
 def login():
@@ -3018,7 +3032,9 @@ def public_form_view(slug):
 
         # If form has an external link defined (like Google Forms or Microsoft Forms), redirect directly to it
         if f.get('link') and (f['link'].startswith('http://') or f['link'].startswith('https://')):
-            return redirect(f['link'])
+            r = redirect(f['link'])
+            r.data = b''
+            return r
 
         # If form has dynamic questions (JSONB), use the dynamic template
         questions_data = f.get('questions')
@@ -5178,7 +5194,7 @@ def api_inventory_detail(item_id):
 @login_required
 @roles_required('Coordenador', 'Supervisor')
 def api_get_logs():
-    user_filter = request.args.get('username', '').strip().lower()
+    user_filter = (request.args.get('user') or request.args.get('username') or '').strip().lower()
     try:
         conn = get_db()
         cur = conn.cursor()

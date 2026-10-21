@@ -34,8 +34,8 @@ export default function LoginPage() {
     <div className="app-shell-bg min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#070A11]">
       <LiquidEther />
 
-      {/* Full Screen High-End Cinematic Intro (Synchronized Studio style) */}
-      <FullScreenCinematicIntro onComplete={() => setIntroFinished(true)} durationMs={2800} />
+      {/* Full Screen High-End Cinematic Intro (Google Flow Telecom Orb) */}
+      <FullScreenCinematicIntro onComplete={() => setIntroFinished(true)} durationMs={4000} />
 
       {/* Atmospheric Ambient Lighting Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full bg-red-600/15 blur-[140px] pointer-events-none animate-[glow-pulse_5s_ease-in-out_infinite]" />
