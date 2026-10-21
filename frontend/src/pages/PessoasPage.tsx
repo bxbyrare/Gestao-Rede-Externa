@@ -9,7 +9,12 @@ import {
   Search,
   Trash2,
   Users,
-  ShieldCheck
+  ShieldCheck,
+  UploadCloud,
+  X,
+  ExternalLink,
+  Zap,
+  Activity
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician } from '../api/types';
@@ -54,6 +59,140 @@ function getExpirationStatus(dateStr?: string | null) {
     return { text: `Vence em ${diffDays}d`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', days: diffDays };
   }
   return { text: `Válido (${diffDays}d)`, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30', days: diffDays };
+}
+
+
+interface ComplianceDocCardProps {
+  title: string;
+  badge: string;
+  badgeColor: string;
+  icon: typeof ShieldCheck;
+  dateValue: string;
+  onDateChange: (val: string) => void;
+  selectedFile?: File;
+  onFileChange: (file?: File) => void;
+  existingFilePath?: string | null;
+  fileInputId: string;
+}
+
+function ComplianceDocCard({
+  title,
+  badge,
+  badgeColor,
+  icon: Icon,
+  dateValue,
+  onDateChange,
+  selectedFile,
+  onFileChange,
+  existingFilePath,
+  fileInputId,
+}: ComplianceDocCardProps) {
+  return (
+    <div className="p-4 bg-[#0A0E18] rounded-2xl border border-white/10 hover:border-white/20 transition-all flex flex-col justify-between space-y-3.5 shadow-md">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${badgeColor}`}>
+            <Icon className="w-4 h-4" />
+          </div>
+          <div className="text-xs font-bold text-white truncate">{title}</div>
+        </div>
+        <span className="text-[10px] font-semibold text-slate-400 bg-white/[0.04] px-2 py-0.5 rounded-md border border-white/5 shrink-0">
+          {badge}
+        </span>
+      </div>
+
+      {/* Date */}
+      <div>
+        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
+          Data de Vencimento
+        </label>
+        <Input
+          type="date"
+          value={dateValue}
+          onChange={(e) => onDateChange(e.target.value)}
+          className="bg-[#111625] border-white/10 text-slate-100 text-xs py-2 focus:border-sky-500/50"
+        />
+      </div>
+
+      {/* Upload area */}
+      <div>
+        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+          Comprovante Anexado
+        </label>
+
+        {selectedFile ? (
+          <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between gap-2 text-xs animate-fade-in">
+            <div className="flex items-center gap-2 min-w-0">
+              <FileCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-emerald-200 font-bold truncate text-[11px]">{selectedFile.name}</div>
+                <div className="text-[10px] text-emerald-400/80">{(selectedFile.size / 1024).toFixed(0)} KB • Pronto para envio</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onFileChange(undefined)}
+              className="p-1 text-emerald-400 hover:text-rose-400 transition-colors"
+              title="Remover anexo selecionado"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : existingFilePath ? (
+          <div className="space-y-1.5">
+            <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileCheck className="w-4 h-4 text-sky-400 shrink-0" />
+                <span className="text-sky-200 font-semibold text-[11px] truncate">Documento Cadastrado</span>
+              </div>
+              <a
+                href={`/uploads/${existingFilePath}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 transition-colors bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20"
+              >
+                <span>Ver</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <label
+              htmlFor={fileInputId}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 cursor-pointer transition-all"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-slate-400" />
+              <span>Substituir Documento</span>
+            </label>
+          </div>
+        ) : (
+          <label
+            htmlFor={fileInputId}
+            className="group w-full py-3.5 px-3 rounded-xl border border-dashed border-white/15 hover:border-sky-400/50 bg-white/[0.02] hover:bg-sky-500/[0.04] flex flex-col items-center justify-center text-center cursor-pointer transition-all"
+          >
+            <UploadCloud className="w-5 h-5 text-slate-500 group-hover:text-sky-400 group-hover:scale-110 transition-all mb-1" />
+            <span className="text-[11px] font-medium text-slate-300 group-hover:text-white">
+              Selecionar Certificado
+            </span>
+            <span className="text-[9px] text-slate-400 mt-0.5">
+              PDF, PNG ou JPG (até 15MB)
+            </span>
+          </label>
+        )}
+
+        <input
+          id={fileInputId}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.webp"
+          onChange={(e) => {
+            if (e.target.files?.[0]) {
+              onFileChange(e.target.files[0]);
+            }
+          }}
+          className="hidden"
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function PessoasPage() {
@@ -452,72 +591,56 @@ export default function PessoasPage() {
             </div>
           </div>
 
-          {/* Seção NRs e ASO */}
+          {/* Seção NRs e ASO Redesenhada com Upload Cards Modernos */}
           <div className="pt-4 border-t border-white/10">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400 mb-3 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-sky-400" />
-              Segurança do Trabalho (NR-10, NR-35 e ASO)
-            </h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-sky-400" />
+                Segurança do Trabalho (NR-10, NR-35 e ASO)
+              </h4>
+              <span className="text-[10px] text-slate-400 font-medium hidden sm:inline-block">
+                Conformidade técnica e saúde ocupacional
+              </span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-3 bg-[#090D16] rounded-xl border border-white/5 space-y-2">
-                <div className="text-xs font-bold text-slate-200">NR-10 (Elétrica)</div>
-                <Field label="Data de Vencimento">
-                  <Input
-                    type="date"
-                    value={form.nr10_expiration}
-                    onChange={(e) => set('nr10_expiration', e.target.value)}
-                    className="bg-[#0F1422] border-white/10 text-slate-100 text-xs"
-                  />
-                </Field>
-                <Field label="Anexar Certificado">
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.webp"
-                    onChange={(e) => setFiles((prev) => ({ ...prev, nr10_file: e.target.files?.[0] }))}
-                    className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-white/10 file:text-slate-200 cursor-pointer"
-                  />
-                </Field>
-              </div>
+              <ComplianceDocCard
+                title="NR-10 (Elétrica)"
+                badge="Eletricidade"
+                badgeColor="bg-amber-500/15 text-amber-400 border-amber-500/30"
+                icon={Zap}
+                dateValue={form.nr10_expiration}
+                onDateChange={(val) => set('nr10_expiration', val)}
+                selectedFile={files.nr10_file}
+                onFileChange={(file) => setFiles((prev) => ({ ...prev, nr10_file: file }))}
+                existingFilePath={editing?.nr10_file}
+                fileInputId="input-file-nr10"
+              />
 
-              <div className="p-3 bg-[#090D16] rounded-xl border border-white/5 space-y-2">
-                <div className="text-xs font-bold text-slate-200">NR-35 (Altura)</div>
-                <Field label="Data de Vencimento">
-                  <Input
-                    type="date"
-                    value={form.nr35_expiration}
-                    onChange={(e) => set('nr35_expiration', e.target.value)}
-                    className="bg-[#0F1422] border-white/10 text-slate-100 text-xs"
-                  />
-                </Field>
-                <Field label="Anexar Certificado">
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.webp"
-                    onChange={(e) => setFiles((prev) => ({ ...prev, nr35_file: e.target.files?.[0] }))}
-                    className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-white/10 file:text-slate-200 cursor-pointer"
-                  />
-                </Field>
-              </div>
+              <ComplianceDocCard
+                title="NR-35 (Altura)"
+                badge="Trabalho em Altura"
+                badgeColor="bg-sky-500/15 text-sky-400 border-sky-500/30"
+                icon={ShieldCheck}
+                dateValue={form.nr35_expiration}
+                onDateChange={(val) => set('nr35_expiration', val)}
+                selectedFile={files.nr35_file}
+                onFileChange={(file) => setFiles((prev) => ({ ...prev, nr35_file: file }))}
+                existingFilePath={editing?.nr35_file}
+                fileInputId="input-file-nr35"
+              />
 
-              <div className="p-3 bg-[#090D16] rounded-xl border border-white/5 space-y-2">
-                <div className="text-xs font-bold text-slate-200">ASO (Saúde Ocupacional)</div>
-                <Field label="Data de Vencimento">
-                  <Input
-                    type="date"
-                    value={form.aso_expiration}
-                    onChange={(e) => set('aso_expiration', e.target.value)}
-                    className="bg-[#0F1422] border-white/10 text-slate-100 text-xs"
-                  />
-                </Field>
-                <Field label="Anexar Atestado">
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.webp"
-                    onChange={(e) => setFiles((prev) => ({ ...prev, aso_file: e.target.files?.[0] }))}
-                    className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-white/10 file:text-slate-200 cursor-pointer"
-                  />
-                </Field>
-              </div>
+              <ComplianceDocCard
+                title="ASO (Saúde Ocupacional)"
+                badge="Atestado Médico"
+                badgeColor="bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                icon={Activity}
+                dateValue={form.aso_expiration}
+                onDateChange={(val) => set('aso_expiration', val)}
+                selectedFile={files.aso_file}
+                onFileChange={(file) => setFiles((prev) => ({ ...prev, aso_file: file }))}
+                existingFilePath={editing?.aso_file}
+                fileInputId="input-file-aso"
+              />
             </div>
           </div>
 
