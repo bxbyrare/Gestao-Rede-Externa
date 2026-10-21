@@ -76,7 +76,7 @@ export default function FullScreenCinematicIntro({
       role="button"
       tabIndex={0}
       aria-label="Pular animação de introdução"
-      className={`fixed inset-0 z-[100] bg-[#05070D] flex flex-col justify-between p-6 sm:p-10 select-none overflow-hidden cursor-pointer transition-all duration-700 ${
+      className={`fixed inset-0 z-[100] bg-[#121214] flex flex-col justify-between p-6 sm:p-10 select-none overflow-hidden cursor-pointer transition-all duration-700 ${
         phase === 'dissolve'
           ? 'opacity-0 scale-[1.05] filter blur-sm pointer-events-none'
           : 'opacity-100 scale-100 filter-none pointer-events-auto'
@@ -86,7 +86,7 @@ export default function FullScreenCinematicIntro({
       }}
     >
       {/* Background Video Element (Google Flow 1080p Orb Animation) */}
-      <div className="absolute inset-0 z-0 flex items-center justify-center bg-[#05070D]">
+      <div className="absolute inset-0 z-0 flex items-center justify-center bg-[#121214]">
         <video
           ref={videoRef}
           src="/claro-intro.mp4"
@@ -99,7 +99,7 @@ export default function FullScreenCinematicIntro({
         />
 
         {/* Cinematic Vignette Overlay */}
-        <div className="absolute inset-0 bg-radial from-transparent via-[#05070D]/40 to-[#05070D] pointer-events-none" />
+        <div className="absolute inset-0 bg-radial from-transparent via-[#121214]/40 to-[#121214] pointer-events-none" />
       </div>
 
       {/* Top Telemetry Header */}

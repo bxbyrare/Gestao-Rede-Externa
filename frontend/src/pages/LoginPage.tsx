@@ -31,39 +31,33 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="app-shell-bg min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#070A11]">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#121214]">
       <LiquidEther />
 
       {/* Full Screen High-End Cinematic Intro (Google Flow Telecom Orb) */}
       <FullScreenCinematicIntro onComplete={() => setIntroFinished(true)} durationMs={4000} />
 
       {/* Atmospheric Ambient Lighting Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full bg-red-600/15 blur-[140px] pointer-events-none animate-[glow-pulse_5s_ease-in-out_infinite]" />
-      <div className="absolute top-1/4 left-1/3 w-[400px] h-[400px] rounded-full bg-rose-600/10 blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-red-600/10 blur-[140px] pointer-events-none" />
 
-      {/* Main Login Card Container */}
+      {/* Main Login Card Container (Dashboard dark graphite palette: #18181c / #2c2c35) */}
       <div
         className={`relative w-full max-w-[420px] z-10 transition-all duration-700 ease-out transform ${
           introFinished ? 'opacity-100 translate-y-0 scale-100' : 'opacity-85 translate-y-3 scale-[0.98]'
         }`}
       >
-        <div className="relative rounded-3xl p-8 sm:p-9 bg-[#0E1424]/90 backdrop-blur-2xl border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden">
+        <div className="relative rounded-3xl p-8 sm:p-9 bg-[#18181c] border border-[#2c2c35] shadow-[0_20px_50px_rgba(0,0,0,0.75)] overflow-hidden">
           {/* Subtle Top Card Border Highlight */}
           <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-red-500/50 to-transparent" />
 
           {/* Corporate Header */}
           <div className="flex flex-col items-center text-center mb-7">
-            <div className="relative w-20 h-20 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-[0_0_35px_rgba(238,44,36,0.45)] mb-4 flex items-center justify-center">
+            <div className="relative w-20 h-20 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-[0_0_30px_rgba(238,44,36,0.35)] mb-4 flex items-center justify-center">
               <img
                 src="/claro-icon.png"
                 alt="Claro"
                 className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
               />
-            </div>
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/[0.04] border border-white/10 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Acesso Operacional
             </div>
 
             <h1 className="text-xl font-black tracking-tight text-white flex items-center justify-center gap-1.5">
@@ -76,7 +70,7 @@ export default function LoginPage() {
 
           {/* Error Alert */}
           {error && (
-            <div className="mb-5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400 flex items-center gap-2 animate-in">
+            <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400 flex items-center gap-2 animate-in">
               <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
               <span>{error}</span>
             </div>
@@ -101,7 +95,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Seu usuário corporativo..."
-                  className="w-full h-12 pl-11 pr-4 rounded-xl bg-[#090D17] border border-white/10 text-sm text-slate-100 placeholder:text-slate-600 focus:border-red-500/60 focus:bg-[#0c1220] focus:ring-2 focus:ring-red-500/20 transition-all outline-none font-medium"
+                  className="w-full h-12 pl-11 pr-4 rounded-xl bg-[#121214] border border-[#2c2c35] text-sm text-slate-100 placeholder:text-slate-500 focus:border-red-500 focus:bg-[#151518] focus:ring-2 focus:ring-red-500/20 transition-all outline-none font-medium"
                 />
               </div>
             </div>
@@ -123,7 +117,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full h-12 pl-11 pr-11 rounded-xl bg-[#090D17] border border-white/10 text-sm text-slate-100 placeholder:text-slate-600 focus:border-red-500/60 focus:bg-[#0c1220] focus:ring-2 focus:ring-red-500/20 transition-all outline-none font-mono"
+                  className="w-full h-12 pl-11 pr-11 rounded-xl bg-[#121214] border border-[#2c2c35] text-sm text-slate-100 placeholder:text-slate-500 focus:border-red-500 focus:bg-[#151518] focus:ring-2 focus:ring-red-500/20 transition-all outline-none font-mono"
                 />
                 <button
                   type="button"
@@ -154,14 +148,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Clean Real Corporate Footer */}
-          <div className="mt-7 pt-4 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-500">
-            <span className="flex items-center gap-1.5 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Sistema Operacional Ativo
-            </span>
-            <span className="text-slate-400 font-semibold tracking-wider text-[10px] uppercase">
-              Claro Brasil
-            </span>
+          {/* Clean Corporate Footer */}
+          <div className="mt-7 pt-4 border-t border-[#2c2c35]/80 flex items-center justify-center text-[11px] text-slate-400 font-semibold tracking-wider uppercase">
+            Claro Brasil
           </div>
         </div>
       </div>
