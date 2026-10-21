@@ -70,6 +70,13 @@ function getNormalizedModel(v: Vehicle): string {
   if (m.includes('MOBI')) return 'Fiat Mobi';
   if (m.includes('ARGO')) return 'Fiat Argo';
   if (m.includes('ONIX')) return 'Chevrolet Onix';
+  if (m.includes('S10') || m.includes('S-10')) return 'Chevrolet S10';
+  if (m.includes('HILUX')) return 'Toyota Hilux';
+  if (m.includes('TORO')) return 'Fiat Toro';
+  if (m.includes('MONTANA')) return 'Chevrolet Montana';
+  if (m.includes('OROCH')) return 'Renault Oroch';
+  if (m.includes('RANGER')) return 'Ford Ranger';
+  if (m.includes('AMAROK')) return 'Volkswagen Amarok';
   if (m.includes('MOTO') || t.includes('MOTO') || m.includes('CG')) return 'Motocicletas & Apoio';
   if (m.includes('CAMINH') || t.includes('CAMINH') || m.includes('HR') || m.includes('DAILY')) return 'Caminhões & VUCs';
 
@@ -158,6 +165,9 @@ export default function VehiclesPage() {
       'Fiat Mobi',
       'Fiat Argo',
       'Chevrolet Onix',
+      'Chevrolet S10',
+      'Toyota Hilux',
+      'Fiat Toro',
     ];
 
     groups.sort((a, b) => {
