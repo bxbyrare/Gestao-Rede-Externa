@@ -4,6 +4,7 @@ import { api, ApiError } from '../api/client';
 import type { ConsumableFinanceRecord, TeamFinanceRecord, Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const emptyTeamForm = { tech1_id: '', tech2_id: '', area: '', amount: '', reference_month: '' };
 const emptyConsumableForm = { description: '', area: '', amount: '', reference_month: '' };
@@ -13,6 +14,10 @@ function formatBRL(value: number) {
 }
 
 export default function FinancePage() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'financeiro.create');
+  const canEdit = hasPermission(user, 'financeiro.edit');
+  const canDelete = hasPermission(user, 'financeiro.delete');
   const [tab, setTab] = useState<'equipes' | 'consumiveis'>('equipes');
   const [teams, setTeams] = useState<TeamFinanceRecord[] | null>(null);
   const [consumables, setConsumables] = useState<ConsumableFinanceRecord[] | null>(null);
@@ -141,9 +146,11 @@ export default function FinancePage() {
 
       {tab === 'equipes' ? (
         <>
-          <div className="flex justify-end mb-4">
-            <Button onClick={openCreateTeam}><Plus className="w-4 h-4" /> Novo Lançamento</Button>
-          </div>
+          {canCreate && (
+            <div className="flex justify-end mb-4">
+              <Button onClick={openCreateTeam}><Plus className="w-4 h-4" /> Novo Lançamento</Button>
+            </div>
+          )}
           {teams === null ? (
             <p className="text-sm text-[var(--color-text-muted)]">Carregando...</p>
           ) : teams.length === 0 ? (
@@ -165,8 +172,8 @@ export default function FinancePage() {
                       <td className="px-5 py-3 font-semibold">{formatBRL(t.amount)}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button onClick={() => openEditTeam(t)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => deleteTeam(t)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-4 h-4" /></button>
+                          {canEdit && <button onClick={() => openEditTeam(t)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-4 h-4" /></button>}
+                          {canDelete && <button onClick={() => deleteTeam(t)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-4 h-4" /></button>}
                         </div>
                       </td>
                     </tr>
@@ -178,9 +185,11 @@ export default function FinancePage() {
         </>
       ) : (
         <>
-          <div className="flex justify-end mb-4">
-            <Button onClick={openCreateCons}><Plus className="w-4 h-4" /> Novo Custo</Button>
-          </div>
+          {canCreate && (
+            <div className="flex justify-end mb-4">
+              <Button onClick={openCreateCons}><Plus className="w-4 h-4" /> Novo Custo</Button>
+            </div>
+          )}
           {consumables === null ? (
             <p className="text-sm text-[var(--color-text-muted)]">Carregando...</p>
           ) : consumables.length === 0 ? (
@@ -202,8 +211,8 @@ export default function FinancePage() {
                       <td className="px-5 py-3 font-semibold">{formatBRL(c.amount)}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button onClick={() => openEditCons(c)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => deleteCons(c)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-4 h-4" /></button>
+                          {canEdit && <button onClick={() => openEditCons(c)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-4 h-4" /></button>}
+                          {canDelete && <button onClick={() => deleteCons(c)} className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-4 h-4" /></button>}
                         </div>
                       </td>
                     </tr>

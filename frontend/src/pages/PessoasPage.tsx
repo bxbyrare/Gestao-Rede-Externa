@@ -17,7 +17,7 @@ import { api, ApiError } from '../api/client';
 import type { Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
-import { useAuth, isCoordenadorClaro } from '../state/AuthContext';
+import { useAuth, isCoordenadorClaro, hasPermission } from '../state/AuthContext';
 
 const ROLES = ['Técnico', 'Auxiliar', 'Supervisor', 'Coordenador', 'Administrativo', 'COP'];
 const COMPANIES = ['Claro', 'FFA', 'Procisa', 'Servilog'];
@@ -191,6 +191,9 @@ function ComplianceDocCard({
 export default function PessoasPage() {
   const { user } = useAuth();
   const canExport = isCoordenadorClaro(user);
+  const canCreate = hasPermission(user, 'pessoas.create');
+  const canEdit = hasPermission(user, 'pessoas.edit');
+  const canDelete = hasPermission(user, 'pessoas.delete');
   const [people, setPeople] = useState<Technician[] | null>(null);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -336,12 +339,14 @@ export default function PessoasPage() {
                 <Download className="w-4 h-4 mr-1.5" /> Exportar Cadastro (CSV)
               </Button>
             )}
-            <Button
-              onClick={openCreate}
-              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white border-0 rounded-xl"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> Cadastrar Colaborador
-            </Button>
+            {canCreate && (
+              <Button
+                onClick={openCreate}
+                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white border-0 rounded-xl"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> Cadastrar Colaborador
+              </Button>
+            )}
           </div>
         }
       />
@@ -495,22 +500,26 @@ export default function PessoasPage() {
                           >
                             <ClipboardList className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => openEdit(p)}
-                            aria-label="Editar cadastro"
-                            title="Editar cadastro e documentos"
-                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(p)}
-                            aria-label="Excluir"
-                            title="Excluir cadastro"
-                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => openEdit(p)}
+                              aria-label="Editar cadastro"
+                              title="Editar cadastro e documentos"
+                              className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDelete(p)}
+                              aria-label="Excluir"
+                              title="Excluir cadastro"
+                              className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

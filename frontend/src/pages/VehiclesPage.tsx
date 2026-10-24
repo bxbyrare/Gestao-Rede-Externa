@@ -18,7 +18,7 @@ import type { Technician, Vehicle } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
 import VehiclePreview from '../components/VehiclePreview';
-import { isCoordenador, useAuth } from '../state/AuthContext';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const emptyForm = {
   plate: '',
@@ -87,7 +87,9 @@ function getNormalizedModel(v: Vehicle): string {
 
 export default function VehiclesPage() {
   const { user } = useAuth();
-  const canDelete = isCoordenador(user);
+  const canCreate = hasPermission(user, 'veiculos.create');
+  const canEdit = hasPermission(user, 'veiculos.edit');
+  const canDelete = hasPermission(user, 'veiculos.delete');
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [search, setSearch] = useState('');
@@ -309,9 +311,11 @@ export default function VehiclesPage() {
             >
               <Download className="w-4 h-4" /> Exportar Frota
             </Button>
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4" /> Cadastrar Veículo
-            </Button>
+            {canCreate && (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4" /> Cadastrar Veículo
+              </Button>
+            )}
           </div>
         }
       />
@@ -563,13 +567,15 @@ export default function VehiclesPage() {
                             <MessageCircle className="w-3.5 h-3.5" />
                             <span>WhatsApp</span>
                           </button>
-                          <button
-                            onClick={() => openEdit(v)}
-                            className="flex-1 h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-bold text-white hover:bg-white/[0.09] transition-all active:scale-95"
-                          >
-                            <Pencil className="w-3 h-3 text-[var(--color-primary)]" />
-                            <span>Editar</span>
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => openEdit(v)}
+                              className="flex-1 h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-bold text-white hover:bg-white/[0.09] transition-all active:scale-95"
+                            >
+                              <Pencil className="w-3 h-3 text-[var(--color-primary)]" />
+                              <span>Editar</span>
+                            </button>
+                          )}
                           {canDelete && (
                             <button
                               onClick={() => handleDelete(v)}

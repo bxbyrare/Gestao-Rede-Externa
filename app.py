@@ -374,7 +374,8 @@ def init_db():
             ('email', 'VARCHAR(150)'),
             ('phone', 'VARCHAR(50)'),
             ('name', 'VARCHAR(150)'),
-            ('email_verified', 'BOOLEAN DEFAULT FALSE')
+            ('email_verified', 'BOOLEAN DEFAULT FALSE'),
+            ('permissions', 'JSONB DEFAULT NULL')
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -384,7 +385,8 @@ def init_db():
             ('email', 'VARCHAR(150)'),
             ('phone', 'VARCHAR(50)'),
             ('name', 'VARCHAR(150)'),
-            ('email_verified', 'BOOLEAN DEFAULT FALSE')
+            ('email_verified', 'BOOLEAN DEFAULT FALSE'),
+            ('permissions', 'JSONB DEFAULT NULL')
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -1107,13 +1109,272 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+MASTER_COORDINATOR_USERNAME = 'alexandre.candido'
+
+ALL_PERMISSIONS = [
+    'favoritos.create', 'favoritos.edit', 'favoritos.delete',
+    'area_de_trabalho.create', 'area_de_trabalho.edit', 'area_de_trabalho.delete',
+    'pessoas.create', 'pessoas.edit', 'pessoas.delete',
+    'veiculos.create', 'veiculos.edit', 'veiculos.delete',
+    'buscador.create', 'buscador.edit',
+    'auditoria.create', 'auditoria.edit', 'auditoria.delete',
+    'aceitacao.create', 'aceitacao.edit', 'aceitacao.delete',
+    'avaliacao.create', 'avaliacao.delete',
+    'projetos.create', 'projetos.edit', 'projetos.delete',
+    'formularios.create', 'formularios.edit', 'formularios.delete',
+    'rotas.create', 'rotas.edit', 'rotas.delete',
+    'indicadores.edit',
+    'escala.edit',
+    'financeiro.create', 'financeiro.edit', 'financeiro.delete',
+    'notificacoes.create', 'notificacoes.delete',
+    'gerenciamento.create', 'gerenciamento.edit', 'gerenciamento.delete',
+]
+
+def is_coordenador_role(username, role):
+    uname = (username or '').strip().lower()
+    if uname == MASTER_COORDINATOR_USERNAME:
+        return True
+    r = (role or '').strip().lower()
+    return r in ['coordenador', 'administrador', 'admin']
+
+def resolve_user_permissions(username, role, raw_permissions):
+    uname = (username or '').strip().lower()
+    if uname == MASTER_COORDINATOR_USERNAME:
+        return list(ALL_PERMISSIONS)
+    is_coord = is_coordenador_role(username, role)
+    if raw_permissions is None:
+        return list(ALL_PERMISSIONS) if is_coord else []
+    parsed = raw_permissions
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except Exception:
+            parsed = []
+    if not isinstance(parsed, list):
+        return list(ALL_PERMISSIONS) if is_coord else []
+    valid_set = set(ALL_PERMISSIONS)
+    if is_coord:
+        return [p for p in parsed if isinstance(p, str) and p in valid_set]
+    else:
+        return [p for p in parsed if isinstance(p, str) and p in valid_set and not p.startswith('gerenciamento.')]
+
+def get_current_user_auth():
+    if 'user_id' not in session:
+        return None
+    if has_request_context() and hasattr(g, '_current_user_auth'):
+        return g._current_user_auth
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT id, username, role, tech_id, permissions FROM users WHERE id = %s;", (session['user_id'],))
+        except Exception:
+            conn.rollback()
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT NULL;")
+            conn.commit()
+            cur.execute("SELECT id, username, role, tech_id, permissions FROM users WHERE id = %s;", (session['user_id'],))
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            return None
+        uname = (row.get('username') or '').strip().lower()
+        role = (row.get('role') or '').strip()
+        perms = resolve_user_permissions(uname, role, row.get('permissions'))
+        auth_obj = {
+            'id': row['id'],
+            'username': row['username'],
+            'role': role,
+            'tech_id': row.get('tech_id'),
+            'is_master': uname == MASTER_COORDINATOR_USERNAME,
+            'is_coordenador': is_coordenador_role(uname, role),
+            'permissions': perms,
+        }
+        if has_request_context():
+            g._current_user_auth = auth_obj
+        return auth_obj
+    except Exception as e:
+        print('get_current_user_auth error:', e)
+        return None
+
+def user_has_permission(perm_key):
+    auth = get_current_user_auth()
+    if not auth:
+        return False
+    if auth['is_master']:
+        return True
+    return perm_key in auth['permissions']
+
+def _resolve_required_permission(path, method):
+    if method not in ('POST', 'PUT', 'DELETE'):
+        return None
+    p = path.rstrip('/')
+    if p.startswith('/api/auth/') or p == '/api/users/me/profile':
+        return None
+    if p.startswith('/api/favorites/') and p.endswith('/click') and method == 'POST':
+        return None
+
+    # Users Management
+    if p == '/api/users' and method == 'POST':
+        return 'gerenciamento.create'
+    if p.startswith('/api/users/') and method == 'PUT':
+        return 'gerenciamento.edit'
+    if p.startswith('/api/users/') and method == 'DELETE':
+        return 'gerenciamento.delete'
+
+    # Technicians / Pessoas
+    if p in ('/api/technicians', '/api/technicians/bulk', '/api/people/bulk') and method == 'POST':
+        return 'pessoas.create'
+    if p.startswith('/api/technicians/') and method in ('POST', 'PUT'):
+        return 'pessoas.edit'
+    if p.startswith('/api/technicians/') and method == 'DELETE':
+        return 'pessoas.delete'
+
+    # Vehicles / Frota
+    if p in ('/api/vehicles', '/api/vehicles/bulk') and method == 'POST':
+        return 'veiculos.create'
+    if p.startswith('/api/vehicles/') and method == 'PUT':
+        return 'veiculos.edit'
+    if p.startswith('/api/vehicles/') and method == 'DELETE':
+        return 'veiculos.delete'
+
+    # Projects & Folders
+    if p in ('/api/projects', '/api/folders') and method == 'POST':
+        return 'projetos.create'
+    if (p.startswith('/api/projects/') or p.startswith('/api/folders/')) and method in ('POST', 'PUT'):
+        return 'projetos.edit'
+    if (p.startswith('/api/projects/') or p.startswith('/api/folders/')) and method == 'DELETE':
+        return 'projetos.delete'
+
+    # Favorites
+    if p == '/api/favorites' and method == 'POST':
+        return 'favoritos.create'
+    if p.startswith('/api/favorites/') and method in ('POST', 'PUT'):
+        return 'favoritos.edit'
+    if p.startswith('/api/favorites/') and method == 'DELETE':
+        return 'favoritos.delete'
+
+    # Routes & Route Lines & Files
+    if p == '/api/routes' and method == 'POST':
+        return 'rotas.create'
+    if p.startswith('/api/routes/') and (p.endswith('/lines') or p.endswith('/bulk') or p.endswith('/folders') or p.endswith('/upload')) and method == 'POST':
+        return 'rotas.create'
+    if p.startswith('/api/routes/files/') and p.endswith('/move') and method == 'PUT':
+        return 'rotas.edit'
+    if (p.startswith('/api/routes/lines/') or p.startswith('/api/routes/files/') or p.startswith('/api/routes/folders/')) and method == 'DELETE':
+        return 'rotas.delete'
+    if p.startswith('/api/routes/lines/') and method in ('POST', 'PUT'):
+        return 'rotas.edit'
+    if p.startswith('/api/routes/') and method == 'DELETE':
+        return 'rotas.delete'
+    if p.startswith('/api/routes/') and method in ('POST', 'PUT'):
+        return 'rotas.edit'
+
+    # Forms & Responses
+    if (p == '/api/forms' or p.endswith('/responses/import') or p == '/api/admin/extract_machinery_excel') and method == 'POST':
+        return 'formularios.create'
+    if (p.startswith('/api/forms/') or p.startswith('/api/form-responses/')) and method == 'DELETE':
+        return 'formularios.delete'
+    if (p.startswith('/api/forms/') or p.startswith('/api/form-responses/')) and method in ('POST', 'PUT'):
+        return 'formularios.edit'
+
+    # Monthly Indicators
+    if p in ('/api/indicators', '/api/indicators/import') and method == 'POST':
+        return 'indicadores.edit'
+
+    # Schedules / Escala
+    if p.startswith('/api/schedules') and method == 'POST':
+        return 'escala.edit'
+
+    # Finance
+    if p in ('/api/finance/teams', '/api/finance/consumables') and method == 'POST':
+        return 'financeiro.create'
+    if (p.startswith('/api/finance/teams/') or p.startswith('/api/finance/consumables/')) and method == 'PUT':
+        return 'financeiro.edit'
+    if (p.startswith('/api/finance/teams/') or p.startswith('/api/finance/consumables/')) and method == 'DELETE':
+        return 'financeiro.delete'
+
+    # Notifications
+    if p in ('/api/notifications', '/api/notifications/bulk') and method == 'POST':
+        return 'notificacoes.create'
+    if p.startswith('/api/notifications/') and method == 'DELETE':
+        return 'notificacoes.delete'
+
+    # Inventory
+    if p == '/api/inventory' and method == 'POST':
+        return 'veiculos.create'
+    if p.startswith('/api/inventory/') and method == 'PUT':
+        return 'veiculos.edit'
+    if p.startswith('/api/inventory/') and method == 'DELETE':
+        return 'veiculos.delete'
+
+    # Buscador
+    if p == '/api/buscador/upload' and method == 'POST':
+        return 'buscador.create'
+    if p.startswith('/api/buscador/records/') and method == 'PUT':
+        return 'buscador.edit'
+
+    # User Tasks (Área de Trabalho)
+    if p == '/api/user-tasks' and method == 'POST':
+        return 'area_de_trabalho.create'
+    if p.startswith('/api/user-tasks/') and method == 'DELETE':
+        return 'area_de_trabalho.delete'
+    if p.startswith('/api/user-tasks/') and method in ('POST', 'PUT'):
+        return 'area_de_trabalho.edit'
+
+    # Evaluations
+    if p == '/api/evaluations' and method == 'POST':
+        return 'avaliacao.create'
+    if p.startswith('/api/evaluations/') and method == 'DELETE':
+        return 'avaliacao.delete'
+
+    # Auditorias
+    if p == '/api/auditorias' and method == 'POST':
+        return 'auditoria.create'
+    if p == '/api/auditorias/upload-photos' and method == 'POST':
+        return 'auditoria.edit'
+    if p.startswith('/api/auditorias/') and method == 'PUT':
+        return 'auditoria.edit'
+    if p.startswith('/api/auditorias/') and method == 'DELETE':
+        return 'auditoria.delete'
+
+    # Aceitacoes
+    if p == '/api/aceitacoes' and method == 'POST':
+        return 'aceitacao.create'
+    if p == '/api/aceitacoes/upload-photos' and method == 'POST':
+        return 'aceitacao.edit'
+    if p.startswith('/api/aceitacoes/') and method == 'PUT':
+        return 'aceitacao.edit'
+    if p.startswith('/api/aceitacoes/') and method == 'DELETE':
+        return 'aceitacao.delete'
+
+    return None
+
+@app.before_request
+def enforce_granular_permissions():
+    if not request.path.startswith('/api/') or request.method == 'OPTIONS':
+        return None
+    req_perm = _resolve_required_permission(request.path, request.method)
+    if not req_perm:
+        return None
+    if 'user_id' not in session:
+        return jsonify({"error": "Sessão expirada. Redirecionando para login...", "redirect": "/login"}), 401
+    if not user_has_permission(req_perm):
+        return jsonify({"error": "Acesso negado: você não possui permissão para realizar esta ação."}), 403
+    return None
+
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            user_role = session.get('role', '')
-            user_name = session.get('username', '').lower()
-            if user_name == 'alexandre.candido' or user_role in ['Administrador', 'Admin', 'Coordenador', 'Supervisor'] or user_role in roles:
+            req_perm = _resolve_required_permission(request.path, request.method)
+            if req_perm:
+                if user_has_permission(req_perm):
+                    return f(*args, **kwargs)
+                return jsonify({"error": "Acesso negado: você não possui permissão para realizar esta ação."}), 403
+            auth = get_current_user_auth()
+            if not auth:
+                return jsonify({"error": "Não autenticado."}), 401
+            if auth['is_master'] or auth['is_coordenador'] or auth['role'] in roles:
                 return f(*args, **kwargs)
             return jsonify({"error": "Acesso negado. Permissão insuficiente."}), 403
         return decorated_function
@@ -1135,13 +1396,13 @@ def is_user_coordenador_claro(user_id):
         if not row:
             return False
         user_name = (row.get('username') or '').strip().lower()
-        if user_name == 'alexandre.candido':
+        if user_name == MASTER_COORDINATOR_USERNAME:
             return True
         role_val = (row.get('role') or '').strip().lower()
         company_val = (row.get('company') or '').strip().lower()
         if role_val in ['administrador', 'admin']:
             return True
-        return (role_val in ['coordenador', 'supervisor']) and (company_val == 'claro')
+        return (role_val == 'coordenador') and (company_val == 'claro')
     except Exception:
         return False
 
@@ -1152,9 +1413,24 @@ def coordenador_claro_required(f):
             r = redirect(url_for('login'))
             r.data = b''
             return r
-        if not is_user_coordenador_claro(session['user_id']):
-            return jsonify({"error": "Acesso restrito: Apenas Coordenadores da Claro possuem permissão para exportar esta base."}), 403
-        return f(*args, **kwargs)
+        req_perm = _resolve_required_permission(request.path, request.method)
+        if req_perm:
+            if user_has_permission(req_perm):
+                return f(*args, **kwargs)
+            return jsonify({"error": "Acesso negado: você não possui permissão para realizar esta ação."}), 403
+        auth = get_current_user_auth()
+        if auth and (auth['is_master'] or auth['is_coordenador']):
+            return f(*args, **kwargs)
+        p = request.path.rstrip('/')
+        if p.startswith('/api/finance') and any(k.startswith('financeiro.') for k in (auth or {}).get('permissions', [])):
+            return f(*args, **kwargs)
+        if p.startswith('/api/notifications') and any(k.startswith('notificacoes.') for k in (auth or {}).get('permissions', [])):
+            return f(*args, **kwargs)
+        if p.startswith('/api/technicians/export') and any(k.startswith('pessoas.') for k in (auth or {}).get('permissions', [])):
+            return f(*args, **kwargs)
+        if is_user_coordenador_claro(session['user_id']):
+            return f(*args, **kwargs)
+        return jsonify({"error": "Acesso restrito: Você não possui permissão para acessar este recurso."}), 403
     return decorated_function
 
 import urllib.request
@@ -1649,14 +1925,29 @@ def get_user_info_dict(user_id):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("""
-            SELECT u.id, u.username, u.role, u.tech_id, u.email as u_email, u.phone as u_phone, u.name as u_name,
-                   t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
-                   t.registration_claro, t.toa_login
-            FROM users u
-            LEFT JOIN technicians t ON u.tech_id = t.id
-            WHERE u.id = %s;
-        """, (user_id,))
+        try:
+            cur.execute("""
+                SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
+                       u.email as u_email, u.phone as u_phone, u.name as u_name,
+                       t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
+                       t.registration_claro, t.toa_login
+                FROM users u
+                LEFT JOIN technicians t ON u.tech_id = t.id
+                WHERE u.id = %s;
+            """, (user_id,))
+        except Exception:
+            conn.rollback()
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT NULL;")
+            conn.commit()
+            cur.execute("""
+                SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
+                       u.email as u_email, u.phone as u_phone, u.name as u_name,
+                       t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
+                       t.registration_claro, t.toa_login
+                FROM users u
+                LEFT JOIN technicians t ON u.tech_id = t.id
+                WHERE u.id = %s;
+            """, (user_id,))
         row = cur.fetchone()
         cur.close()
         conn.close()
@@ -1682,6 +1973,9 @@ def get_user_info_dict(user_id):
         if not company:
             missing_fields.append("Empresa / Parceira vinculada")
 
+        uname = (row.get('username') or '').strip().lower()
+        resolved_perms = resolve_user_permissions(uname, row.get('role'), row.get('permissions'))
+
         return {
             "id": row['id'],
             "username": row['username'],
@@ -1695,7 +1989,10 @@ def get_user_info_dict(user_id):
             "profile_complete": len(missing_fields) == 0,
             "missing_fields": missing_fields,
             "registration_claro": row.get('registration_claro'),
-            "toa_login": row.get('toa_login')
+            "toa_login": row.get('toa_login'),
+            "permissions": resolved_perms,
+            "is_master": uname == MASTER_COORDINATOR_USERNAME,
+            "is_coordenador": is_coordenador_role(uname, row.get('role'))
         }
     except Exception as e:
         print("get_user_info_dict error:", e)
@@ -5037,10 +5334,8 @@ def api_finance_consumables_detail(record_id):
 @app.route('/api/finance/export', methods=['GET'])
 @login_required
 def api_export_finance():
-    user_role = session.get('role', '')
-    username = (session.get('username') or '').lower()
-    company = (session.get('company') or '').lower()
-    if username != 'alexandre.candido' and user_role not in ['Administrador', 'Admin', 'Coordenador', 'Supervisor'] and company != 'claro':
+    auth = get_current_user_auth()
+    if not auth or (not auth['is_master'] and not auth['is_coordenador'] and not any(k.startswith('financeiro.') for k in auth.get('permissions', []))):
         return jsonify({"error": "Acesso não autorizado."}), 403
     try:
         conn = get_db()
@@ -5452,26 +5747,16 @@ def api_get_logs():
 # --- 6. USER MANAGEMENT ---
 @app.route('/api/users', methods=['GET'])
 @login_required
-@roles_required('Coordenador', 'Supervisor')
 def api_get_users():
     try:
         conn = get_db()
         cur = conn.cursor()
-        if session['role'] == 'Supervisor':
-            cur.execute("""
-                SELECT u.id, u.username, u.role, u.tech_id, t.name AS tech_name, u.created_at 
-                FROM users u 
-                LEFT JOIN technicians t ON u.tech_id = t.id 
-                WHERE u.role != 'Coordenador' 
-                ORDER BY u.username ASC;
-            """)
-        else:
-            cur.execute("""
-                SELECT u.id, u.username, u.role, u.tech_id, t.name AS tech_name, u.created_at 
-                FROM users u 
-                LEFT JOIN technicians t ON u.tech_id = t.id 
-                ORDER BY u.username ASC;
-            """)
+        cur.execute("""
+            SELECT u.id, u.username, u.role, u.tech_id, u.permissions, t.name AS tech_name, u.created_at 
+            FROM users u 
+            LEFT JOIN technicians t ON u.tech_id = t.id 
+            ORDER BY u.username ASC;
+        """)
         users = cur.fetchall()
         cur.close()
         conn.close()
@@ -5479,6 +5764,10 @@ def api_get_users():
         for u in users:
             if u['created_at']:
                 u['created_at'] = u['created_at'].strftime('%d/%m/%Y %H:%M')
+            uname = (u.get('username') or '').strip().lower()
+            u['permissions'] = resolve_user_permissions(uname, u.get('role'), u.get('permissions'))
+            u['is_master'] = (uname == MASTER_COORDINATOR_USERNAME)
+            u['is_coordenador'] = is_coordenador_role(uname, u.get('role'))
         return jsonify(users)
     except Exception as e:
         print("Backend error log:", e)
@@ -5486,13 +5775,17 @@ def api_get_users():
 
 @app.route('/api/users', methods=['POST'])
 @login_required
-@roles_required('Coordenador')
 def api_create_user():
-    data = request.get_json()
+    caller = get_current_user_auth()
+    if not caller or not caller['is_coordenador'] or 'gerenciamento.create' not in caller['permissions']:
+        return jsonify({"error": "Apenas Coordenadores com permissão podem criar novos acessos."}), 403
+
+    data = request.get_json() or {}
     username = data.get('username', '').strip().lower()
     password = data.get('password', '')
     role = data.get('role', '').strip()
     tech_id = data.get('tech_id')
+    raw_perms = data.get('permissions')
     
     if not tech_id:
         return jsonify({"error": "A pessoa precisa estar cadastrada primeiro na seção Pessoas (#pessoas) antes de criar uma conta de acesso."}), 400
@@ -5502,6 +5795,9 @@ def api_create_user():
         
     if role not in ['Supervisor', 'Técnico', 'Auxiliar', 'Coordenador']:
         return jsonify({"error": "Cargo inválido informado."}), 400
+
+    if role == 'Coordenador' and not caller['is_master']:
+        return jsonify({"error": "Apenas o Coordenador Máximo (alexandre.candido) pode atribuir o cargo de Coordenador."}), 403
             
     try:
         conn = get_db()
@@ -5522,11 +5818,27 @@ def api_create_user():
             return jsonify({"error": "Nome de usuário já está em uso."}), 400
             
         empresa = (tech.get('company') or 'Claro').strip()
-        senha_padrao = f"{empresa}@2026"
+        senha_padrao = password.strip() if (password and password.strip()) else f"{empresa}@2026"
         hashed = generate_password_hash(senha_padrao)
+
+        if role == 'Coordenador':
+            if isinstance(raw_perms, list):
+                valid_set = set(ALL_PERMISSIONS)
+                cleaned_perms = [p for p in raw_perms if isinstance(p, str) and p in valid_set]
+                perms_db = json.dumps(cleaned_perms)
+            else:
+                perms_db = None
+        else:
+            valid_set = set(ALL_PERMISSIONS)
+            cleaned_perms = [
+                p for p in (raw_perms if isinstance(raw_perms, list) else [])
+                if isinstance(p, str) and p in valid_set and not p.startswith('gerenciamento.')
+            ]
+            perms_db = json.dumps(cleaned_perms)
+
         cur.execute(
-            "INSERT INTO users (username, password_hash, role, tech_id) VALUES (%s, %s, %s, %s) RETURNING id;",
-            (username, hashed, role, int(tech_id))
+            "INSERT INTO users (username, password_hash, role, tech_id, permissions) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
+            (username, hashed, role, int(tech_id), perms_db)
         )
         new_id = cur.fetchone()['id']
         conn.commit()
@@ -5541,8 +5853,11 @@ def api_create_user():
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @login_required
-@roles_required('Coordenador')
 def api_delete_user(user_id):
+    caller = get_current_user_auth()
+    if not caller or not caller['is_coordenador'] or 'gerenciamento.delete' not in caller['permissions']:
+        return jsonify({"error": "Você não possui permissão para remover contas de acesso."}), 403
+
     if user_id == session['user_id']:
         return jsonify({"error": "Não é possível excluir a própria conta em uso."}), 400
         
@@ -5556,6 +5871,19 @@ def api_delete_user(user_id):
             cur.close()
             conn.close()
             return jsonify({"error": "Usuário não encontrado."}), 404
+
+        target_uname = (user.get('username') or '').strip().lower()
+        target_role = (user.get('role') or '').strip()
+
+        if target_uname == MASTER_COORDINATOR_USERNAME:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "A conta do Coordenador Máximo (alexandre.candido) é protegida e não pode ser excluída."}), 403
+
+        if is_coordenador_role(target_uname, target_role) and not caller['is_master']:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Coordenadores não podem remover contas de outros Coordenadores. Apenas alexandre.candido possui essa permissão."}), 403
             
         # Clear foreign key references before deleting user account
         for tbl, col in [('audit_logs', 'user_id'), ('technicians', 'created_by'), ('vehicles', 'created_by'), ('financial_logs', 'logged_by'), ('project_folders', 'created_by'), ('projects', 'created_by')]:
@@ -5577,13 +5905,17 @@ def api_delete_user(user_id):
 
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 @login_required
-@roles_required('Coordenador')
 def api_update_user(user_id):
+    caller = get_current_user_auth()
+    if not caller or not caller['is_coordenador'] or 'gerenciamento.edit' not in caller['permissions']:
+        return jsonify({"error": "Apenas Coordenadores com permissão podem editar acessos e privilégios."}), 403
+
     data = request.get_json() or {}
     username = data.get('username', '').strip().lower()
     role = data.get('role', '').strip()
     password = data.get('password', '')
     tech_id = data.get('tech_id')
+    raw_perms = data.get('permissions')
     
     if not role:
         return jsonify({"error": "O cargo é obrigatório."}), 400
@@ -5596,15 +5928,37 @@ def api_update_user(user_id):
         cur = conn.cursor()
         
         # Check if user exists
-        cur.execute("SELECT username, role FROM users WHERE id = %s;", (user_id,))
+        cur.execute("SELECT id, username, role, tech_id, permissions FROM users WHERE id = %s;", (user_id,))
         user = cur.fetchone()
         if not user:
             cur.close()
             conn.close()
             return jsonify({"error": "Usuário não encontrado."}), 404
-            
+
+        target_uname = (user.get('username') or '').strip().lower()
+        target_role = (user.get('role') or '').strip()
+        target_is_master = (target_uname == MASTER_COORDINATOR_USERNAME)
+        target_is_coord = is_coordenador_role(target_uname, target_role)
+
+        # Protect alexandre.candido from anyone else
+        if target_is_master and not caller['is_master']:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "A conta de alexandre.candido não pode ser editada por outros usuários."}), 403
+
+        # Regular Coordenadores cannot edit other Coordenadores, cannot edit themselves, and cannot promote to Coordenador
+        if not caller['is_master']:
+            if target_is_coord or user_id == caller['id']:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Coordenadores não podem editar outros Coordenadores nem alterar as próprias permissões. Apenas alexandre.candido possui essa permissão."}), 403
+            if role == 'Coordenador':
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Apenas o Coordenador Máximo (alexandre.candido) pode atribuir o cargo de Coordenador."}), 403
+
         target_username = user['username']
-        if username and username != user['username']:
+        if not target_is_master and username and username != user['username']:
             cur.execute("SELECT id FROM users WHERE username = %s AND id != %s;", (username, user_id))
             if cur.fetchone():
                 cur.close()
@@ -5612,25 +5966,44 @@ def api_update_user(user_id):
                 return jsonify({"error": "Nome de usuário (login) já está em uso por outra conta."}), 400
             target_username = username
 
-        t_id = int(tech_id) if tech_id else None
+        final_role = 'Coordenador' if target_is_master else role
+        t_id = int(tech_id) if tech_id else user.get('tech_id')
+
+        # Compute permissions to persist
+        valid_set = set(ALL_PERMISSIONS)
+        if target_is_master:
+            perms_db = None
+        elif final_role == 'Coordenador':
+            if isinstance(raw_perms, list):
+                cleaned_perms = [p for p in raw_perms if isinstance(p, str) and p in valid_set]
+                perms_db = json.dumps(cleaned_perms)
+            else:
+                perms_db = json.dumps(user['permissions']) if user.get('permissions') is not None else None
+        else:
+            if isinstance(raw_perms, list):
+                cleaned_perms = [p for p in raw_perms if isinstance(p, str) and p in valid_set and not p.startswith('gerenciamento.')]
+                perms_db = json.dumps(cleaned_perms)
+            else:
+                existing = resolve_user_permissions(target_uname, final_role, user.get('permissions'))
+                perms_db = json.dumps(existing)
 
         if password:
             hashed = generate_password_hash(password)
             cur.execute(
-                "UPDATE users SET username = %s, role = %s, password_hash = %s, tech_id = %s WHERE id = %s;",
-                (target_username, role, hashed, t_id, user_id)
+                "UPDATE users SET username = %s, role = %s, password_hash = %s, tech_id = %s, permissions = %s WHERE id = %s;",
+                (target_username, final_role, hashed, t_id, perms_db, user_id)
             )
         else:
             cur.execute(
-                "UPDATE users SET username = %s, role = %s, tech_id = %s WHERE id = %s;",
-                (target_username, role, t_id, user_id)
+                "UPDATE users SET username = %s, role = %s, tech_id = %s, permissions = %s WHERE id = %s;",
+                (target_username, final_role, t_id, perms_db, user_id)
             )
             
         conn.commit()
         cur.close()
         conn.close()
         
-        log_action(session['user_id'], session['username'], f"Editou o usuário de acesso: {target_username} (Cargo: {role})")
+        log_action(session['user_id'], session['username'], f"Editou o acesso e permissões de: {target_username} (Cargo: {final_role})")
         return jsonify({"success": True})
     except Exception as e:
         print("Backend error log:", e)
@@ -7576,11 +7949,10 @@ def api_delete_evaluation(eval_id):
         conn.close()
         return jsonify({'error': 'Avaliação não encontrada.'}), 404
 
-    is_admin_or_coord = (user_name == 'alexandre.candido' or user_role in ['Administrador', 'Admin', 'Coordenador', 'Supervisor'])
-    if row.get('evaluator_id') != user_id and not is_admin_or_coord:
+    if not user_has_permission('avaliacao.delete'):
         cur.close()
         conn.close()
-        return jsonify({'error': 'Acesso negado. Você só tem permissão para excluir avaliações criadas por você.'}), 403
+        return jsonify({'error': 'Acesso negado: você não possui permissão para remover avaliações.'}), 403
 
     cur.execute("DELETE FROM collaborator_evaluations WHERE id = %s;", (eval_id,))
     conn.commit()

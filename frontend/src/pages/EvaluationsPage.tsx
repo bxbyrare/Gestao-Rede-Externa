@@ -4,6 +4,7 @@ import { api, ApiError } from '../api/client';
 import type { Evaluation, Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const SCORE_FIELDS = [
   { key: 'behavior_score', label: 'Comportamento' },
@@ -21,6 +22,9 @@ function scoreColor(score: number) {
 }
 
 export default function EvaluationsPage() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'avaliacao.create');
+  const canDelete = hasPermission(user, 'avaliacao.delete');
   const [evaluations, setEvaluations] = useState<Evaluation[] | null>(null);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [search, setSearch] = useState('');
@@ -116,9 +120,11 @@ export default function EvaluationsPage() {
             <Button variant="outline" onClick={() => { window.location.href = '/api/evaluations/export'; }}>
               <Download className="w-4 h-4" /> Exportar
             </Button>
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4" /> Nova Avaliação
-            </Button>
+            {canCreate && (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4" /> Nova Avaliação
+              </Button>
+            )}
           </div>
         }
       />
@@ -181,9 +187,11 @@ export default function EvaluationsPage() {
               {e.comments && <p className="text-sm text-[var(--color-text-muted)] italic">"{e.comments}"</p>}
               <div className="mt-auto flex items-center justify-between text-[11px] text-[var(--color-text-faint)] pt-1">
                 <span>Por {e.evaluator_username} em {e.created_at}</span>
-                <button onClick={() => handleDelete(e)} aria-label="Excluir avaliação" className="w-8 h-8 rounded-full flex items-center justify-center hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {canDelete && (
+                  <button onClick={() => handleDelete(e)} aria-label="Excluir avaliação" className="w-8 h-8 rounded-full flex items-center justify-center hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </Card>
           ))}

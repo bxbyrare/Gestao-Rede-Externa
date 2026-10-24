@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { api, assetUrl } from '../api/client';
 import type { Aceitacao, Technician } from '../api/types';
-import { useAuth } from '../state/AuthContext';
+import { hasPermission, useAuth } from '../state/AuthContext';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
 import AccordionGallery from '../components/AccordionGallery';
@@ -38,6 +38,9 @@ export interface ResponsibleOption {
 
 export default function AceitacaoPage() {
   const { user } = useAuth();
+  const canCreate = hasPermission(user, 'aceitacao.create');
+  const canEdit = hasPermission(user, 'aceitacao.edit');
+  const canDelete = hasPermission(user, 'aceitacao.delete');
   const [aceitacoes, setAceitacoes] = useState<Aceitacao[]>([]);
   const [responsibles, setResponsibles] = useState<ResponsibleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -330,14 +333,16 @@ export default function AceitacaoPage() {
               <Download className="w-4 h-4 text-[var(--color-primary)]" />
               Exportar
             </Button>
-            <Button
-              variant="primary"
-              onClick={handleOpenCreate}
-              className="gap-2 text-xs shadow-[0_0_20px_rgba(238,44,36,0.3)]"
-            >
-              <Plus className="w-4 h-4" />
-              Nova Aceitação
-            </Button>
+            {canCreate && (
+              <Button
+                variant="primary"
+                onClick={handleOpenCreate}
+                className="gap-2 text-xs shadow-[0_0_20px_rgba(238,44,36,0.3)]"
+              >
+                <Plus className="w-4 h-4" />
+                Nova Aceitação
+              </Button>
+            )}
           </div>
         }
       />
@@ -556,14 +561,16 @@ export default function AceitacaoPage() {
 
                       {/* Ações */}
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          disabled={deletingId === item.id}
-                          title="Excluir Aceitação"
-                          className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            disabled={deletingId === item.id}
+                            title="Excluir Aceitação"
+                            className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -701,15 +708,17 @@ export default function AceitacaoPage() {
             <Button variant="outline" onClick={() => setReportModalOpen(false)}>
               Fechar
             </Button>
-            <Button
-              variant="primary"
-              onClick={handleSaveReport}
-              disabled={savingReport || uploadingPhotos}
-              className="gap-2"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              {savingReport ? 'Salvando...' : 'Salvar Alterações'}
-            </Button>
+            {canEdit && (
+              <Button
+                variant="primary"
+                onClick={handleSaveReport}
+                disabled={savingReport || uploadingPhotos}
+                className="gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {savingReport ? 'Salvando...' : 'Salvar Alterações'}
+              </Button>
+            )}
           </div>
         }
       >

@@ -4,6 +4,7 @@ import { api, ApiError } from '../api/client';
 import type { Favorite } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const COLORS = [
   { value: 'Vermelho', dot: '#ef4444', chipBg: 'rgba(239,68,68,0.10)', chipText: '#fca5a5', border: 'rgba(239,68,68,0.25)' },
@@ -20,6 +21,10 @@ function colorMeta(value: string) {
 const emptyForm = { title: '', link: '', color: 'Vermelho' };
 
 export default function FavoritesPage() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'favoritos.create');
+  const canEdit = hasPermission(user, 'favoritos.edit');
+  const canDelete = hasPermission(user, 'favoritos.delete');
   const [favorites, setFavorites] = useState<Favorite[] | null>(null);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -90,9 +95,11 @@ export default function FavoritesPage() {
         title="Favoritos"
         subtitle="Links e ferramentas de uso frequente da operação"
         actions={
-          <Button onClick={openCreate} className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white shadow-sm font-semibold rounded-xl">
-            <Plus className="w-4 h-4" /> Cadastrar Favorito
-          </Button>
+          canCreate ? (
+            <Button onClick={openCreate} className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white shadow-sm font-semibold rounded-xl">
+              <Plus className="w-4 h-4" /> Cadastrar Favorito
+            </Button>
+          ) : undefined
         }
       />
 
@@ -143,20 +150,24 @@ export default function FavoritesPage() {
                   >
                     <ExternalLink className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200" /> Acessar Link
                   </button>
-                  <button
-                    onClick={() => openEdit(fav)}
-                    aria-label="Editar favorito"
-                    className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(fav)}
-                    aria-label="Excluir favorito"
-                    className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => openEdit(fav)}
+                      aria-label="Editar favorito"
+                      className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(fav)}
+                      aria-label="Excluir favorito"
+                      className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

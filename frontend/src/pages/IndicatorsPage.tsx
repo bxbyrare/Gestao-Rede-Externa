@@ -3,6 +3,7 @@ import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lu
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const AREAS = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos'];
 
@@ -174,6 +175,8 @@ function TimeTable({ title, keyName, rows, onChange }: { title: string; keyName:
 }
 
 export default function IndicatorsPage() {
+  const { user } = useAuth();
+  const canEdit = hasPermission(user, 'indicadores.edit');
   const [month, setMonth] = useState<string>(getCurrentMonthKey);
   const [data, setData] = useState<IndicatorData>(defaultData());
   const [status, setStatus] = useState('');
@@ -209,6 +212,7 @@ export default function IndicatorsPage() {
   }, [month]);
 
   function updateField<K extends keyof IndicatorData>(key: K, value: IndicatorData[K]) {
+    if (!canEdit) return;
     setData((d) => {
       const next = { ...d, [key]: value };
       scheduleSave(next);
@@ -304,14 +308,16 @@ export default function IndicatorsPage() {
               <Download className="w-4 h-4 text-[var(--color-primary)]" />
               <span>Exportar CSV</span>
             </Button>
-            <Button
-              variant="outline"
-              onClick={openImport}
-              title="Importar indicadores via planilha ou texto CSV"
-            >
-              <Upload className="w-4 h-4 text-[var(--color-accent)]" />
-              <span>Importar CSV</span>
-            </Button>
+            {canEdit && (
+              <Button
+                variant="outline"
+                onClick={openImport}
+                title="Importar indicadores via planilha ou texto CSV"
+              >
+                <Upload className="w-4 h-4 text-[var(--color-accent)]" />
+                <span>Importar CSV</span>
+              </Button>
+            )}
           </div>
         }
       />

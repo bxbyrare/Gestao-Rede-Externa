@@ -4,7 +4,7 @@ import { api, ApiError } from '../api/client';
 import type { Project, ProjectFolder } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
-import { isCoordenador, useAuth } from '../state/AuthContext';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 interface Crumb { id: number | null; name: string }
 
@@ -59,7 +59,9 @@ const emptyProjectForm = { name: '', description: '', area: '' };
 
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const canManage = isCoordenador(user);
+  const canCreate = hasPermission(user, 'projetos.create');
+  const canEdit = hasPermission(user, 'projetos.edit');
+  const canDelete = hasPermission(user, 'projetos.delete');
   const [crumbs, setCrumbs] = useState<Crumb[]>([{ id: null, name: 'Projetos' }]);
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -237,10 +239,12 @@ export default function ProjectsPage() {
         title="Projetos"
         subtitle="Projetos de rede externa organizados em pastas"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={openCreateFolder}><FolderPlus className="w-4 h-4" /> Nova Pasta</Button>
-            <Button onClick={openCreateProject}><Plus className="w-4 h-4" /> Novo Projeto</Button>
-          </div>
+          canCreate ? (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={openCreateFolder}><FolderPlus className="w-4 h-4" /> Nova Pasta</Button>
+              <Button onClick={openCreateProject}><Plus className="w-4 h-4" /> Novo Projeto</Button>
+            </div>
+          ) : undefined
         }
       />
 
@@ -318,10 +322,10 @@ export default function ProjectsPage() {
                   <div className="text-[11px] text-[var(--color-text-faint)] mt-0.5">{f.folder_count} pasta(s) · {f.file_count} projeto(s)</div>
                 </div>
               </button>
-              {canManage && (
+              {(canEdit || canDelete) && (
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button onClick={() => openRenameFolder(f)} aria-label="Renomear pasta" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-3.5 h-3.5" /></button>
-                  <button onClick={() => deleteFolder(f)} aria-label="Excluir pasta" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-3.5 h-3.5" /></button>
+                  {canEdit && <button onClick={() => openRenameFolder(f)} aria-label="Renomear pasta" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-3.5 h-3.5" /></button>}
+                  {canDelete && <button onClick={() => deleteFolder(f)} aria-label="Excluir pasta" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-3.5 h-3.5" /></button>}
                 </div>
               )}
             </Card>
@@ -379,8 +383,10 @@ export default function ProjectsPage() {
                   <ExternalLink className="w-3.5 h-3.5" /> Público
                 </a>
                 <div className="flex items-center gap-1 ml-auto">
-                  <button onClick={() => openEditProject(p)} aria-label="Editar projeto" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-3.5 h-3.5" /></button>
-                  {canManage && (
+                  {canEdit && (
+                    <button onClick={() => openEditProject(p)} aria-label="Editar projeto" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"><Pencil className="w-3.5 h-3.5" /></button>
+                  )}
+                  {canDelete && (
                     <button onClick={() => deleteProject(p)} aria-label="Excluir projeto" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"><Trash2 className="w-3.5 h-3.5" /></button>
                   )}
                 </div>

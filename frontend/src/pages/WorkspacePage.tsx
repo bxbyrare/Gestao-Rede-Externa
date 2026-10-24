@@ -12,6 +12,7 @@ import { api, ApiError } from '../api/client';
 import type { Technician, UserTask } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const PRIORITIES = ['Baixa', 'Média', 'Alta', 'Urgente'];
 const STATUSES = ['Pendente', 'Em Andamento', 'Concluída'];
@@ -37,6 +38,10 @@ const emptyForm = {
 };
 
 export default function WorkspacePage() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'area_de_trabalho.create');
+  const canEdit = hasPermission(user, 'area_de_trabalho.edit');
+  const canDelete = hasPermission(user, 'area_de_trabalho.delete');
   const [tasks, setTasks] = useState<UserTask[] | null>(null);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -161,12 +166,14 @@ export default function WorkspacePage() {
             >
               <Download className="w-4 h-4 text-red-500 mr-1.5" /> Exportar Tarefas (CSV)
             </Button>
-            <Button
-              onClick={openCreate}
-              className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> Nova Atividade
-            </Button>
+            {canCreate && (
+              <Button
+                onClick={openCreate}
+                className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> Nova Atividade
+              </Button>
+            )}
           </div>
         }
       />
@@ -289,7 +296,7 @@ export default function WorkspacePage() {
 
                         <div className="flex items-center justify-between pt-1">
                           <div className="flex gap-1">
-                            {!isDone && (
+                            {canEdit && !isDone && (
                               <button
                                 onClick={() => quickSetStatus(t, 'Concluída')}
                                 title="Marcar como Concluída"
@@ -298,7 +305,7 @@ export default function WorkspacePage() {
                                 <CheckCircle2 className="w-3 h-3" /> Concluir
                               </button>
                             )}
-                            {statusKey === 'Pendente' && (
+                            {canEdit && statusKey === 'Pendente' && (
                               <button
                                 onClick={() => quickSetStatus(t, 'Em Andamento')}
                                 title="Iniciar Atividade"
@@ -309,20 +316,24 @@ export default function WorkspacePage() {
                             )}
                           </div>
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => openEdit(t)}
-                              title="Editar atividade"
-                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-white/10 transition-colors"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(t)}
-                              title="Excluir atividade"
-                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canEdit && (
+                              <button
+                                onClick={() => openEdit(t)}
+                                title="Editar atividade"
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-white/10 transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDelete(t)}
+                                title="Excluir atividade"
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </Card>

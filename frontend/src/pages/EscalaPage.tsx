@@ -3,6 +3,7 @@ import { Save, Search, Clock, ShieldCheck, CheckCircle2, AlertCircle } from 'luc
 import { api } from '../api/client';
 import { Button, Card, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const STATUSES = ['Trabalho', 'Folga', 'Férias', 'BH', 'Feriado', 'Atestado', 'Treinamento', 'Plantão'];
 
@@ -47,6 +48,8 @@ function currentMonthSlug() {
 }
 
 export default function EscalaPage() {
+  const { user } = useAuth();
+  const canEdit = hasPermission(user, 'escala.edit');
   const [month, setMonth] = useState(currentMonthSlug());
   const [area, setArea] = useState('');
   const [company, setCompany] = useState('');
@@ -112,6 +115,7 @@ export default function EscalaPage() {
   }
 
   function paintCell(tech: ScheduleTech, date: string) {
+    if (!canEdit) return;
     const key = `${tech.id}:${date}`;
     const work_hours = effectiveWorkHours;
     const on_call = onCallActive ? '1' : '0';
@@ -122,6 +126,7 @@ export default function EscalaPage() {
   }
 
   function openCellDetail(tech: ScheduleTech, date: string, dayLabel: string) {
+    if (!canEdit) return;
     const cell = cellValue(tech, date);
     setEditingCell({ tech, date, dayLabel });
     setModalStatus(cell.status);

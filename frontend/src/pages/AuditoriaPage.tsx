@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { api, assetUrl } from '../api/client';
 import type { Auditoria, Technician } from '../api/types';
-import { useAuth } from '../state/AuthContext';
+import { hasPermission, useAuth } from '../state/AuthContext';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
 import AccordionGallery from '../components/AccordionGallery';
@@ -38,6 +38,9 @@ export interface ResponsibleOption {
 
 export default function AuditoriaPage() {
   const { user } = useAuth();
+  const canCreate = hasPermission(user, 'auditoria.create');
+  const canEdit = hasPermission(user, 'auditoria.edit');
+  const canDelete = hasPermission(user, 'auditoria.delete');
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [responsibles, setResponsibles] = useState<ResponsibleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -328,14 +331,16 @@ export default function AuditoriaPage() {
               <Download className="w-4 h-4 text-[var(--color-primary)]" />
               Exportar
             </Button>
-            <Button
-              variant="primary"
-              onClick={handleOpenCreate}
-              className="gap-2 text-xs shadow-[0_0_20px_rgba(238,44,36,0.3)]"
-            >
-              <Plus className="w-4 h-4" />
-              Nova Auditoria
-            </Button>
+            {canCreate && (
+              <Button
+                variant="primary"
+                onClick={handleOpenCreate}
+                className="gap-2 text-xs shadow-[0_0_20px_rgba(238,44,36,0.3)]"
+              >
+                <Plus className="w-4 h-4" />
+                Nova Auditoria
+              </Button>
+            )}
           </div>
         }
       />
@@ -520,14 +525,16 @@ export default function AuditoriaPage() {
                         </Button>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          disabled={deletingId === item.id}
-                          className="p-1.5 rounded-lg text-[var(--color-text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                          title="Excluir Auditoria"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            disabled={deletingId === item.id}
+                            className="p-1.5 rounded-lg text-[var(--color-text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="Excluir Auditoria"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -637,15 +644,17 @@ export default function AuditoriaPage() {
             <Button variant="outline" onClick={() => setReportModalOpen(false)}>
               Fechar
             </Button>
-            <Button
-              variant="primary"
-              onClick={handleSaveReport}
-              disabled={savingReport || uploadingPhotos}
-              className="gap-2"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              {savingReport ? 'Salvando...' : 'Salvar Alterações'}
-            </Button>
+            {canEdit && (
+              <Button
+                variant="primary"
+                onClick={handleSaveReport}
+                disabled={savingReport || uploadingPhotos}
+                className="gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {savingReport ? 'Salvando...' : 'Salvar Alterações'}
+              </Button>
+            )}
           </div>
         }
       >

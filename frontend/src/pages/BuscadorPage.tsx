@@ -3,7 +3,7 @@ import { Download, MessageCircle, Pencil, Search, Upload, X } from 'lucide-react
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader } from '../components/ui';
 import Modal from '../components/Modal';
-import { isCoordenador, useAuth } from '../state/AuthContext';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const TOPICS = ['RAL', 'REC', 'HFC', 'GPON'];
 const MAX_ROUTE_SUGGESTIONS = 30;
@@ -82,7 +82,8 @@ interface BuscadorResponse {
 
 export default function BuscadorPage() {
   const { user } = useAuth();
-  const canManage = isCoordenador(user);
+  const canCreate = hasPermission(user, 'buscador.create');
+  const canEdit = hasPermission(user, 'buscador.edit');
   const [topic, setTopic] = useState('RAL');
   const [search, setSearch] = useState('');
   const [route, setRoute] = useState('');
@@ -181,7 +182,7 @@ export default function BuscadorPage() {
         subtitle="Consulta de bases de falhas RAL, REC, HFC e GPON"
         actions={
           <div className="flex flex-wrap gap-2">
-            {canManage && (
+            {canCreate && (
               <Button variant="outline" onClick={() => { setUploadFile(null); setError(null); setUploadModalOpen(true); }}>
                 <Upload className="w-4 h-4" /> Carregar Base
               </Button>
@@ -270,7 +271,7 @@ export default function BuscadorPage() {
                     <td className="px-4 py-2.5">{c7 || '-'}</td>
                     <td className="px-4 py-2.5">{c8 || '-'}</td>
                     <td className="px-4 py-2.5">
-                      {canManage && (
+                      {canEdit && (
                         <button onClick={() => openEdit(id, dist, ref)} aria-label="Editar distância e ref" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] cursor-pointer">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>

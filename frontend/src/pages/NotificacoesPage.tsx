@@ -3,6 +3,7 @@ import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 interface Notification {
   id: number;
@@ -22,6 +23,9 @@ function formatDate(iso: string) {
 }
 
 export default function NotificacoesPage() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'notificacoes.create');
+  const canDelete = hasPermission(user, 'notificacoes.delete');
   const [items, setItems] = useState<Notification[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -104,15 +108,19 @@ export default function NotificacoesPage() {
         subtitle="Registro de notificações — acesso restrito a Coordenadores Claro"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={openImport}>
-              <Upload className="w-4 h-4" /> Subir Notificações
-            </Button>
+            {canCreate && (
+              <Button variant="outline" onClick={openImport}>
+                <Upload className="w-4 h-4" /> Subir Notificações
+              </Button>
+            )}
             <Button variant="outline" onClick={() => { window.location.href = '/api/notifications/export'; }}>
               <Download className="w-4 h-4" /> Exportar Excel
             </Button>
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4" /> Incluir
-            </Button>
+            {canCreate && (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4" /> Incluir
+              </Button>
+            )}
           </div>
         }
       />
@@ -145,9 +153,11 @@ export default function NotificacoesPage() {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">{n.coordinator_name}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleDelete(n)} aria-label="Excluir notificação" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {canDelete && (
+                      <button onClick={() => handleDelete(n)} aria-label="Excluir notificação" className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

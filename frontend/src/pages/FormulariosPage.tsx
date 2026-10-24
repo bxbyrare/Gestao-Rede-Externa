@@ -25,6 +25,7 @@ import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
 import AccordionGallery from '../components/AccordionGallery';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 interface FormItem {
   id: number;
@@ -108,6 +109,10 @@ function extractPhotoUrls(value: unknown): string[] {
 }
 
 export default function FormulariosPage() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'formularios.create');
+  const canEdit = hasPermission(user, 'formularios.edit');
+  const canDelete = hasPermission(user, 'formularios.delete');
   const [forms, setForms] = useState<FormItem[] | null>(null);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -416,9 +421,11 @@ export default function FormulariosPage() {
         title="Formulários"
         subtitle="Formulários de campo, links externos e respostas com evidências fotográficas"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4" /> Cadastrar Formulário
-          </Button>
+          canCreate ? (
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4" /> Cadastrar Formulário
+            </Button>
+          ) : undefined
         }
       />
 
@@ -461,20 +468,24 @@ export default function FormulariosPage() {
                   {f.category}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => openEdit(f)}
-                    aria-label="Editar formulário"
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => deleteForm(f)}
-                    aria-label="Excluir formulário"
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => openEdit(f)}
+                      aria-label="Editar formulário"
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => deleteForm(f)}
+                      aria-label="Excluir formulário"
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
               <h4 className="font-bold text-base leading-snug">{f.title}</h4>

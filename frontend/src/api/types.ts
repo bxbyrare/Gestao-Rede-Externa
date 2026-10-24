@@ -12,6 +12,9 @@ export interface User {
   missing_fields?: string[];
   registration_claro?: string | null;
   toa_login?: string | null;
+  permissions?: string[];
+  is_master?: boolean;
+  is_coordenador?: boolean;
 }
 
 export interface ProfileUpdatePayload {
@@ -103,6 +106,9 @@ export interface ManagedUser {
   tech_id: number | null;
   tech_name: string | null;
   created_at: string;
+  permissions?: string[];
+  is_master?: boolean;
+  is_coordenador?: boolean;
 }
 
 export interface Evaluation {

@@ -24,6 +24,7 @@ import { api, ApiError } from '../api/client';
 import type { RouteFile, RouteFolder, RouteItem, RouteLine } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 const emptyRouteForm = { name: '', type: 'Empresarial', description: '' };
 const emptyLineForm = {
@@ -87,6 +88,10 @@ function getEventBadge(type?: string | null) {
 }
 
 export default function RotasPage() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'rotas.create');
+  const canEdit = hasPermission(user, 'rotas.edit');
+  const canDelete = hasPermission(user, 'rotas.delete');
   const [routes, setRoutes] = useState<RouteItem[] | null>(null);
   const [typeFilter, setTypeFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -184,12 +189,14 @@ export default function RotasPage() {
             >
               <Download className="w-4 h-4 text-red-500 mr-1.5" /> Exportar Todas as Rotas (CSV)
             </Button>
-            <Button
-              onClick={openCreateRoute}
-              className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> Nova Rota
-            </Button>
+            {canCreate && (
+              <Button
+                onClick={openCreateRoute}
+                className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> Nova Rota
+              </Button>
+            )}
           </div>
         }
       />
@@ -255,22 +262,26 @@ export default function RotasPage() {
                   >
                     <Eye className="w-3.5 h-3.5" />
                   </button>
-                  <button
-                    onClick={(e) => openEditRoute(r, e)}
-                    aria-label="Editar rota"
-                    title="Editar rota"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-white/[0.07] border border-transparent transition-colors"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => deleteRoute(r, e)}
-                    aria-label="Excluir rota"
-                    title="Excluir rota"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={(e) => openEditRoute(r, e)}
+                      aria-label="Editar rota"
+                      title="Editar rota"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-white/[0.07] border border-transparent transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={(e) => deleteRoute(r, e)}
+                      aria-label="Excluir rota"
+                      title="Excluir rota"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -393,6 +404,10 @@ export default function RotasPage() {
 }
 
 function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }) {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, 'rotas.create');
+  const canEdit = hasPermission(user, 'rotas.edit');
+  const canDelete = hasPermission(user, 'rotas.delete');
   const [tab, setTab] = useState<'medicoes' | 'arquivos'>('medicoes');
   const [lines, setLines] = useState<RouteLine[] | null>(null);
 
@@ -567,13 +582,15 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
         actions={
           tab === 'medicoes' ? (
             <div className="flex gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                onClick={() => { setCsvText(''); setError(null); setImportModalOpen(true); }}
-                className="border-white/10 text-slate-200 hover:border-slate-500"
-              >
-                <Upload className="w-4 h-4 mr-1.5" /> Importar CSV
-              </Button>
+              {canCreate && (
+                <Button
+                  variant="outline"
+                  onClick={() => { setCsvText(''); setError(null); setImportModalOpen(true); }}
+                  className="border-white/10 text-slate-200 hover:border-slate-500"
+                >
+                  <Upload className="w-4 h-4 mr-1.5" /> Importar CSV
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => { window.location.href = `/api/routes/${route.id}/export`; }}
@@ -581,12 +598,14 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
               >
                 <Download className="w-4 h-4 text-red-500 mr-1.5" /> Exportar Esta Rota (CSV)
               </Button>
-              <Button
-                onClick={openCreateLine}
-                className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
-              >
-                <Plus className="w-4 h-4 mr-1.5" /> Nova Medição
-              </Button>
+              {canCreate && (
+                <Button
+                  onClick={openCreateLine}
+                  className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" /> Nova Medição
+                </Button>
+              )}
             </div>
           ) : (
             <div className="flex gap-2 flex-wrap">
@@ -691,20 +710,24 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => openEditLine(l)}
-                          title="Editar medição"
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-white/[0.08] transition-colors"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => deleteLine(l)}
-                          title="Excluir medição"
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => openEditLine(l)}
+                            title="Editar medição"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-white/[0.08] transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => deleteLine(l)}
+                            title="Excluir medição"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
