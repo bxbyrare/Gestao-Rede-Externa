@@ -17,14 +17,26 @@ if os.path.isdir('./.lib') and os.path.abspath('./.lib') not in sys.path:
 try:
     import certifi
     import requests
-except Exception:
+    import psycopg2
+    import flask
+    import werkzeug
+    import jinja2
+    import markupsafe
+except Exception as _imp_err:
+    print("[BOOT] Rebuilding ./.lib for current Python runtime due to import mismatch:", _imp_err)
     try:
-        import subprocess, importlib
+        import subprocess, importlib, shutil
+        if os.path.isdir('./.lib'):
+            for _entry in os.listdir('./.lib'):
+                _ep = os.path.join('./.lib', _entry)
+                try:
+                    shutil.rmtree(_ep) if os.path.isdir(_ep) else os.remove(_ep)
+                except Exception:
+                    pass
         subprocess.call([
             sys.executable, '-m', 'pip', 'install',
-            '--force-reinstall', '--no-cache-dir', '--target', './.lib',
-            'certifi==2026.10.23', 'requests==2.34.2', 'urllib3==2.8.0',
-            'idna==3.20', 'charset-normalizer==3.5.2'
+            '--upgrade', '--force-reinstall', '--no-cache-dir',
+            '--target', './.lib', '-r', 'requirements.txt'
         ])
         importlib.invalidate_caches()
         import requests
