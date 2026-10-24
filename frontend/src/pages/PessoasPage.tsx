@@ -52,7 +52,7 @@ function formatDateBr(dateStr?: string | null): string {
 
 function getExpirationStatus(dateStr?: string | null) {
   if (!dateStr) return { text: 'Pendente', color: 'text-[var(--color-text-faint)] bg-white/[0.03] border-white/10', days: null };
-  const target = new Date(dateStr);
+  const target = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(`${dateStr}T00:00:00`) : new Date(dateStr);
   if (isNaN(target.getTime())) return { text: 'Inválido', color: 'text-[var(--color-text-faint)] bg-white/[0.03] border-white/10', days: null };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -67,6 +67,85 @@ function getExpirationStatus(dateStr?: string | null) {
     return { text: `Vence em ${diffDays}d (${fmt})`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/25', days: diffDays };
   }
   return { text: fmt, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25', days: diffDays };
+}
+
+function getComplianceRank(p: Technician) {
+  const dates = [p.nr6_expiration, p.nr10_expiration, p.nr35_expiration, p.aso_expiration];
+  const files = [p.nr6_file, p.nr10_file, p.nr35_file, p.aso_file];
+
+  let expiredCount = 0;
+  let expiringSoonCount = 0;
+  let validCount = 0;
+  let totalCertCount = 0;
+  let minDays = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < 4; i++) {
+    const status = getExpirationStatus(dates[i]);
+    const hasFile = Boolean(files[i]);
+    if (status.days !== null) {
+      totalCertCount++;
+      if (status.days < minDays) minDays = status.days;
+      if (status.days < 0) {
+        expiredCount++;
+      } else if (status.days <= 30) {
+        expiringSoonCount++;
+      } else {
+        validCount++;
+      }
+    } else if (hasFile) {
+      totalCertCount++;
+      validCount++;
+    }
+  }
+
+  // Tier 0: Tem certificação vencida (topo absoluto)
+  // Tier 1: Tem certificação vencendo em <= 30 dias (logo abaixo das vencidas)
+  // Tier 2: Tem certificações em dia (acima de quem não tem nenhuma)
+  // Tier 3: Não tem nenhuma certificação cadastrada (fundo da tabela)
+  let tier = 3;
+  if (expiredCount > 0) {
+    tier = 0;
+  } else if (expiringSoonCount > 0) {
+    tier = 1;
+  } else if (totalCertCount > 0) {
+    tier = 2;
+  }
+
+  return { tier, expiredCount, expiringSoonCount, validCount, totalCertCount, minDays };
+}
+
+function sortPeopleByCompliance(list: Technician[]): Technician[] {
+  return [...list].sort((a, b) => {
+    const rA = getComplianceRank(a);
+    const rB = getComplianceRank(b);
+
+    // 1. Ordem principal por Tier (0 = Vencido -> 1 = Vencendo -> 2 = Com certificação -> 3 = Sem certificação)
+    if (rA.tier !== rB.tier) return rA.tier - rB.tier;
+
+    // 2. Dentro dos Vencidos (Tier 0): mais certificações vencidas primeiro, depois o vencimento mais antigo
+    if (rA.tier === 0) {
+      if (rA.expiredCount !== rB.expiredCount) return rB.expiredCount - rA.expiredCount;
+      if (rA.minDays !== rB.minDays) return rA.minDays - rB.minDays;
+    }
+
+    // 3. Dentro dos Vencendo em breve (Tier 1): menor prazo restante primeiro
+    if (rA.tier === 1 && rA.minDays !== rB.minDays) {
+      return rA.minDays - rB.minDays;
+    }
+
+    // 4. Quem possui mais certificações preenchidas aparece mais acima
+    if (rA.totalCertCount !== rB.totalCertCount) {
+      return rB.totalCertCount - rA.totalCertCount;
+    }
+
+    // 5. Desempate pelo vencimento mais próximo (quando ambos têm datas)
+    if (rA.minDays !== rB.minDays) {
+      return rA.minDays - rB.minDays;
+    }
+
+    // 6. Ordem alfabética do nome
+    return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+  });
 }
 
 interface ComplianceDocCardProps {
@@ -207,7 +286,13 @@ export default function PessoasPage() {
   function load(q = '') {
     api
       .get<Technician[]>('/api/technicians', q ? { search: q } : undefined)
-      .then((list) => setPeople(list.map((p) => ({ ...p, name: formatPersonName(p.name) }))))
+      .then((list) =>
+        setPeople(
+          sortPeopleByCompliance(
+            list.map((p) => ({ ...p, name: formatPersonName(p.name) }))
+          )
+        )
+      )
       .catch(() => setPeople([]));
   }
 
