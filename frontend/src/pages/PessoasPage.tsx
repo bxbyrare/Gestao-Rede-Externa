@@ -18,6 +18,7 @@ import type { Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
 import { useAuth, isCoordenadorClaro, hasPermission } from '../state/AuthContext';
+import { formatPersonName } from '../utils/formatName';
 
 const ROLES = ['Técnico', 'Auxiliar', 'Supervisor', 'Coordenador', 'Administrativo', 'COP'];
 const COMPANIES = ['Claro', 'FFA', 'Procisa', 'Servilog'];
@@ -204,7 +205,10 @@ export default function PessoasPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   function load(q = '') {
-    api.get<Technician[]>('/api/technicians', q ? { search: q } : undefined).then(setPeople).catch(() => setPeople([]));
+    api
+      .get<Technician[]>('/api/technicians', q ? { search: q } : undefined)
+      .then((list) => setPeople(list.map((p) => ({ ...p, name: formatPersonName(p.name) }))))
+      .catch(() => setPeople([]));
   }
 
   useEffect(() => { load(); }, []);
@@ -225,7 +229,7 @@ export default function PessoasPage() {
   function openEdit(tech: Technician) {
     setEditing(tech);
     setForm({
-      name: tech.name, cpf: tech.cpf || '', phone: tech.phone || '', identity: tech.identity || '',
+      name: formatPersonName(tech.name), cpf: tech.cpf || '', phone: tech.phone || '', identity: tech.identity || '',
       dob: tech.dob || '', role: tech.role || 'Técnico', area: tech.area || '',
       team_type: tech.team_type || 'Fusão', company: tech.company || '',
       registration_claro: tech.registration_claro || '', registration_third: tech.registration_third || '',
@@ -251,8 +255,9 @@ export default function PessoasPage() {
     }
     setIsSaving(true);
     try {
+      const normalizedName = formatPersonName(form.name);
       const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      Object.entries({ ...form, name: normalizedName }).forEach(([k, v]) => fd.append(k, v));
       if (files.nr6_file) fd.append('nr6_file', files.nr6_file);
       if (files.nr10_file) fd.append('nr10_file', files.nr10_file);
       if (files.nr35_file) fd.append('nr35_file', files.nr35_file);
@@ -563,7 +568,12 @@ export default function PessoasPage() {
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Nome Completo">
-                <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nome do técnico" />
+                <Input
+                  value={form.name}
+                  onChange={(e) => set('name', e.target.value)}
+                  onBlur={(e) => set('name', formatPersonName(e.target.value))}
+                  placeholder="Nome do técnico"
+                />
               </Field>
               <Field label="CPF">
                 <Input value={form.cpf} onChange={(e) => set('cpf', e.target.value)} placeholder="000.000.000-00" />

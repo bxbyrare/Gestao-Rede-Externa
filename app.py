@@ -358,6 +358,257 @@ def emit_live_alert(category, title, message, target_user_id=None, target_userna
     except Exception as e:
         print("Error emitting live alert:", e)
 
+# --------------------------------------------------------------------------
+# BRAZILIAN PORTUGUESE PROPER NAME GRAMMAR FORMATTER
+# --------------------------------------------------------------------------
+_PT_NAME_PARTICLES = {"de", "da", "do", "das", "dos", "e", "del", "di", "du", "van", "von"}
+_ROMAN_NUMERALS = {"II", "III", "IV", "VI", "VII", "VIII", "IX", "X"}
+_PT_ACCENT_MAP = {
+    "conceicao": "Conceição",
+    "assuncao": "Assunção",
+    "encarnacao": "Encarnação",
+    "purificacao": "Purificação",
+    "apresentacao": "Apresentação",
+    "anunciacao": "Anunciação",
+    "ressurreicao": "Ressurreição",
+    "ascensao": "Ascensão",
+    "araujo": "Araújo",
+    "espirito": "Espírito",
+    "nazare": "Nazaré",
+    "candido": "Cândido",
+    "goncalves": "Gonçalves",
+    "mendonca": "Mendonça",
+    "lourenco": "Lourenço",
+    "franca": "França",
+    "proenca": "Proença",
+    "valenca": "Valença",
+    "braganca": "Bragança",
+    "esperanca": "Esperança",
+    "simoes": "Simões",
+    "guimaraes": "Guimarães",
+    "magalhaes": "Magalhães",
+    "camoes": "Camões",
+    "goes": "Góes",
+    "brandao": "Brandão",
+    "leao": "Leão",
+    "falcao": "Falcão",
+    "paixao": "Paixão",
+    "galvao": "Galvão",
+    "romao": "Romão",
+    "aragao": "Aragão",
+    "lobao": "Lobão",
+    "mourao": "Mourão",
+    "negrao": "Negrão",
+    "serrao": "Serrão",
+    "jordao": "Jordão",
+    "leitao": "Leitão",
+    "barao": "Barão",
+    "carrao": "Carrão",
+    "abraao": "Abraão",
+    "salomao": "Salomão",
+    "simao": "Simão",
+    "estevao": "Estêvão",
+    "cristovao": "Cristóvão",
+    "sebastiao": "Sebastião",
+    "damiao": "Damião",
+    "junior": "Júnior",
+    "jr": "Júnior",
+    "jr.": "Júnior",
+    "joao": "João",
+    "jose": "José",
+    "antonio": "Antônio",
+    "andre": "André",
+    "mario": "Mário",
+    "sergio": "Sérgio",
+    "flavio": "Flávio",
+    "fabio": "Fábio",
+    "claudio": "Cláudio",
+    "marcio": "Márcio",
+    "decio": "Décio",
+    "lucio": "Lúcio",
+    "helcio": "Hélcio",
+    "julio": "Júlio",
+    "cesar": "César",
+    "regis": "Régis",
+    "ines": "Inês",
+    "sonia": "Sônia",
+    "monica": "Mônica",
+    "veronica": "Verônica",
+    "patricia": "Patrícia",
+    "leticia": "Letícia",
+    "cecilia": "Cecília",
+    "lucia": "Lúcia",
+    "valeria": "Valéria",
+    "rogerio": "Rogério",
+    "silverio": "Silvério",
+    "tiberio": "Tibério",
+    "vinicius": "Vinícius",
+    "mauricio": "Maurício",
+    "fabricio": "Fabrício",
+    "aparicio": "Aparício",
+    "bonifacio": "Bonifácio",
+    "inacio": "Inácio",
+    "horacio": "Horácio",
+    "estacio": "Estácio",
+    "jeronimo": "Jerônimo",
+    "teofilo": "Teófilo",
+    "angelo": "Ângelo",
+    "romulo": "Rômulo",
+    "getulio": "Getúlio",
+    "braulio": "Bráulio",
+    "tulio": "Túlio",
+    "helio": "Hélio",
+    "celio": "Célio",
+    "nelio": "Nélio",
+    "aurelio": "Aurélio",
+    "cornelio": "Cornélio",
+    "otavio": "Otávio",
+    "savio": "Sávio",
+    "silvio": "Sílvio",
+    "fulvio": "Fúlvio",
+    "plinio": "Plínio",
+    "herminio": "Hermínio",
+    "virginia": "Virgínia",
+    "vitoria": "Vitória",
+    "gloria": "Glória",
+    "fatima": "Fátima",
+    "barbara": "Bárbara",
+    "debora": "Débora",
+    "tamara": "Tâmara",
+    "claudia": "Cláudia",
+    "flavia": "Flávia",
+    "marcia": "Márcia",
+    "silvia": "Sílvia",
+    "katia": "Kátia",
+    "cassia": "Cássia",
+    "cassio": "Cássio",
+    "tassio": "Tássio",
+    "lazaro": "Lázaro",
+    "icaro": "Ícaro",
+    "italo": "Ítalo",
+    "alvaro": "Álvaro",
+    "eder": "Éder",
+    "edson": "Édson",
+    "everson": "Éverson",
+    "emerson": "Émerson",
+    "erica": "Érica",
+    "erico": "Érico",
+    "hercules": "Hércules",
+    "moises": "Moisés",
+    "josue": "Josué",
+    "tome": "Tomé",
+    "noemia": "Noêmia",
+    "eugenio": "Eugênio",
+    "eugenia": "Eugênia",
+    "genesio": "Genésio",
+    "anisio": "Anísio",
+    "dionisio": "Dionísio",
+    "aloisio": "Aloísio",
+    "aluisio": "Aluísio",
+    "luis": "Luís",
+}
+
+
+def format_person_name(raw_name):
+    if not raw_name or not isinstance(raw_name, str):
+        return raw_name or ""
+    cleaned = " ".join(raw_name.strip().split())
+    if not cleaned:
+        return ""
+    # Skip formatting if it looks like a login username (e.g. alexandre.candido)
+    if "." in cleaned and " " not in cleaned:
+        return cleaned
+
+    tokens = cleaned.split(" ")
+    result = []
+    total = len(tokens)
+
+    for idx, token in enumerate(tokens):
+        upper_tok = token.upper()
+        lower_tok = token.lower()
+
+        if idx > 0 and lower_tok in _PT_NAME_PARTICLES:
+            result.append(lower_tok)
+            continue
+
+        if idx == total - 1 and total >= 3 and lower_tok in ("ju", "jun", "juni", "junio", "junior", "jr", "jr."):
+            result.append("Júnior")
+            continue
+
+        if idx > 0 and upper_tok in _ROMAN_NUMERALS:
+            result.append(upper_tok)
+            continue
+
+        if lower_tok in _PT_ACCENT_MAP:
+            result.append(_PT_ACCENT_MAP[lower_tok])
+            continue
+
+        if "-" in lower_tok:
+            subparts = [
+                _PT_ACCENT_MAP.get(sp, sp.capitalize()) for sp in lower_tok.split("-")
+            ]
+            result.append("-".join(subparts))
+        elif "'" in lower_tok:
+            subparts = [sp.capitalize() for sp in lower_tok.split("'")]
+            result.append("'".join(subparts))
+        else:
+            result.append(lower_tok.capitalize())
+
+    return " ".join(result)
+
+
+_NAMES_DB_NORMALIZED = False
+
+
+def normalize_all_database_names(cur=None):
+    global _NAMES_DB_NORMALIZED
+    own_conn = None
+    try:
+        if cur is None:
+            own_conn = get_db()
+            cur = own_conn.cursor()
+
+        tables_and_cols = [
+            ("technicians", "id", "name"),
+            ("users", "id", "name"),
+            ("user_tasks", "id", "assigned_tech_name"),
+            ("collaborator_evaluations", "id", "technician_name"),
+            ("notifications", "id", "coordinator_name"),
+            ("auditorias", "id", "created_by"),
+            ("auditorias", "id", "responsible"),
+            ("aceitacoes", "id", "created_by"),
+            ("aceitacoes", "id", "responsible"),
+        ]
+        for table, pk, col in tables_and_cols:
+            try:
+                cur.execute(f"SELECT {pk}, {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != '';")
+                rows = cur.fetchall()
+                for r in rows:
+                    old_val = r.get(col) if isinstance(r, dict) else r[1]
+                    row_id = r.get(pk) if isinstance(r, dict) else r[0]
+                    if not old_val:
+                        continue
+                    new_val = format_person_name(old_val)
+                    if new_val and new_val != old_val:
+                        cur.execute(f"UPDATE {table} SET {col} = %s WHERE {pk} = %s;", (new_val, row_id))
+            except Exception:
+                if own_conn:
+                    own_conn.rollback()
+
+        if own_conn:
+            own_conn.commit()
+        _NAMES_DB_NORMALIZED = True
+    except Exception as e_norm:
+        print("Notice normalizing database names:", e_norm)
+    finally:
+        if own_conn:
+            try:
+                cur.close()
+                own_conn.close()
+            except Exception:
+                pass
+
+
 def init_db():
     try:
         conn = get_db()
@@ -1071,6 +1322,7 @@ def init_db():
         cur.close()
         conn.close()
         print("Database tables initialized and seeded successfully.")
+        normalize_all_database_names()
     except Exception as e:
         import traceback
         print("Database initialization failed with traceback:")
@@ -2207,6 +2459,8 @@ def _save_technician_doc(file_obj, prefix):
 @app.route('/api/technicians', methods=['GET'])
 @login_required
 def api_get_technicians():
+    if not _NAMES_DB_NORMALIZED:
+        normalize_all_database_names()
     search = request.args.get('search', '').strip().lower()
     try:
         conn = get_db()
@@ -2236,6 +2490,9 @@ def api_get_technicians():
         
         # Format dates safely
         for t in techs:
+            if t.get('name'):
+                t['name'] = format_person_name(t['name'])
+        for t in techs:
             for dfield in ['dob', 'nr6_expiration', 'nr10_expiration', 'nr35_expiration', 'aso_expiration']:
                 if t.get(dfield):
                     try:
@@ -2257,7 +2514,7 @@ def api_get_technicians():
 def api_create_technician():
     try:
         data = request.get_json(silent=True) or (request.form.to_dict() if request.form else {})
-        name = str(data.get('name') or '').strip()
+        name = format_person_name(str(data.get('name') or '').strip())
         cpf = str(data.get('cpf') or '').strip() or None
         phone = str(data.get('phone') or '').strip() or None
         identity = str(data.get('identity') or '').strip() or None
@@ -2352,7 +2609,7 @@ def api_create_technician():
 def api_update_technician(tech_id):
     try:
         data = request.get_json(silent=True) or (request.form.to_dict() if request.form else {})
-        name = str(data.get('name') or '').strip()
+        name = format_person_name(str(data.get('name') or '').strip())
         cpf = str(data.get('cpf') or '').strip() or None
         phone = str(data.get('phone') or '').strip() or None
         identity = str(data.get('identity') or '').strip() or None
@@ -4509,7 +4766,7 @@ def api_people_bulk():
             if idx == 0 and ('nome' in parts[0].lower() or 'cpf' in parts[0].lower() or 'tecnico' in parts[0].lower()):
                 continue
 
-            name = parts[0] if len(parts) > 0 else ''
+            name = format_person_name(parts[0] if len(parts) > 0 else '')
             role = parts[1] if len(parts) > 1 else 'Técnico de Campo'
             cpf = parts[2] if len(parts) > 2 else ''
             phone = parts[3] if len(parts) > 3 else ''
@@ -4800,7 +5057,7 @@ def api_bulk_technicians():
                 errors.append(f"Linha {index+1}: colunas insuficientes. Requer pelo menos Nome, CPF, Data de Nascimento e Cargo.")
                 continue
                 
-            name = row[0].strip()
+            name = format_person_name(row[0].strip())
             cpf = row[1].strip().replace('.', '').replace('-', '')
             dob_raw = row[2].strip()
             role = row[3].strip()
