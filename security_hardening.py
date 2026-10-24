@@ -2,13 +2,15 @@
 Runtime stdlib security hardening for CPython 3.13.x CVEs.
 Mitigates in-process:
 - CVE-2026-0864 (configparser carriage return injection in write())
-- CVE-2026-11940 / CVE-2026-4360 / CVE-2026-7774 / CVE-2026-82049 / CVE-2026-87910 (tarfile extraction filter enforcement)
+- CVE-2026-11940 / CVE-2026-4360 / CVE-2026-7774 / CVE-2026-82049 / CVE-2026-87910 (tarfile strict extraction filter without symlinks/hardlinks)
 - CVE-2026-15806 (HTTPPasswordMgr strict scheme verification)
 - CVE-2026-6019 (http.cookies.BaseCookie.js_output control character neutralization)
 - CVE-2026-4786 (webbrowser.open disabled in server context)
+- CVE-2026-8328 (ftplib PASV SSRF mitigation: ignore server-supplied PASV host address)
 """
 
 import configparser
+import ftplib
 import http.cookies
 import tarfile
 import urllib.request
@@ -34,9 +36,15 @@ def apply_stdlib_security_patches() -> None:
         configparser.RawConfigParser._write_section = _safe_write_section
         configparser.RawConfigParser._cve_2026_0864_patched = True
 
-    # 2. Tarfile CVEs: Default extraction filter to strict 'data' filter
+    # 2. CVE-2026-11940 / 4360 / 7774 / 82049 / 87910: Strict tarfile extraction filter rejecting links & traversal
     if hasattr(tarfile, "data_filter"):
-        tarfile.TarFile.extraction_filter = staticmethod(tarfile.data_filter)
+        def _strict_no_link_filter(member, dest_path):
+            filtered = tarfile.data_filter(member, dest_path)
+            if filtered is None or filtered.issym() or filtered.islnk():
+                raise tarfile.FilterError("Symbolic and hard links are disallowed by security policy")
+            return filtered
+
+        tarfile.TarFile.extraction_filter = staticmethod(_strict_no_link_filter)
 
     # 3. CVE-2026-6019: Escape embedded control/script characters in BaseCookie.js_output
     _orig_js_output = getattr(http.cookies.BaseCookie, "js_output", None)
@@ -59,7 +67,10 @@ def apply_stdlib_security_patches() -> None:
         urllib.request.HTTPPasswordMgr.find_user_password = _safe_find_user_password
         urllib.request.HTTPPasswordMgr._cve_2026_15806_patched = True
 
-    # 5. CVE-2026-4786: Block webbrowser.open on headless server runtime
+    # 5. CVE-2026-8328: Prevent FTP PASV SSRF by never trusting server-supplied PASV IP
+    ftplib.FTP.trust_server_pasv_ipv4_address = False
+
+    # 6. CVE-2026-4786: Block webbrowser.open on headless server runtime
     def _blocked_webbrowser_open(*_args, **_kwargs):
         return False
 
