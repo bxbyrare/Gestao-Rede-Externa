@@ -11,7 +11,55 @@ import base64
 import re
 import html
 import secrets
-import requests
+import sys
+if os.path.isdir('./.lib') and os.path.abspath('./.lib') not in sys.path:
+    sys.path.insert(0, os.path.abspath('./.lib'))
+try:
+    import certifi
+    import requests
+except Exception:
+    try:
+        import subprocess, importlib
+        subprocess.call([
+            sys.executable, '-m', 'pip', 'install',
+            '--force-reinstall', '--no-cache-dir', '--target', './.lib',
+            'certifi==2026.10.23', 'requests==2.34.2', 'urllib3==2.8.0',
+            'idna==3.20', 'charset-normalizer==3.5.2'
+        ])
+        importlib.invalidate_caches()
+        import requests
+    except Exception:
+        import urllib.request as _urlreq
+        import urllib.error as _urlerr
+        class _FallbackResponse:
+            def __init__(self, status_code, text):
+                self.status_code = status_code
+                self.text = text
+            def json(self):
+                return json.loads(self.text)
+        class _FallbackRequests:
+            @staticmethod
+            def post(url, headers=None, json=None, data=None, timeout=15):
+                import json as _j
+                body = _j.dumps(json).encode('utf-8') if json is not None else (data.encode('utf-8') if isinstance(data, str) else data)
+                hdrs = dict(headers or {})
+                if json is not None and 'Content-Type' not in hdrs:
+                    hdrs['Content-Type'] = 'application/json'
+                req = _urlreq.Request(url, data=body, headers=hdrs, method='POST')
+                try:
+                    with _urlreq.urlopen(req, timeout=timeout) as r:
+                        return _FallbackResponse(r.status, r.read().decode('utf-8', errors='replace'))
+                except _urlerr.HTTPError as he:
+                    return _FallbackResponse(he.code, he.read().decode('utf-8', errors='replace'))
+            @staticmethod
+            def get(url, headers=None, timeout=15):
+                req = _urlreq.Request(url, headers=dict(headers or {}), method='GET')
+                try:
+                    with _urlreq.urlopen(req, timeout=timeout) as r:
+                        return _FallbackResponse(r.status, r.read().decode('utf-8', errors='replace'))
+                except _urlerr.HTTPError as he:
+                    return _FallbackResponse(he.code, he.read().decode('utf-8', errors='replace'))
+        requests = _FallbackRequests()
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from functools import wraps
@@ -31,7 +79,17 @@ security_hardening.apply_stdlib_security_patches()
 app = Flask(__name__)
 _env_secret = os.environ.get('SECRET_KEY', '').strip()
 if not _env_secret:
-    raise RuntimeError("A variável de ambiente SECRET_KEY é obrigatória para iniciar a aplicação.")
+    _secret_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.flask_secret_key')
+    if os.path.isfile(_secret_path):
+        with open(_secret_path, 'r', encoding='utf-8') as _sf:
+            _env_secret = _sf.read().strip()
+    if not _env_secret:
+        _env_secret = secrets.token_hex(32)
+        try:
+            with open(_secret_path, 'w', encoding='utf-8') as _sf:
+                _sf.write(_env_secret)
+        except Exception:
+            pass
 app.secret_key = _env_secret
 
 # --------------------------------------------------------------------------
