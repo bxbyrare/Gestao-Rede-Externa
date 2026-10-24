@@ -7,7 +7,6 @@ export default function AntiPrintGuard() {
   const [shieldActive, setShieldActive] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hardLockedRef = useRef(false);
 
   useEffect(() => {
     function clearClipboard() {
@@ -20,8 +19,7 @@ export default function AntiPrintGuard() {
       }
     }
 
-    function triggerHardShield(reason: string, durationMs = 2800) {
-      hardLockedRef.current = true;
+    function triggerHardShield(reason: string, durationMs = 2000) {
       setAlertMessage(reason);
       setShieldActive(true);
       clearClipboard();
@@ -30,11 +28,8 @@ export default function AntiPrintGuard() {
         clearTimeout(lockTimerRef.current);
       }
       lockTimerRef.current = setTimeout(() => {
-        hardLockedRef.current = false;
-        if (document.hasFocus() && !document.hidden) {
-          setShieldActive(false);
-          setAlertMessage(null);
-        }
+        setShieldActive(false);
+        setAlertMessage(null);
       }, durationMs);
     }
 
@@ -57,7 +52,6 @@ export default function AntiPrintGuard() {
       // Windows Snipping Tool (Win + Shift + S) or macOS Screenshot (Cmd + Shift + 3/4/5/6)
       if (
         (e.metaKey && e.shiftKey && ['s', '3', '4', '5', '6'].includes(key)) ||
-        (e.ctrlKey && e.shiftKey && ['s', '3', '4', '5'].includes(key)) ||
         (e.altKey && (key === 'printscreen' || e.keyCode === 44))
       ) {
         e.preventDefault();
@@ -66,28 +60,12 @@ export default function AntiPrintGuard() {
         return;
       }
 
-      // Meta / Windows Key alone (prevents Win+Shift+S or Win+PrtScn before OS grabs focus)
-      if (key === 'meta' || key === 'os') {
-        setShieldActive(true);
-        return;
-      }
-
-      // Ctrl/Cmd + P (Print) or Ctrl/Cmd + S (Save page) or Ctrl/Cmd + U (View source)
-      if ((e.ctrlKey || e.metaKey) && ['p', 's', 'u'].includes(key)) {
+      // Ctrl/Cmd + P (Print)
+      if ((e.ctrlKey || e.metaKey) && key === 'p') {
         e.preventDefault();
         e.stopPropagation();
-        triggerHardShield('Impressão e exportação de tela bloqueadas.');
+        triggerHardShield('Impressão de página bloqueada.');
         return;
-      }
-
-      // DevTools shortcuts (F12, Ctrl+Shift+I/J/C)
-      if (
-        e.key === 'F12' ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && ['i', 'j', 'c'].includes(key))
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        triggerHardShield('Inspeção de página desativada.');
       }
     }
 
@@ -102,35 +80,6 @@ export default function AntiPrintGuard() {
       ) {
         e.preventDefault();
         triggerHardShield('Captura de tela bloqueada.');
-        return;
-      }
-
-      if (key === 'meta' || key === 'os') {
-        if (!hardLockedRef.current && document.hasFocus() && !document.hidden) {
-          setShieldActive(false);
-        }
-      }
-    }
-
-    function onVisibilityChange() {
-      if (document.hidden || document.visibilityState !== 'visible') {
-        setShieldActive(true);
-      } else if (!hardLockedRef.current && document.hasFocus()) {
-        setShieldActive(false);
-        setAlertMessage(null);
-      }
-    }
-
-    function onWindowBlur() {
-      // Instantaneously hide sensitive data when Snipping Tool, Lightshot,
-      // iOS/Android Control Center, or App Switcher takes focus
-      setShieldActive(true);
-    }
-
-    function onWindowFocus() {
-      if (!hardLockedRef.current && !document.hidden) {
-        setShieldActive(false);
-        setAlertMessage(null);
       }
     }
 
@@ -145,11 +94,6 @@ export default function AntiPrintGuard() {
       if (e.touches && e.touches.length >= 3) {
         triggerHardShield('Captura de tela bloqueada no dispositivo móvel.');
       }
-    }
-
-    // Touch cancel often fires on Android/iOS when system intercepts gesture for screenshot
-    function onTouchCancel() {
-      triggerHardShield('Conteúdo protegido contra captura.', 1500);
     }
 
     function isEditableElement(target: EventTarget | null): boolean {
@@ -181,13 +125,9 @@ export default function AntiPrintGuard() {
 
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
-    window.addEventListener('blur', onWindowBlur, true);
-    window.addEventListener('focus', onWindowFocus, true);
     window.addEventListener('beforeprint', onBeforePrint, true);
-    document.addEventListener('visibilitychange', onVisibilityChange, true);
     document.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
     document.addEventListener('touchmove', onTouchMove, { passive: true, capture: true });
-    document.addEventListener('touchcancel', onTouchCancel, { passive: true, capture: true });
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('copy', onCopy, true);
 
@@ -195,13 +135,9 @@ export default function AntiPrintGuard() {
       if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
-      window.removeEventListener('blur', onWindowBlur, true);
-      window.removeEventListener('focus', onWindowFocus, true);
       window.removeEventListener('beforeprint', onBeforePrint, true);
-      document.removeEventListener('visibilitychange', onVisibilityChange, true);
       document.removeEventListener('touchstart', onTouchStart, true);
       document.removeEventListener('touchmove', onTouchMove, true);
-      document.removeEventListener('touchcancel', onTouchCancel, true);
       document.removeEventListener('contextmenu', onContextMenu, true);
       document.removeEventListener('copy', onCopy, true);
     };
@@ -231,12 +167,17 @@ export default function AntiPrintGuard() {
         </div>
       </div>
 
-      {/* Instant 0ms blackout curtain triggered on screenshot keys, snipping tools, or focus loss */}
+      {/* Blackout curtain triggered strictly on screenshot keys, print, or 3-finger capture */}
       {shieldActive && (
         <div
           role="alert"
           aria-live="assertive"
-          className="fixed inset-0 z-[99999] bg-[#08080a] flex flex-col items-center justify-center p-6 text-center select-none"
+          onClick={() => {
+            if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+            setShieldActive(false);
+            setAlertMessage(null);
+          }}
+          className="fixed inset-0 z-[99999] bg-[#08080a] flex flex-col items-center justify-center p-6 text-center select-none cursor-pointer"
         >
           <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-neutral-300 mb-4">
             <Lock className="w-5 h-5" />
@@ -245,8 +186,7 @@ export default function AntiPrintGuard() {
             Conteúdo Protegido
           </h2>
           <p className="text-xs text-[var(--color-text-muted)] max-w-xs">
-            {alertMessage ||
-              'A visualização foi ocultada para proteção dos dados. Clique na janela para continuar.'}
+            {alertMessage || 'Captura de tela bloqueada.'}
           </p>
         </div>
       )}
