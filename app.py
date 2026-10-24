@@ -25,6 +25,9 @@ from flask import (
 
 from collections import defaultdict
 
+import security_hardening
+security_hardening.apply_stdlib_security_patches()
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'claro-gestao-rede-externa-secret-key-2026')
 
