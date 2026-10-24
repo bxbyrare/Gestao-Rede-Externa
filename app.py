@@ -430,9 +430,11 @@ def init_db():
             ('imei_1', 'VARCHAR(50)'),
             ('imei_2', 'VARCHAR(50)'),
             ('email', 'VARCHAR(150)'),
+            ('nr6_expiration', 'DATE'),
             ('nr10_expiration', 'DATE'),
             ('nr35_expiration', 'DATE'),
             ('aso_expiration', 'DATE'),
+            ('nr6_file', 'VARCHAR(500)'),
             ('nr10_file', 'VARCHAR(500)'),
             ('nr35_file', 'VARCHAR(500)'),
             ('aso_file', 'VARCHAR(500)')
@@ -1934,7 +1936,7 @@ def api_get_technicians():
         
         # Format dates safely
         for t in techs:
-            for dfield in ['dob', 'nr10_expiration', 'nr35_expiration', 'aso_expiration']:
+            for dfield in ['dob', 'nr6_expiration', 'nr10_expiration', 'nr35_expiration', 'aso_expiration']:
                 if t.get(dfield):
                     try:
                         t[dfield] = t[dfield].strftime('%Y-%m-%d')
@@ -1977,10 +1979,12 @@ def api_create_technician():
         imei_2 = str(data.get('imei_2') or '').strip() or None
         email = str(data.get('email') or '').strip() or None
         
+        nr6_expiration = str(data.get('nr6_expiration') or '').strip() or None
         nr10_expiration = str(data.get('nr10_expiration') or '').strip() or None
         nr35_expiration = str(data.get('nr35_expiration') or '').strip() or None
         aso_expiration = str(data.get('aso_expiration') or '').strip() or None
 
+        nr6_file = _save_technician_doc(request.files.get('nr6_file'), 'nr6') if request.files else None
         nr10_file = _save_technician_doc(request.files.get('nr10_file'), 'nr10') if request.files else None
         nr35_file = _save_technician_doc(request.files.get('nr35_file'), 'nr35') if request.files else None
         aso_file = _save_technician_doc(request.files.get('aso_file'), 'aso') if request.files else None
@@ -1988,17 +1992,19 @@ def api_create_technician():
         if not name:
             return jsonify({"error": "Nome completo é obrigatório."}), 400
 
-        for d_var, d_name in [(dob, 'dob'), (nr10_expiration, 'nr10_expiration'), (nr35_expiration, 'nr35_expiration'), (aso_expiration, 'aso_expiration')]:
+        for d_var, d_name in [(dob, 'dob'), (nr6_expiration, 'nr6_expiration'), (nr10_expiration, 'nr10_expiration'), (nr35_expiration, 'nr35_expiration'), (aso_expiration, 'aso_expiration')]:
             if d_var:
                 try:
                     yr = int(d_var.split('-')[0])
                     if yr < 1900 or yr > 2100:
                         if d_name == 'dob': dob = None
+                        elif d_name == 'nr6_expiration': nr6_expiration = None
                         elif d_name == 'nr10_expiration': nr10_expiration = None
                         elif d_name == 'nr35_expiration': nr35_expiration = None
                         elif d_name == 'aso_expiration': aso_expiration = None
                 except Exception:
                     if d_name == 'dob': dob = None
+                    elif d_name == 'nr6_expiration': nr6_expiration = None
                     elif d_name == 'nr10_expiration': nr10_expiration = None
                     elif d_name == 'nr35_expiration': nr35_expiration = None
                     elif d_name == 'aso_expiration': aso_expiration = None
@@ -2020,15 +2026,15 @@ def api_create_technician():
                 name, cpf, phone, identity, dob, role, area, team_type, 
                 shirt_size, boot_size, pants_size, jacket_size, team, company, 
                 registration_claro, registration_third, toa_login, phone_model, 
-                imei_1, imei_2, email, nr10_expiration, nr35_expiration, aso_expiration,
-                nr10_file, nr35_file, aso_file, created_by
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                imei_1, imei_2, email, nr6_expiration, nr10_expiration, nr35_expiration, aso_expiration,
+                nr6_file, nr10_file, nr35_file, aso_file, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
             """,
             (name, cpf, phone, identity, dob, role, area, team_type, 
              shirt_size, boot_size, pants_size, jacket_size, team, company, 
              registration_claro, registration_third, toa_login, phone_model, 
-             imei_1, imei_2, email, nr10_expiration, nr35_expiration, aso_expiration,
-             nr10_file, nr35_file, aso_file, session['user_id'])
+             imei_1, imei_2, email, nr6_expiration, nr10_expiration, nr35_expiration, aso_expiration,
+             nr6_file, nr10_file, nr35_file, aso_file, session['user_id'])
         )
         tech_id = cur.fetchone()['id']
         conn.commit()
@@ -2068,10 +2074,12 @@ def api_update_technician(tech_id):
         imei_2 = str(data.get('imei_2') or '').strip() or None
         email = str(data.get('email') or '').strip() or None
         
+        nr6_expiration = str(data.get('nr6_expiration') or '').strip() or None
         nr10_expiration = str(data.get('nr10_expiration') or '').strip() or None
         nr35_expiration = str(data.get('nr35_expiration') or '').strip() or None
         aso_expiration = str(data.get('aso_expiration') or '').strip() or None
 
+        new_nr6_file = _save_technician_doc(request.files.get('nr6_file'), 'nr6') if request.files else None
         new_nr10_file = _save_technician_doc(request.files.get('nr10_file'), 'nr10') if request.files else None
         new_nr35_file = _save_technician_doc(request.files.get('nr35_file'), 'nr35') if request.files else None
         new_aso_file = _save_technician_doc(request.files.get('aso_file'), 'aso') if request.files else None
@@ -2079,17 +2087,19 @@ def api_update_technician(tech_id):
         if not name:
             return jsonify({"error": "Nome completo é obrigatório."}), 400
 
-        for d_var, d_name in [(dob, 'dob'), (nr10_expiration, 'nr10_expiration'), (nr35_expiration, 'nr35_expiration'), (aso_expiration, 'aso_expiration')]:
+        for d_var, d_name in [(dob, 'dob'), (nr6_expiration, 'nr6_expiration'), (nr10_expiration, 'nr10_expiration'), (nr35_expiration, 'nr35_expiration'), (aso_expiration, 'aso_expiration')]:
             if d_var:
                 try:
                     yr = int(d_var.split('-')[0])
                     if yr < 1900 or yr > 2100:
                         if d_name == 'dob': dob = None
+                        elif d_name == 'nr6_expiration': nr6_expiration = None
                         elif d_name == 'nr10_expiration': nr10_expiration = None
                         elif d_name == 'nr35_expiration': nr35_expiration = None
                         elif d_name == 'aso_expiration': aso_expiration = None
                 except Exception:
                     if d_name == 'dob': dob = None
+                    elif d_name == 'nr6_expiration': nr6_expiration = None
                     elif d_name == 'nr10_expiration': nr10_expiration = None
                     elif d_name == 'nr35_expiration': nr35_expiration = None
                     elif d_name == 'aso_expiration': aso_expiration = None
@@ -2113,7 +2123,8 @@ def api_update_technician(tech_id):
                 pants_size = %s, jacket_size = %s, team = %s, company = %s,
                 registration_claro = %s, registration_third = %s, toa_login = %s,
                 phone_model = %s, imei_1 = %s, imei_2 = %s, email = %s,
-                nr10_expiration = %s, nr35_expiration = %s, aso_expiration = %s,
+                nr6_expiration = %s, nr10_expiration = %s, nr35_expiration = %s, aso_expiration = %s,
+                nr6_file = COALESCE(%s, nr6_file),
                 nr10_file = COALESCE(%s, nr10_file),
                 nr35_file = COALESCE(%s, nr35_file),
                 aso_file = COALESCE(%s, aso_file)
@@ -2122,8 +2133,8 @@ def api_update_technician(tech_id):
             (name, cpf, phone, identity, dob, role, area, team_type, 
              shirt_size, boot_size, pants_size, jacket_size, team, company, 
              registration_claro, registration_third, toa_login, phone_model, 
-             imei_1, imei_2, email, nr10_expiration, nr35_expiration, aso_expiration,
-             new_nr10_file, new_nr35_file, new_aso_file, tech_id)
+             imei_1, imei_2, email, nr6_expiration, nr10_expiration, nr35_expiration, aso_expiration,
+             new_nr6_file, new_nr10_file, new_nr35_file, new_aso_file, tech_id)
         )
         conn.commit()
         cur.close()
@@ -4422,7 +4433,8 @@ def api_export_technicians():
         cur.execute("""
             SELECT name, cpf, phone, identity, dob, role, company, area, team_type, 
                    shirt_size, boot_size, pants_size, jacket_size, team,
-                   registration_claro, registration_third, toa_login, phone_model, imei_1, imei_2, email
+                   registration_claro, registration_third, toa_login, phone_model, imei_1, imei_2, email,
+                   nr6_expiration, nr10_expiration, nr35_expiration, aso_expiration
             FROM technicians ORDER BY name ASC;
         """)
         techs = cur.fetchall()
@@ -4434,17 +4446,22 @@ def api_export_technicians():
         writer.writerow([
             "Nome", "CPF", "Telefone", "RG", "Data Nascimento", "Cargo", "Empresa", "Área de Atuação", 
             "Tipo Equipe", "Camisa", "Bota", "Calça", "Casaco", "Equipe",
-            "Matricula Claro", "Matricula Terceiro", "Login TOA", "Modelo Telefone", "IMEI 1 Telefone", "IMEI 2 Telefone", "E-mail"
+            "Matricula Claro", "Matricula Terceiro", "Login TOA", "Modelo Telefone", "IMEI 1 Telefone", "IMEI 2 Telefone", "E-mail",
+            "Validade NR-6", "Validade NR-10", "Validade NR-35", "Validade ASO"
         ])
         for t in techs:
             writer.writerow([
-                t['name'], t['cpf'], t['phone'] or '', t['identity'] or '', 
-                t['dob'].strftime('%Y-%m-%d') if t['dob'] else '', 
-                t['role'], t['company'] or '', t['area'] or '', t['team_type'] or '',
+                t['name'], t['cpf'] or '', t['phone'] or '', t['identity'] or '', 
+                t['dob'].strftime('%d/%m/%Y') if t.get('dob') else '', 
+                t['role'] or '', t['company'] or '', t['area'] or '', t['team_type'] or '',
                 t['shirt_size'] or '', t['boot_size'] or '', t['pants_size'] or '', t['jacket_size'] or '',
                 t['team'] or '',
                 t['registration_claro'] or '', t['registration_third'] or '', t['toa_login'] or '',
-                t['phone_model'] or '', t['imei_1'] or '', t['imei_2'] or '', t['email'] or ''
+                t['phone_model'] or '', t['imei_1'] or '', t['imei_2'] or '', t['email'] or '',
+                t['nr6_expiration'].strftime('%d/%m/%Y') if t.get('nr6_expiration') else '',
+                t['nr10_expiration'].strftime('%d/%m/%Y') if t.get('nr10_expiration') else '',
+                t['nr35_expiration'].strftime('%d/%m/%Y') if t.get('nr35_expiration') else '',
+                t['aso_expiration'].strftime('%d/%m/%Y') if t.get('aso_expiration') else ''
             ])
             
         response = app.response_class(

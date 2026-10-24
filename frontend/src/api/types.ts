@@ -54,9 +54,11 @@ export interface Technician {
   imei_1: string | null;
   imei_2: string | null;
   email: string | null;
+  nr6_expiration?: string | null;
   nr10_expiration?: string | null;
   nr35_expiration?: string | null;
   aso_expiration?: string | null;
+  nr6_file?: string | null;
   nr10_file?: string | null;
   nr35_file?: string | null;
   aso_file?: string | null;

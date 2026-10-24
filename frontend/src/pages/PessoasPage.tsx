@@ -9,12 +9,9 @@ import {
   Search,
   Trash2,
   Users,
-  ShieldCheck,
   UploadCloud,
   X,
   ExternalLink,
-  Zap,
-  Activity
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician } from '../api/types';
@@ -40,33 +37,40 @@ const emptyForm: FormState = {
   team_type: 'Fusão', company: '', registration_claro: '', registration_third: '',
   toa_login: '', phone_model: '', imei_1: '', imei_2: '', email: '',
   shirt_size: '', boot_size: '', pants_size: '', jacket_size: '', team: '',
-  nr10_expiration: '', nr35_expiration: '', aso_expiration: ''
+  nr6_expiration: '', nr10_expiration: '', nr35_expiration: '', aso_expiration: ''
 };
 
+function formatDateBr(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+}
+
 function getExpirationStatus(dateStr?: string | null) {
-  if (!dateStr) return { text: 'Pendente', color: 'text-slate-500 bg-slate-800/40 border-white/5', days: null };
+  if (!dateStr) return { text: 'Pendente', color: 'text-[var(--color-text-faint)] bg-white/[0.03] border-white/10', days: null };
   const target = new Date(dateStr);
-  if (isNaN(target.getTime())) return { text: 'Inválido', color: 'text-slate-500 bg-slate-800/40 border-white/5', days: null };
+  if (isNaN(target.getTime())) return { text: 'Inválido', color: 'text-[var(--color-text-faint)] bg-white/[0.03] border-white/10', days: null };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffTime = target.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const fmt = formatDateBr(dateStr);
 
   if (diffDays < 0) {
-    return { text: `Vencido (${Math.abs(diffDays)}d)`, color: 'text-red-400 bg-red-500/10 border-red-500/30', days: diffDays };
+    return { text: `Vencido (${fmt})`, color: 'text-red-400 bg-red-500/10 border-red-500/25', days: diffDays };
   }
   if (diffDays <= 30) {
-    return { text: `Vence em ${diffDays}d`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', days: diffDays };
+    return { text: `Vence em ${diffDays}d (${fmt})`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/25', days: diffDays };
   }
-  return { text: `Válido (${diffDays}d)`, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30', days: diffDays };
+  return { text: fmt, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25', days: diffDays };
 }
-
 
 interface ComplianceDocCardProps {
   title: string;
-  badge: string;
-  badgeColor: string;
-  icon: typeof ShieldCheck;
+  subtitle: string;
   dateValue: string;
   onDateChange: (val: string) => void;
   selectedFile?: File;
@@ -77,9 +81,7 @@ interface ComplianceDocCardProps {
 
 function ComplianceDocCard({
   title,
-  badge,
-  badgeColor,
-  icon: Icon,
+  subtitle,
   dateValue,
   onDateChange,
   selectedFile,
@@ -88,69 +90,60 @@ function ComplianceDocCard({
   fileInputId,
 }: ComplianceDocCardProps) {
   return (
-    <div className="p-4 bg-[#0A0E18] rounded-2xl border border-white/10 hover:border-white/20 transition-all flex flex-col justify-between space-y-3.5 shadow-md">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${badgeColor}`}>
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="text-xs font-bold text-white truncate">{title}</div>
-        </div>
-        <span className="text-[10px] font-semibold text-slate-400 bg-white/[0.04] px-2 py-0.5 rounded-md border border-white/5 shrink-0">
-          {badge}
+    <div className="p-4 bg-white/[0.02] rounded-xl border border-white/10 flex flex-col justify-between space-y-3.5">
+      <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-white/5">
+        <span className="text-xs font-bold text-white">{title}</span>
+        <span className="text-[10px] font-medium text-[var(--color-text-muted)] bg-white/[0.04] px-2 py-0.5 rounded border border-white/10">
+          {subtitle}
         </span>
       </div>
 
-      {/* Date */}
       <div>
-        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
+        <label className="block text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
           Data de Vencimento
         </label>
         <Input
           type="date"
           value={dateValue}
           onChange={(e) => onDateChange(e.target.value)}
-          className="bg-[#111625] border-white/10 text-slate-100 text-xs py-2 focus:border-sky-500/50"
         />
       </div>
 
-      {/* Upload area */}
       <div>
-        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+        <label className="block text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
           Comprovante Anexado
         </label>
 
         {selectedFile ? (
-          <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between gap-2 text-xs animate-fade-in">
+          <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/15 flex items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2 min-w-0">
               <FileCheck className="w-4 h-4 text-emerald-400 shrink-0" />
               <div className="min-w-0">
-                <div className="text-emerald-200 font-bold truncate text-[11px]">{selectedFile.name}</div>
-                <div className="text-[10px] text-emerald-400/80">{(selectedFile.size / 1024).toFixed(0)} KB • Pronto para envio</div>
+                <div className="text-white font-semibold truncate text-xs">{selectedFile.name}</div>
+                <div className="text-[10px] text-[var(--color-text-muted)]">{(selectedFile.size / 1024).toFixed(0)} KB</div>
               </div>
             </div>
             <button
               type="button"
               onClick={() => onFileChange(undefined)}
-              className="p-1 text-emerald-400 hover:text-rose-400 transition-colors"
+              className="p-1 text-[var(--color-text-muted)] hover:text-red-400 transition-colors"
               title="Remover anexo selecionado"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         ) : existingFilePath ? (
-          <div className="space-y-1.5">
-            <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-between gap-2 text-xs">
+          <div className="space-y-2">
+            <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2 min-w-0">
-                <FileCheck className="w-4 h-4 text-sky-400 shrink-0" />
-                <span className="text-sky-200 font-semibold text-[11px] truncate">Documento Cadastrado</span>
+                <FileCheck className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />
+                <span className="text-[var(--color-text)] font-medium text-xs truncate">Documento Anexado</span>
               </div>
               <a
                 href={`/uploads/${existingFilePath}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 transition-colors bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text)] hover:text-white transition-colors bg-white/[0.06] hover:bg-white/[0.12] px-2.5 py-1 rounded-lg border border-white/10 shrink-0"
               >
                 <span>Ver</span>
                 <ExternalLink className="w-3 h-3" />
@@ -158,23 +151,23 @@ function ComplianceDocCard({
             </div>
             <label
               htmlFor={fileInputId}
-              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 cursor-pointer transition-all"
+              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium text-[var(--color-text-muted)] hover:text-white bg-white/[0.02] hover:bg-white/[0.06] border border-white/10 cursor-pointer transition-colors"
             >
-              <UploadCloud className="w-3.5 h-3.5 text-slate-400" />
+              <UploadCloud className="w-3.5 h-3.5" />
               <span>Substituir Documento</span>
             </label>
           </div>
         ) : (
           <label
             htmlFor={fileInputId}
-            className="group w-full py-3.5 px-3 rounded-xl border border-dashed border-white/15 hover:border-sky-400/50 bg-white/[0.02] hover:bg-sky-500/[0.04] flex flex-col items-center justify-center text-center cursor-pointer transition-all"
+            className="w-full py-3.5 px-3 rounded-xl border border-dashed border-white/15 hover:border-white/30 bg-white/[0.02] hover:bg-white/[0.04] flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
           >
-            <UploadCloud className="w-5 h-5 text-slate-500 group-hover:text-sky-400 group-hover:scale-110 transition-all mb-1" />
-            <span className="text-[11px] font-medium text-slate-300 group-hover:text-white">
+            <UploadCloud className="w-4 h-4 text-[var(--color-text-muted)] mb-1" />
+            <span className="text-xs font-medium text-[var(--color-text)]">
               Selecionar Certificado
             </span>
-            <span className="text-[9px] text-slate-400 mt-0.5">
-              PDF, PNG ou JPG (até 15MB)
+            <span className="text-[10px] text-[var(--color-text-faint)] mt-0.5">
+              PDF, PNG ou JPG
             </span>
           </label>
         )}
@@ -203,7 +196,7 @@ export default function PessoasPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Technician | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [files, setFiles] = useState<{ nr10_file?: File; nr35_file?: File; aso_file?: File }>({});
+  const [files, setFiles] = useState<{ nr6_file?: File; nr10_file?: File; nr35_file?: File; aso_file?: File }>({});
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -237,6 +230,7 @@ export default function PessoasPage() {
       imei_2: tech.imei_2 || '', email: tech.email || '', shirt_size: tech.shirt_size || '',
       boot_size: tech.boot_size || '', pants_size: tech.pants_size || '', jacket_size: tech.jacket_size || '',
       team: tech.team || '',
+      nr6_expiration: tech.nr6_expiration || '',
       nr10_expiration: tech.nr10_expiration || '',
       nr35_expiration: tech.nr35_expiration || '',
       aso_expiration: tech.aso_expiration || '',
@@ -256,6 +250,7 @@ export default function PessoasPage() {
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      if (files.nr6_file) fd.append('nr6_file', files.nr6_file);
       if (files.nr10_file) fd.append('nr10_file', files.nr10_file);
       if (files.nr35_file) fd.append('nr35_file', files.nr35_file);
       if (files.aso_file) fd.append('aso_file', files.aso_file);
@@ -306,9 +301,9 @@ export default function PessoasPage() {
     if (p.shirt_size || p.boot_size || p.pants_size || p.jacket_size) {
       lines.push(`👕 *Uniforme:* Camisa ${p.shirt_size || '-'} | Bota ${p.boot_size || '-'} | Calça ${p.pants_size || '-'} | Casaco ${p.jacket_size || '-'}`);
     }
-    if (p.nr10_expiration || p.nr35_expiration || p.aso_expiration) {
-      lines.push(`📜 *Certificados:* NR-10 (${p.nr10_expiration || 'Pendente'}) | NR-35 (${p.nr35_expiration || 'Pendente'}) | ASO (${p.aso_expiration || 'Pendente'})`);
-    }
+    lines.push(
+      `📜 *Validades:* NR-6 (${formatDateBr(p.nr6_expiration) || 'Pendente'}) | NR-10 (${formatDateBr(p.nr10_expiration) || 'Pendente'}) | NR-35 (${formatDateBr(p.nr35_expiration) || 'Pendente'}) | ASO (${formatDateBr(p.aso_expiration) || 'Pendente'})`
+    );
 
     const fullText = lines.join('\n');
     navigator.clipboard.writeText(fullText);
@@ -329,21 +324,21 @@ export default function PessoasPage() {
     <div className="space-y-6">
       <PageHeader
         title="Gestão de Pessoas & NRs"
-        subtitle={people ? `${people.length} colaboradores técnicos cadastrados e monitorados` : 'Carregando equipe...'}
+        subtitle={people ? `${people.length} colaboradores técnicos cadastrados` : 'Carregando equipe...'}
         actions={
           <div className="flex gap-2 flex-wrap">
             {canExport && (
               <Button
                 variant="outline"
                 onClick={() => { window.location.href = '/api/technicians/export'; }}
-                className="border-white/10 hover:border-red-500/40 text-slate-200"
+                className="rounded-xl"
               >
-                <Download className="w-4 h-4 text-red-500 mr-1.5" /> Exportar Cadastro (CSV)
+                <Download className="w-4 h-4 mr-1.5" /> Exportar Cadastro (CSV)
               </Button>
             )}
             <Button
               onClick={openCreate}
-              className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white border-0 rounded-xl"
             >
               <Plus className="w-4 h-4 mr-1.5" /> Cadastrar Colaborador
             </Button>
@@ -352,65 +347,85 @@ export default function PessoasPage() {
       />
 
       <div className="relative max-w-md">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nome, CPF, empresa, matrícula ou área..."
-          className="pl-10 bg-[#0F1422] border-white/10 focus:border-red-500/50 rounded-xl text-slate-100"
+          className="pl-10"
         />
       </div>
 
-      <Card className="overflow-hidden bg-[#0F1422] border-white/10 rounded-2xl shadow-xl">
+      <Card className="overflow-hidden">
         {people === null ? (
-          <div className="p-12 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+          <div className="p-12 text-center text-sm text-[var(--color-text-muted)] flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
             Carregando lista de técnicos...
           </div>
         ) : people.length === 0 ? (
-          <div className="p-12 text-center text-sm text-slate-400 flex flex-col items-center gap-3">
-            <Users className="w-10 h-10 text-slate-600" />
-            <div className="font-semibold text-slate-300">Nenhum colaborador encontrado.</div>
+          <div className="p-12 text-center text-sm text-[var(--color-text-muted)] flex flex-col items-center gap-3">
+            <Users className="w-10 h-10 text-[var(--color-text-faint)]" />
+            <div className="font-semibold text-[var(--color-text)]">Nenhum colaborador encontrado.</div>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[900px]">
+            <table className="w-full text-sm text-left min-w-[980px]">
               <thead>
-                <tr className="text-[10px] uppercase tracking-wider text-slate-400 border-b border-white/10 bg-white/[0.02]">
-                  <th className="px-5 py-3.5 font-bold">Colaborador / CPF</th>
-                  <th className="px-5 py-3.5 font-bold">Empresa / Cargo</th>
-                  <th className="px-5 py-3.5 font-bold">Contato / Área</th>
-                  <th className="px-5 py-3.5 font-bold">Conformidade NR-10</th>
-                  <th className="px-5 py-3.5 font-bold">Conformidade NR-35</th>
-                  <th className="px-5 py-3.5 font-bold">Saúde ASO</th>
-                  <th className="px-5 py-3.5 font-bold text-right">Ações</th>
+                <tr className="text-[11px] uppercase tracking-wider text-[var(--color-text-faint)] border-b border-white/10">
+                  <th className="px-5 py-3.5 font-semibold">Colaborador / CPF</th>
+                  <th className="px-5 py-3.5 font-semibold">Empresa / Cargo</th>
+                  <th className="px-5 py-3.5 font-semibold">Contato / Área</th>
+                  <th className="px-5 py-3.5 font-semibold">NR-6</th>
+                  <th className="px-5 py-3.5 font-semibold">NR-10</th>
+                  <th className="px-5 py-3.5 font-semibold">NR-35</th>
+                  <th className="px-5 py-3.5 font-semibold">ASO</th>
+                  <th className="px-5 py-3.5 font-semibold text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {people.map((p) => {
+                  const s6 = getExpirationStatus(p.nr6_expiration);
                   const s10 = getExpirationStatus(p.nr10_expiration);
                   const s35 = getExpirationStatus(p.nr35_expiration);
                   const sAso = getExpirationStatus(p.aso_expiration);
 
                   return (
-                    <tr key={p.id} className="hover:bg-white/[0.03] transition-colors group">
+                    <tr key={p.id} className="hover:bg-white/[0.02] transition-colors group">
                       <td className="px-5 py-3">
-                        <div className="font-bold text-slate-100 group-hover:text-red-400 transition-colors">
+                        <div className="font-semibold text-[var(--color-text)]">
                           {p.name}
                         </div>
-                        {p.cpf && <div className="text-xs font-mono text-slate-400">{p.cpf}</div>}
+                        {p.cpf && <div className="text-xs mono text-[var(--color-text-muted)]">{p.cpf}</div>}
                       </td>
                       <td className="px-5 py-3">
-                        <span className="font-semibold text-slate-200">{p.company || '—'}</span>
-                        <div className="text-xs text-red-400 font-medium">{p.role}</div>
+                        <span className="font-semibold text-[var(--color-text)]">{p.company || '—'}</span>
+                        <div className="text-xs text-[var(--color-text-muted)]">{p.role}</div>
                       </td>
                       <td className="px-5 py-3">
-                        <div className="text-xs font-mono text-slate-300">{p.phone || '—'}</div>
-                        <div className="text-xs text-slate-400 truncate max-w-[140px]">{p.area || '—'}</div>
+                        <div className="text-xs mono text-[var(--color-text)]">{p.phone || '—'}</div>
+                        <div className="text-xs text-[var(--color-text-muted)] truncate max-w-[140px]">{p.area || '—'}</div>
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${s10.color}`}>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${s6.color}`}>
+                            {s6.text}
+                          </span>
+                          {p.nr6_file && (
+                            <a
+                              href={`/uploads/${p.nr6_file}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[var(--color-text-muted)] hover:text-white"
+                              title="Visualizar Certificado NR-6"
+                            >
+                              <FileCheck className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${s10.color}`}>
                             {s10.text}
                           </span>
                           {p.nr10_file && (
@@ -418,7 +433,7 @@ export default function PessoasPage() {
                               href={`/uploads/${p.nr10_file}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sky-400 hover:text-sky-300"
+                              className="text-[var(--color-text-muted)] hover:text-white"
                               title="Visualizar Certificado NR-10"
                             >
                               <FileCheck className="w-3.5 h-3.5" />
@@ -428,7 +443,7 @@ export default function PessoasPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${s35.color}`}>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${s35.color}`}>
                             {s35.text}
                           </span>
                           {p.nr35_file && (
@@ -436,7 +451,7 @@ export default function PessoasPage() {
                               href={`/uploads/${p.nr35_file}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sky-400 hover:text-sky-300"
+                              className="text-[var(--color-text-muted)] hover:text-white"
                               title="Visualizar Certificado NR-35"
                             >
                               <FileCheck className="w-3.5 h-3.5" />
@@ -446,7 +461,7 @@ export default function PessoasPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${sAso.color}`}>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${sAso.color}`}>
                             {sAso.text}
                           </span>
                           {p.aso_file && (
@@ -454,7 +469,7 @@ export default function PessoasPage() {
                               href={`/uploads/${p.aso_file}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sky-400 hover:text-sky-300"
+                              className="text-[var(--color-text-muted)] hover:text-white"
                               title="Visualizar Atestado ASO"
                             >
                               <FileCheck className="w-3.5 h-3.5" />
@@ -463,12 +478,12 @@ export default function PessoasPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <div className="flex justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <div className="flex justify-end gap-1.5">
                           <button
                             onClick={() => sendWhatsapp(p)}
                             aria-label="WhatsApp direto"
                             title="Conversar no WhatsApp"
-                            className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-emerald-400 hover:bg-white/[0.08] transition-colors"
                           >
                             <MessageCircle className="w-3.5 h-3.5" />
                           </button>
@@ -476,7 +491,7 @@ export default function PessoasPage() {
                             onClick={() => copyWhatsapp(p)}
                             aria-label="Copiar dados"
                             title="Copiar dados técnicos completos"
-                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-white/[0.08] transition-colors"
+                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
                           >
                             <ClipboardList className="w-3.5 h-3.5" />
                           </button>
@@ -484,7 +499,7 @@ export default function PessoasPage() {
                             onClick={() => openEdit(p)}
                             aria-label="Editar cadastro"
                             title="Editar cadastro e documentos"
-                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-white/[0.08] transition-colors"
+                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -492,7 +507,7 @@ export default function PessoasPage() {
                             onClick={() => handleDelete(p)}
                             aria-label="Excluir"
                             title="Excluir cadastro"
-                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -507,7 +522,6 @@ export default function PessoasPage() {
         )}
       </Card>
 
-      {/* Modal Criar / Editar Colaborador */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -515,13 +529,13 @@ export default function PessoasPage() {
         maxWidth="max-w-3xl"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setModalOpen(false)} className="text-slate-400">
+            <Button variant="ghost" onClick={() => setModalOpen(false)}>
               Cancelar
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={isSaving}
-              className="bg-red-600 hover:bg-red-500 text-white font-semibold"
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white border-0 rounded-xl"
             >
               {isSaving ? 'Salvando...' : 'Salvar Colaborador'}
             </Button>
@@ -529,85 +543,87 @@ export default function PessoasPage() {
         }
       >
         {error && (
-          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         )}
         <div className="space-y-6">
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-red-400 mb-3">
-              Identificação & Dados Corporativos
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">
+              Identificação e Dados Corporativos
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Nome Completo">
-                <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nome do técnico" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nome do técnico" />
               </Field>
               <Field label="CPF">
-                <Input value={form.cpf} onChange={(e) => set('cpf', e.target.value)} placeholder="000.000.000-00" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.cpf} onChange={(e) => set('cpf', e.target.value)} placeholder="000.000.000-00" />
               </Field>
               <Field label="Telefone de Contato">
-                <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(21) 90000-0000" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(21) 90000-0000" />
               </Field>
               <Field label="RG / Identidade">
-                <Input value={form.identity} onChange={(e) => set('identity', e.target.value)} placeholder="RG do colaborador" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.identity} onChange={(e) => set('identity', e.target.value)} placeholder="RG do colaborador" />
               </Field>
               <Field label="E-mail">
-                <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="tecnico@claro.com.br" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="tecnico@claro.com.br" />
               </Field>
               <Field label="Data de Nascimento">
-                <Input type="date" value={form.dob} onChange={(e) => set('dob', e.target.value)} className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input type="date" value={form.dob} onChange={(e) => set('dob', e.target.value)} />
               </Field>
               <Field label="Cargo">
-                <Select value={form.role} onChange={(e) => set('role', e.target.value)} className="bg-[#090D16] border-white/10 text-slate-100">
+                <Select value={form.role} onChange={(e) => set('role', e.target.value)}>
                   {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </Select>
               </Field>
               <Field label="Empresa Parceira">
-                <Select value={form.company} onChange={(e) => set('company', e.target.value)} className="bg-[#090D16] border-white/10 text-slate-100">
+                <Select value={form.company} onChange={(e) => set('company', e.target.value)}>
                   <option value="">Selecione...</option>
                   {COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </Select>
               </Field>
               <Field label="Área de Atuação">
-                <Input value={form.area} onChange={(e) => set('area', e.target.value)} placeholder="Ex: Metropolitana, Baixada Fluminense" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.area} onChange={(e) => set('area', e.target.value)} placeholder="Ex: Metropolitana, Baixada Fluminense" />
               </Field>
               <Field label="Tipo de Equipe">
-                <Select value={form.team_type} onChange={(e) => set('team_type', e.target.value)} className="bg-[#090D16] border-white/10 text-slate-100">
+                <Select value={form.team_type} onChange={(e) => set('team_type', e.target.value)}>
                   {TEAM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </Select>
               </Field>
               <Field label="Nome da Equipe">
-                <Input value={form.team} onChange={(e) => set('team', e.target.value)} placeholder="Ex: Equipe Alpha 01" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.team} onChange={(e) => set('team', e.target.value)} placeholder="Ex: Equipe Alpha 01" />
               </Field>
               <Field label="Matrícula Claro">
-                <Input value={form.registration_claro} onChange={(e) => set('registration_claro', e.target.value)} placeholder="Ex: C123456" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.registration_claro} onChange={(e) => set('registration_claro', e.target.value)} placeholder="Ex: C123456" />
               </Field>
               <Field label="Matrícula Terceiro">
-                <Input value={form.registration_third} onChange={(e) => set('registration_third', e.target.value)} placeholder="Ex: T998877" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.registration_third} onChange={(e) => set('registration_third', e.target.value)} placeholder="Ex: T998877" />
               </Field>
               <Field label="Login TOA">
-                <Input value={form.toa_login} onChange={(e) => set('toa_login', e.target.value)} placeholder="Ex: usr.toa.123" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.toa_login} onChange={(e) => set('toa_login', e.target.value)} placeholder="Ex: usr.toa.123" />
               </Field>
             </div>
           </div>
 
-          {/* Seção NRs e ASO Redesenhada com Upload Cards Modernos */}
           <div className="pt-4 border-t border-white/10">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-sky-400" />
-                Segurança do Trabalho (NR-10, NR-35 e ASO)
-              </h4>
-              <span className="text-[10px] text-slate-400 font-medium hidden sm:inline-block">
-                Conformidade técnica e saúde ocupacional
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">
+              Segurança do Trabalho (NR-6, NR-10, NR-35 e ASO)
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ComplianceDocCard
-                title="NR-10 (Elétrica)"
-                badge="Eletricidade"
-                badgeColor="bg-amber-500/15 text-amber-400 border-amber-500/30"
-                icon={Zap}
+                title="NR-6"
+                subtitle="EPI"
+                dateValue={form.nr6_expiration}
+                onDateChange={(val) => set('nr6_expiration', val)}
+                selectedFile={files.nr6_file}
+                onFileChange={(file) => setFiles((prev) => ({ ...prev, nr6_file: file }))}
+                existingFilePath={editing?.nr6_file}
+                fileInputId="input-file-nr6"
+              />
+
+              <ComplianceDocCard
+                title="NR-10"
+                subtitle="Elétrica"
                 dateValue={form.nr10_expiration}
                 onDateChange={(val) => set('nr10_expiration', val)}
                 selectedFile={files.nr10_file}
@@ -617,10 +633,8 @@ export default function PessoasPage() {
               />
 
               <ComplianceDocCard
-                title="NR-35 (Altura)"
-                badge="Trabalho em Altura"
-                badgeColor="bg-sky-500/15 text-sky-400 border-sky-500/30"
-                icon={ShieldCheck}
+                title="NR-35"
+                subtitle="Trabalho em Altura"
                 dateValue={form.nr35_expiration}
                 onDateChange={(val) => set('nr35_expiration', val)}
                 selectedFile={files.nr35_file}
@@ -630,10 +644,8 @@ export default function PessoasPage() {
               />
 
               <ComplianceDocCard
-                title="ASO (Saúde Ocupacional)"
-                badge="Atestado Médico"
-                badgeColor="bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                icon={Activity}
+                title="ASO"
+                subtitle="Saúde Ocupacional"
                 dateValue={form.aso_expiration}
                 onDateChange={(val) => set('aso_expiration', val)}
                 selectedFile={files.aso_file}
@@ -644,23 +656,22 @@ export default function PessoasPage() {
             </div>
           </div>
 
-          {/* Seção Aparelho e Uniformes */}
           <div className="pt-4 border-t border-white/10">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-              Smartphone Corporativo & Uniformes
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">
+              Smartphone Corporativo e Uniformes
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <Field label="Modelo Celular">
-                <Input value={form.phone_model} onChange={(e) => set('phone_model', e.target.value)} placeholder="Ex: Galaxy A14" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.phone_model} onChange={(e) => set('phone_model', e.target.value)} placeholder="Ex: Galaxy A14" />
               </Field>
               <Field label="IMEI 1">
-                <Input value={form.imei_1} onChange={(e) => set('imei_1', e.target.value)} placeholder="IMEI primário" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.imei_1} onChange={(e) => set('imei_1', e.target.value)} placeholder="IMEI primário" />
               </Field>
               <Field label="Camisa">
-                <Input value={form.shirt_size} onChange={(e) => set('shirt_size', e.target.value)} placeholder="P / M / G" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.shirt_size} onChange={(e) => set('shirt_size', e.target.value)} placeholder="P / M / G" />
               </Field>
               <Field label="Bota">
-                <Input value={form.boot_size} onChange={(e) => set('boot_size', e.target.value)} placeholder="41 / 42" className="bg-[#090D16] border-white/10 text-slate-100" />
+                <Input value={form.boot_size} onChange={(e) => set('boot_size', e.target.value)} placeholder="41 / 42" />
               </Field>
             </div>
           </div>
