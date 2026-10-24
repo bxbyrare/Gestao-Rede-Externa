@@ -123,3 +123,35 @@ select option {
   0%, 100% { opacity: 0.35; transform: scale(1); }
   50% { opacity: 0.6; transform: scale(1.05); }
 }
+
+/* Anti-print / Anti-screenshot protection */
+.anti-print-protected {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.anti-print-protected input,
+.anti-print-protected textarea,
+.anti-print-protected select {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.anti-print-protected img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+@media print {
+  html, body, #root {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+}

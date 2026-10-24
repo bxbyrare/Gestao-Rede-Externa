@@ -10,6 +10,7 @@ import { useAuth } from '../state/AuthContext';
 import LiquidEther from './LiquidEther';
 import GlassIcon from './GlassIcon';
 import MandatoryEmailModal from './MandatoryEmailModal';
+import AntiPrintGuard from './AntiPrintGuard';
 
 const COMPANY_LOGOS: Record<string, string> = {
   claro: '/claro-icon.png',
@@ -73,7 +74,8 @@ export default function DashboardLayout() {
   const hasMissingProfile = !!(user && !user.needs_email && user.profile_complete === false && !dismissBanner);
 
   return (
-    <div className="app-shell-bg min-h-screen flex relative">
+    <div className="app-shell-bg anti-print-protected min-h-screen flex relative">
+      <AntiPrintGuard />
       <LiquidEther />
 
       {/* Mandatory Blocking Modal if user has no email registered */}
