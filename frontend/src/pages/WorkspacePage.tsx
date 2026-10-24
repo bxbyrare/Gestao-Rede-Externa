@@ -6,7 +6,9 @@ import {
   Trash2,
   Paperclip,
   CheckCircle2,
-  Clock
+  Clock,
+  Search,
+  X
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Technician, UserTask } from '../api/types';
@@ -50,6 +52,9 @@ export default function WorkspacePage() {
   const [newFiles, setNewFiles] = useState<FileList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [techFilter, setTechFilter] = useState('');
 
   function load() {
     api.get<UserTask[]>('/api/user-tasks').then(setTasks).catch(() => setTasks([]));
@@ -60,13 +65,52 @@ export default function WorkspacePage() {
     api.get<Technician[]>('/api/technicians').then(setTechnicians).catch(() => setTechnicians([]));
   }, []);
 
+  const filteredTasks = useMemo(() => {
+    if (!tasks) return [];
+    const norm = (s?: string | null) =>
+      (s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    const q = norm(searchQuery.trim());
+
+    return tasks.filter((t) => {
+      if (priorityFilter && t.priority !== priorityFilter) return false;
+      if (techFilter && (t.assigned_tech_name || '') !== techFilter) return false;
+      if (!q) return true;
+
+      const haystack = [
+        t.title,
+        t.description,
+        t.ticket,
+        t.assigned_tech_name,
+        t.region,
+        t.event_type,
+        t.measurement,
+        t.status
+      ]
+        .map(norm)
+        .join(' ');
+
+      return haystack.includes(q);
+    });
+  }, [tasks, searchQuery, priorityFilter, techFilter]);
+
+  const uniqueTechNames = useMemo(() => {
+    const names = new Set<string>();
+    (tasks || []).forEach((t) => {
+      if (t.assigned_tech_name?.trim()) names.add(t.assigned_tech_name.trim());
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [tasks]);
+
   const grouped = useMemo(() => {
     const groups: Record<string, UserTask[]> = { Pendente: [], 'Em Andamento': [], Concluída: [] };
-    (tasks || []).forEach((t) => {
+    filteredTasks.forEach((t) => {
       (groups[t.status] || groups.Pendente).push(t);
     });
     return groups;
-  }, [tasks]);
+  }, [filteredTasks]);
 
   function openCreate() {
     setEditing(null);
@@ -177,6 +221,78 @@ export default function WorkspacePage() {
           </div>
         }
       />
+
+      {/* Barra de Busca de Projetos e Filtros Rápidos */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 p-3.5 bg-[#0F1422] rounded-xl border border-white/10">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar projeto, trecho, obra, ticket, técnico ou descrição..."
+            className="w-full h-10 pl-10 pr-9 rounded-lg bg-[#090C14] border border-white/10 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-red-500/50 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              title="Limpar busca"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="h-10 px-3 rounded-lg bg-[#090C14] border border-white/10 text-xs font-medium text-slate-300 focus:outline-none focus:border-red-500/50 transition-colors"
+          >
+            <option value="">Todas as Prioridades</option>
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                Prioridade: {p}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={techFilter}
+            onChange={(e) => setTechFilter(e.target.value)}
+            className="h-10 px-3 rounded-lg bg-[#090C14] border border-white/10 text-xs font-medium text-slate-300 focus:outline-none focus:border-red-500/50 transition-colors max-w-[210px] truncate"
+          >
+            <option value="">Todos os Responsáveis</option>
+            {uniqueTechNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+
+          {(searchQuery || priorityFilter || techFilter) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setPriorityFilter('');
+                setTechFilter('');
+              }}
+              className="h-10 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300 transition-colors whitespace-nowrap"
+            >
+              Limpar filtros
+            </button>
+          )}
+
+          {tasks !== null && (
+            <span className="px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/5 text-xs font-semibold text-slate-400 whitespace-nowrap">
+              {filteredTasks.length} {filteredTasks.length === 1 ? 'projeto' : 'projetos'}
+            </span>
+          )}
+        </div>
+      </div>
 
       {tasks === null ? (
         <div className="p-12 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
