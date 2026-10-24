@@ -29,13 +29,17 @@ import security_hardening
 security_hardening.apply_stdlib_security_patches()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'claro-gestao-rede-externa-secret-key-2026')
+_env_secret = os.environ.get('SECRET_KEY', '').strip()
+if not _env_secret:
+    raise RuntimeError("A variável de ambiente SECRET_KEY é obrigatória para iniciar a aplicação.")
+app.secret_key = _env_secret
 
 # --------------------------------------------------------------------------
 # RESEND EMAIL SERVICE & EXECUTIVE CLARO EMAIL TEMPLATES
 # --------------------------------------------------------------------------
-_DEFAULT_RESEND_KEY = base64.b64decode('cmVfTnBxTmtQdWJfV1ZtY3l6RXhXUnMyTGpBNWFBRFNHVE5Q').decode('utf-8')
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY', _DEFAULT_RESEND_KEY)
+# Chave lida exclusivamente do ambiente (RESEND_API_KEY)
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
+
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'Gestão Rede Externa <onboarding@resend.dev>')
 
 def render_executive_email_template(category_badge, title, message_html, cta_text=None, cta_url=None):
@@ -1364,7 +1368,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-MASTER_COORDINATOR_USERNAME = 'alexandre.candido'
+MASTER_COORDINATOR_USERNAME = os.environ.get('MASTER_COORDINATOR_USERNAME', 'alexandre.candido').strip().lower()
 
 ALL_PERMISSIONS = [
     'favoritos.create', 'favoritos.edit', 'favoritos.delete',
@@ -1816,7 +1820,7 @@ def parse_google_form(url):
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     from werkzeug.utils import safe_join
-    if not filename.startswith('projetos/') and not filename.startswith('formularios/') and not filename.startswith('auditorias/') and not filename.startswith('aceitacoes/') and 'user_id' not in session:
+    if not filename.startswith('formularios/') and 'user_id' not in session:
         return jsonify({"error": "Não autenticado."}), 401
     safe_path = safe_join(UPLOAD_FOLDER, filename)
     if not safe_path or not os.path.exists(safe_path):
@@ -1824,6 +1828,7 @@ def serve_upload(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route('/p/project/<int:project_id>')
+@login_required
 def public_project_view(project_id):
     try:
         conn = get_db()
@@ -1852,7 +1857,8 @@ def public_project_view(project_id):
 
         return render_template('public_project.html', project=project, kmz_files=kmz_files, pdf_files=pdf_files)
     except Exception as e:
-        return f"Erro ao carregar projeto: {e}", 500
+        print("Erro interno ao carregar projeto:", e)
+        return "Erro interno ao carregar o projeto.", 500
 
 # --------------------------------------------------------------------------
 # WEBPAGE ROUTINGS — the React SPA (frontend/dist) owns the entire UI now;
@@ -1956,7 +1962,7 @@ def serve_sitemap_xml():
         return Response('\n'.join(xml_lines), mimetype='application/xml')
     except Exception as e:
         traceback.print_exc()
-        return Response(f"<!-- Error generating sitemap: {e} -->", mimetype='application/xml', status=500)
+        return Response("<!-- Error generating sitemap -->", mimetype='application/xml', status=500)
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -1975,6 +1981,9 @@ def spa_catch_all(path):
 # JSON instead of a redirect/rendered template. Added for the React frontend;
 # the legacy form-based /login route above is left intact.
 # --------------------------------------------------------------------------
+_ACCOUNT_LOGIN_FAILURES = defaultdict(list)
+_PASSWORD_RESET_FAILURES = defaultdict(int)
+
 @app.route('/api/auth/login', methods=['POST'])
 def api_login():
     if 'user_id' in session:
@@ -1987,6 +1996,11 @@ def api_login():
     if not username or not password:
         return jsonify({"error": "Por favor, informe seu usuário e senha."}), 400
 
+    now_ts = time.time()
+    _ACCOUNT_LOGIN_FAILURES[username] = [t for t in _ACCOUNT_LOGIN_FAILURES[username] if now_ts - t < 900]
+    if len(_ACCOUNT_LOGIN_FAILURES[username]) >= 8:
+        return jsonify({"error": "Conta temporariamente bloqueada por excesso de tentativas. Aguarde 15 minutos."}), 429
+
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -1996,6 +2010,7 @@ def api_login():
         conn.close()
 
         if user and check_password_hash(user['password_hash'], password):
+            _ACCOUNT_LOGIN_FAILURES.pop(username, None)
             session.permanent = True
             session['user_id'] = user['id']
             session['username'] = user['username']
@@ -2010,10 +2025,12 @@ def api_login():
             }
             return jsonify({"user": user_payload})
 
+        _ACCOUNT_LOGIN_FAILURES[username].append(time.time())
         time.sleep(1.5)
         return jsonify({"error": "Usuário ou senha incorretos."}), 401
     except Exception as e:
-        return jsonify({"error": f"Erro de conexão com o banco de dados: {e}"}), 500
+        print("[AUTH LOGIN ERROR]", e)
+        return jsonify({"error": "Erro interno ao processar o login. Tente novamente."}), 500
 
 @app.route('/api/auth/logout', methods=['POST'])
 def api_logout():
@@ -2051,6 +2068,8 @@ def api_forgot_password():
                 user_display = html.escape(str(user.get('u_name') or user.get('t_name') or user['username']))
                 
                 # Invalidate existing unused tokens for this user
+                # Invalidate existing unused tokens for this user and reset attempt counter
+                _PASSWORD_RESET_FAILURES[user_id] = 0
                 cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE user_id = %s AND used = FALSE;", (user_id,))
                 
                 # Generate crypto-secure 6-digit numeric token
@@ -2066,7 +2085,7 @@ def api_forgot_password():
                 # Dispatch Resend Executive Email
                 send_resend_email(
                     to_email=target_email,
-                    subject=f"[Claro Rede Externa] Código de Recuperação: {code}",
+                    subject="[Claro Rede Externa] Código de Recuperação de Senha",
                     category_badge="RECUPERAÇÃO DE ACESSO",
                     title="Código de Recuperação de Senha",
                     message_html=f'''
@@ -2135,6 +2154,10 @@ def api_reset_password():
         token_row = cur.fetchone()
 
         if not token_row:
+            _PASSWORD_RESET_FAILURES[user_id] += 1
+            if _PASSWORD_RESET_FAILURES[user_id] >= 5:
+                cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE user_id = %s AND used = FALSE;", (user_id,))
+                conn.commit()
             cur.close()
             conn.close()
             time.sleep(1)
@@ -3800,7 +3823,7 @@ def public_form_view(slug):
         f = cur.fetchone()
         
         # 2. Search by numeric ID if slug is digit
-        if not f and slug.isdigit():
+        if not f and slug.isdigit() and 'user_id' in session:
             cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE id = %s;", (int(slug),))
             f = cur.fetchone()
 
@@ -3826,7 +3849,8 @@ def public_form_view(slug):
         # Fallback to legacy hardcoded template
         return render_template('public_form.html', form=f)
     except Exception as e:
-        return f"Erro ao carregar formulário: {str(e)}", 500
+        print("Erro interno ao carregar formulário:", e)
+        return "Erro interno ao carregar o formulário.", 500
 
 @app.route('/f/<slug>/submit', methods=['POST'], strict_slashes=False)
 def public_form_submit(slug):
@@ -3835,7 +3859,7 @@ def public_form_submit(slug):
         cur = conn.cursor()
         cur.execute("SELECT id FROM forms WHERE slug = %s;", (slug,))
         f = cur.fetchone()
-        if not f and slug.isdigit():
+        if not f and slug.isdigit() and 'user_id' in session:
             cur.execute("SELECT id FROM forms WHERE id = %s;", (int(slug),))
             f = cur.fetchone()
 
@@ -8779,7 +8803,7 @@ def api_auditorias():
                 except Exception: pass
             print("Error creating auditoria:", e)
             traceback.print_exc()
-            return jsonify({"error": f"Erro ao criar auditoria: {str(e)}"}), 500
+            return jsonify({"error": "Erro interno ao criar auditoria."}), 500
 
 
 @app.route('/api/auditorias/<int:auditoria_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
@@ -9253,7 +9277,7 @@ def api_aceitacoes():
                 except Exception: pass
             print("Error creating aceitacao:", e)
             traceback.print_exc()
-            return jsonify({"error": f"Erro ao criar aceitação: {str(e)}"}), 500
+            return jsonify({"error": "Erro interno ao criar aceitação."}), 500
 
 
 @app.route('/api/aceitacoes/<int:aceitacao_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
