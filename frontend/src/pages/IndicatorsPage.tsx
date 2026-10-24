@@ -5,7 +5,12 @@ import { Button, Card, Field, PageHeader, Select, Textarea } from '../components
 import Modal from '../components/Modal';
 import { hasPermission, useAuth } from '../state/AuthContext';
 
-const AREAS = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos'];
+export type IndicatorRegion = 'Interior' | 'Capital';
+
+const AREAS_BY_REGION: Record<IndicatorRegion, string[]> = {
+  Interior: ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos'],
+  Capital: ['Centro ZS', 'Norte 1', 'Norte 2', 'Norte 3', 'Zona Oeste', 'Sul 2'],
+};
 
 const MONTH_NAMES_PT = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -40,27 +45,84 @@ type Override = '' | 'red' | 'green' | 'black';
 interface PctRow { area: string; total: number; fp: number; override_color: Override }
 interface TimeRow { area: string; time: string; override_color: Override }
 
-function defaultPctRows(values: Record<string, [number, number]>): PctRow[] {
-  return AREAS.map((area) => ({ area, total: values[area]?.[0] ?? 0, fp: values[area]?.[1] ?? 0, override_color: '' }));
+function defaultPctRows(areas: string[], values: Record<string, [number, number]> = {}): PctRow[] {
+  return areas.map((area) => ({ area, total: values[area]?.[0] ?? 0, fp: values[area]?.[1] ?? 0, override_color: '' }));
 }
-function defaultTimeRows(values: Record<string, string>): TimeRow[] {
-  return AREAS.map((area) => ({ area, time: values[area] ?? '-', override_color: '' }));
+function defaultTimeRows(areas: string[], values: Record<string, string> = {}): TimeRow[] {
+  return areas.map((area) => ({ area, time: values[area] ?? '-', override_color: '' }));
 }
 
-function defaultData() {
+function defaultData(region: IndicatorRegion = 'Interior') {
+  const areas = AREAS_BY_REGION[region];
+  if (region === 'Capital') {
+    return {
+      ral: defaultPctRows(areas),
+      rec: defaultPctRows(areas),
+      hfc: defaultPctRows(areas),
+      gpon: defaultPctRows(areas),
+      me11: defaultPctRows(areas),
+      me3_hfc: defaultTimeRows(areas),
+      me3_gpon: defaultTimeRows(areas),
+      justificativas: '',
+    };
+  }
   return {
-    ral: defaultPctRows({ Baixada: [82, 7], Metropolitana: [53, 5], 'Norte Fluminense': [20, 1], 'Serra Fluminense': [32, 3], 'Sul Fluminense': [48, 0], Lagos: [13, 0] }),
-    rec: defaultPctRows({ Baixada: [75, 12], Metropolitana: [52, 13], 'Norte Fluminense': [8, 2], 'Serra Fluminense': [6, 0], 'Sul Fluminense': [25, 1], Lagos: [7, 1] }),
-    hfc: defaultPctRows({ Baixada: [4, 0], Metropolitana: [7, 1], 'Norte Fluminense': [0, 0], 'Serra Fluminense': [0, 0], 'Sul Fluminense': [2, 0], Lagos: [0, 0] }),
-    gpon: defaultPctRows({ Baixada: [5, 2], Metropolitana: [10, 6], 'Norte Fluminense': [1, 0], 'Serra Fluminense': [3, 0], 'Sul Fluminense': [6, 2], Lagos: [5, 1] }),
-    me11: defaultPctRows({ Baixada: [0, 0], Metropolitana: [0, 0], 'Norte Fluminense': [0, 0], 'Serra Fluminense': [0, 0], 'Sul Fluminense': [0, 0], Lagos: [0, 0] }),
-    me3_hfc: defaultTimeRows({ Baixada: '20.07', Metropolitana: '34.06', 'Norte Fluminense': '1.99', 'Serra Fluminense': '1.92', 'Sul Fluminense': '8.54', Lagos: '-' }),
-    me3_gpon: defaultTimeRows({ Baixada: '48.53', Metropolitana: '5.97', 'Norte Fluminense': '17.15', 'Serra Fluminense': '0', 'Sul Fluminense': '1.58', Lagos: '0' }),
+    ral: defaultPctRows(areas, { Baixada: [82, 7], Metropolitana: [53, 5], 'Norte Fluminense': [20, 1], 'Serra Fluminense': [32, 3], 'Sul Fluminense': [48, 0], Lagos: [13, 0] }),
+    rec: defaultPctRows(areas, { Baixada: [75, 12], Metropolitana: [52, 13], 'Norte Fluminense': [8, 2], 'Serra Fluminense': [6, 0], 'Sul Fluminense': [25, 1], Lagos: [7, 1] }),
+    hfc: defaultPctRows(areas, { Baixada: [4, 0], Metropolitana: [7, 1], 'Norte Fluminense': [0, 0], 'Serra Fluminense': [0, 0], 'Sul Fluminense': [2, 0], Lagos: [0, 0] }),
+    gpon: defaultPctRows(areas, { Baixada: [5, 2], Metropolitana: [10, 6], 'Norte Fluminense': [1, 0], 'Serra Fluminense': [3, 0], 'Sul Fluminense': [6, 2], Lagos: [5, 1] }),
+    me11: defaultPctRows(areas, { Baixada: [0, 0], Metropolitana: [0, 0], 'Norte Fluminense': [0, 0], 'Serra Fluminense': [0, 0], 'Sul Fluminense': [0, 0], Lagos: [0, 0] }),
+    me3_hfc: defaultTimeRows(areas, { Baixada: '20.07', Metropolitana: '34.06', 'Norte Fluminense': '1.99', 'Serra Fluminense': '1.92', 'Sul Fluminense': '8.54', Lagos: '-' }),
+    me3_gpon: defaultTimeRows(areas, { Baixada: '48.53', Metropolitana: '5.97', 'Norte Fluminense': '17.15', 'Serra Fluminense': '0', 'Sul Fluminense': '1.58', Lagos: '0' }),
     justificativas: '',
   };
 }
 
 type IndicatorData = ReturnType<typeof defaultData>;
+
+function normalizeRegionData(raw: IndicatorData | null | undefined, region: IndicatorRegion): IndicatorData {
+  const fallback = defaultData(region);
+  if (!raw) return fallback;
+  const expectedAreas = AREAS_BY_REGION[region];
+
+  const normPct = (rows: PctRow[] | undefined, defRows: PctRow[]): PctRow[] => {
+    if (!Array.isArray(rows) || rows.length === 0) return defRows;
+    const byArea = new Map(rows.map((r) => [r.area, r]));
+    if (expectedAreas.every((a) => byArea.has(a))) {
+      return expectedAreas.map((a) => byArea.get(a)!);
+    }
+    return expectedAreas.map((area, idx) => ({
+      area,
+      total: byArea.get(area)?.total ?? rows[idx]?.total ?? 0,
+      fp: byArea.get(area)?.fp ?? rows[idx]?.fp ?? 0,
+      override_color: byArea.get(area)?.override_color ?? rows[idx]?.override_color ?? '',
+    }));
+  };
+
+  const normTime = (rows: TimeRow[] | undefined, defRows: TimeRow[]): TimeRow[] => {
+    if (!Array.isArray(rows) || rows.length === 0) return defRows;
+    const byArea = new Map(rows.map((r) => [r.area, r]));
+    if (expectedAreas.every((a) => byArea.has(a))) {
+      return expectedAreas.map((a) => byArea.get(a)!);
+    }
+    return expectedAreas.map((area, idx) => ({
+      area,
+      time: byArea.get(area)?.time ?? rows[idx]?.time ?? '-',
+      override_color: byArea.get(area)?.override_color ?? rows[idx]?.override_color ?? '',
+    }));
+  };
+
+  return {
+    ral: normPct(raw.ral, fallback.ral),
+    rec: normPct(raw.rec, fallback.rec),
+    hfc: normPct(raw.hfc, fallback.hfc),
+    gpon: normPct(raw.gpon, fallback.gpon),
+    me11: normPct(raw.me11, fallback.me11),
+    me3_hfc: normTime(raw.me3_hfc, fallback.me3_hfc),
+    me3_gpon: normTime(raw.me3_gpon, fallback.me3_gpon),
+    justificativas: raw.justificativas ?? '',
+  };
+}
 
 function cycleOverride(o: Override): Override {
   if (o === 'red') return 'green';
@@ -80,7 +142,19 @@ function cellClass(override: Override, belowTarget: boolean) {
   return belowTarget ? 'bg-[var(--color-danger)] text-white' : '';
 }
 
-function PctTable({ title, keyName, rows, onChange }: { title: string; keyName: string; rows: PctRow[]; onChange: (rows: PctRow[]) => void }) {
+function PctTable({
+  title,
+  keyName,
+  regionLabel,
+  rows,
+  onChange,
+}: {
+  title: string;
+  keyName: string;
+  regionLabel: IndicatorRegion;
+  rows: PctRow[];
+  onChange: (rows: PctRow[]) => void;
+}) {
   const threshold = THRESHOLDS[keyName];
   const sumTotal = rows.reduce((s, r) => s + r.total, 0);
   const sumFp = rows.reduce((s, r) => s + r.fp, 0);
@@ -125,7 +199,7 @@ function PctTable({ title, keyName, rows, onChange }: { title: string; keyName: 
             );
           })}
           <tr className="font-extrabold">
-            <td className="py-2 pr-2">Interior</td>
+            <td className="py-2 pr-2">{regionLabel}</td>
             <td className="py-2 px-2">{totalPct === null ? '-' : `${totalPct.toFixed(2)}%`}</td>
             <td className="py-2 px-2">{sumTotal}</td>
             <td className="py-2 px-2">{sumFp}</td>
@@ -177,10 +251,13 @@ function TimeTable({ title, keyName, rows, onChange }: { title: string; keyName:
 export default function IndicatorsPage() {
   const { user } = useAuth();
   const canEdit = hasPermission(user, 'indicadores.edit');
+  const [region, setRegion] = useState<IndicatorRegion>('Interior');
   const [month, setMonth] = useState<string>(getCurrentMonthKey);
-  const [data, setData] = useState<IndicatorData>(defaultData());
+  const [data, setData] = useState<IndicatorData>(() => defaultData('Interior'));
   const [status, setStatus] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dbMonthKey = region === 'Capital' ? `cap-${month}` : month;
 
   // CSV Import State
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -193,23 +270,23 @@ export default function IndicatorsPage() {
 
   useEffect(() => {
     setStatus('');
-    api.get<{ month: string; data: IndicatorData | null }>('/api/indicators', { month }).then((res) => {
-      setData(res.data || defaultData());
+    api.get<{ month: string; data: IndicatorData | null }>('/api/indicators', { month: dbMonthKey, region }).then((res) => {
+      setData(normalizeRegionData(res.data, region));
     });
-  }, [month]);
+  }, [dbMonthKey, region]);
 
   const scheduleSave = useCallback((next: IndicatorData) => {
     setStatus('Salvando...');
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        await api.post('/api/indicators', { month, data: next });
+        await api.post('/api/indicators', { month: dbMonthKey, region, data: next });
         setStatus('Salvo automaticamente.');
       } catch {
         setStatus('Erro ao salvar.');
       }
     }, 500);
-  }, [month]);
+  }, [dbMonthKey, region]);
 
   function updateField<K extends keyof IndicatorData>(key: K, value: IndicatorData[K]) {
     if (!canEdit) return;
@@ -221,11 +298,11 @@ export default function IndicatorsPage() {
   }
 
   function handleExportCsv() {
-    window.location.href = `/api/indicators/export?month=${encodeURIComponent(month)}`;
+    window.location.href = `/api/indicators/export?month=${encodeURIComponent(dbMonthKey)}&region=${encodeURIComponent(region)}`;
   }
 
   function handleDownloadTemplate() {
-    window.location.href = '/api/indicators/template';
+    window.location.href = `/api/indicators/template?region=${encodeURIComponent(region)}`;
   }
 
   function openImport() {
@@ -271,12 +348,12 @@ export default function IndicatorsPage() {
     try {
       const res = await api.post<{ success: boolean; month: string; imported: number; data: IndicatorData }>(
         '/api/indicators/import',
-        { month, csv_data: csvText }
+        { month: dbMonthKey, region, csv_data: csvText }
       );
       if (res.data) {
-        setData(res.data);
+        setData(normalizeRegionData(res.data, region));
       }
-      setImportSuccess(`${res.imported} registro(s) de indicador importado(s) com sucesso para ${month.toUpperCase()}!`);
+      setImportSuccess(`${res.imported} registro(s) de indicador importado(s) com sucesso para ${region.toUpperCase()} (${month.toUpperCase()})!`);
       setTimeout(() => {
         setImportModalOpen(false);
         setImportSuccess(null);
@@ -289,21 +366,33 @@ export default function IndicatorsPage() {
     }
   }
 
+  const sampleArea1 = region === 'Capital' ? 'Centro ZS' : 'Baixada';
+  const sampleArea2 = region === 'Capital' ? 'Norte 1' : 'Metropolitana';
+
   return (
     <div>
       <PageHeader
         title="Indicadores"
-        subtitle="Acompanhamento mensal de metas por área"
+        subtitle={`Acompanhamento mensal de metas por área — ${region}`}
         actions={
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {status && <span className="text-xs text-[var(--color-text-faint)]">{status}</span>}
+            <Select
+              value={region}
+              onChange={(e) => setRegion(e.target.value as IndicatorRegion)}
+              className="!w-auto font-semibold"
+              aria-label="Selecionar Regional (Interior ou Capital)"
+            >
+              <option value="Interior">INTERIOR</option>
+              <option value="Capital">CAPITAL</option>
+            </Select>
             <Select value={month} onChange={(e) => setMonth(e.target.value)} className="!w-auto">
               {MONTHS_LIST.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
             </Select>
             <Button
               variant="outline"
               onClick={handleExportCsv}
-              title={`Exportar indicadores de ${month.toUpperCase()} em formato CSV`}
+              title={`Exportar indicadores de ${region} (${month.toUpperCase()}) em formato CSV`}
             >
               <Download className="w-4 h-4 text-[var(--color-primary)]" />
               <span>Exportar CSV</span>
@@ -323,25 +412,25 @@ export default function IndicatorsPage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <PctTable title="RAL" keyName="ral" rows={data.ral} onChange={(rows) => updateField('ral', rows)} />
-        <PctTable title="REC" keyName="rec" rows={data.rec} onChange={(rows) => updateField('rec', rows)} />
-        <PctTable title="HFC" keyName="hfc" rows={data.hfc} onChange={(rows) => updateField('hfc', rows)} />
-        <PctTable title="GPON" keyName="gpon" rows={data.gpon} onChange={(rows) => updateField('gpon', rows)} />
-        <PctTable title="ME11" keyName="me11" rows={data.me11} onChange={(rows) => updateField('me11', rows)} />
+        <PctTable title="RAL" keyName="ral" regionLabel={region} rows={data.ral} onChange={(rows) => updateField('ral', rows)} />
+        <PctTable title="REC" keyName="rec" regionLabel={region} rows={data.rec} onChange={(rows) => updateField('rec', rows)} />
+        <PctTable title="HFC" keyName="hfc" regionLabel={region} rows={data.hfc} onChange={(rows) => updateField('hfc', rows)} />
+        <PctTable title="GPON" keyName="gpon" regionLabel={region} rows={data.gpon} onChange={(rows) => updateField('gpon', rows)} />
+        <PctTable title="ME11" keyName="me11" regionLabel={region} rows={data.me11} onChange={(rows) => updateField('me11', rows)} />
         <TimeTable title="ME3 - HFC" keyName="me3_hfc" rows={data.me3_hfc} onChange={(rows) => updateField('me3_hfc', rows)} />
         <TimeTable title="ME3 - GPON" keyName="me3_gpon" rows={data.me3_gpon} onChange={(rows) => updateField('me3_gpon', rows)} />
       </div>
 
       <Card className="p-4">
-        <h3 className="font-bold text-sm mb-2">Justificativas</h3>
-        <Textarea rows={4} value={data.justificativas} onChange={(e) => updateField('justificativas', e.target.value)} placeholder="Justificativas sobre os indicadores do mês..." />
+        <h3 className="font-bold text-sm mb-2">Justificativas ({region})</h3>
+        <Textarea rows={4} value={data.justificativas} onChange={(e) => updateField('justificativas', e.target.value)} placeholder={`Justificativas sobre os indicadores de ${region} no mês...`} />
       </Card>
 
       {/* MODAL DE IMPORTAÇÃO CSV */}
       <Modal
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}
-        title={`Importar Indicadores (CSV) - ${month.toUpperCase()}`}
+        title={`Importar Indicadores (${region}) - ${month.toUpperCase()}`}
         maxWidth="max-w-2xl"
         footer={
           <>
@@ -370,14 +459,14 @@ export default function IndicatorsPage() {
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <p className="text-xs text-[var(--color-text-muted)]">
-            Carregue uma planilha CSV ou cole o conteúdo abaixo para atualizar os dados de <strong className="text-[var(--color-text)]">{month.toUpperCase()}</strong>.
+            Carregue uma planilha CSV ou cole o conteúdo abaixo para atualizar os dados de <strong className="text-[var(--color-text)]">{region.toUpperCase()} — {month.toUpperCase()}</strong>.
           </p>
           <button
             type="button"
             onClick={handleDownloadTemplate}
             className="text-xs text-[var(--color-primary)] hover:underline inline-flex items-center gap-1.5 shrink-0"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" /> Baixar Modelo CSV
+            <FileSpreadsheet className="w-3.5 h-3.5" /> Baixar Modelo CSV ({region})
           </button>
         </div>
 
@@ -411,13 +500,13 @@ export default function IndicatorsPage() {
 
         <Field
           label="Ou cole / edite o conteúdo CSV diretamente"
-          hint="Colunas: Indicador;Área;Total;FP;Tempo (ex: RAL;Baixada;82;7 ou ME3 - HFC;Baixada;;;20.07)"
+          hint={`Colunas: Indicador;Área;Total;FP;Tempo (ex: RAL;${sampleArea1};82;7 ou ME3 - HFC;${sampleArea1};;;20.07)`}
         >
           <Textarea
             rows={7}
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
-            placeholder={`Indicador;Área;Total;FP;Tempo\nRAL;Baixada;82;7;\nREC;Metropolitana;52;13;\nME3 - HFC;Baixada;;;20.07\nJUSTIFICATIVAS;Observações do mês...`}
+            placeholder={`Indicador;Área;Total;FP;Tempo\nRAL;${sampleArea1};82;7;\nREC;${sampleArea2};52;13;\nME3 - HFC;${sampleArea1};;;20.07\nJUSTIFICATIVAS;Observações do mês...`}
             className="font-mono text-xs"
           />
         </Field>

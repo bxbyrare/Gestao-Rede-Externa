@@ -4445,7 +4445,22 @@ def api_save_monthly_indicators():
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
-def get_default_indicators_dict():
+INDICATORS_AREAS_INTERIOR = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
+INDICATORS_AREAS_CAPITAL = ['Centro ZS', 'Norte 1', 'Norte 2', 'Norte 3', 'Zona Oeste', 'Sul 2']
+
+def get_default_indicators_dict(region='Interior'):
+    if str(region).strip().lower() == 'capital':
+        areas = INDICATORS_AREAS_CAPITAL
+        return {
+            'ral': [{'area': a, 'total': 0, 'fp': 0, 'override_color': ''} for a in areas],
+            'rec': [{'area': a, 'total': 0, 'fp': 0, 'override_color': ''} for a in areas],
+            'hfc': [{'area': a, 'total': 0, 'fp': 0, 'override_color': ''} for a in areas],
+            'gpon': [{'area': a, 'total': 0, 'fp': 0, 'override_color': ''} for a in areas],
+            'me11': [{'area': a, 'total': 0, 'fp': 0, 'override_color': ''} for a in areas],
+            'me3_hfc': [{'area': a, 'time': '-', 'override_color': ''} for a in areas],
+            'me3_gpon': [{'area': a, 'time': '-', 'override_color': ''} for a in areas],
+            'justificativas': ''
+        }
     areas = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
     def pct_rows(vals):
         return [{'area': a, 'total': vals.get(a, [0, 0])[0], 'fp': vals.get(a, [0, 0])[1], 'override_color': ''} for a in areas]
@@ -4474,7 +4489,8 @@ def api_export_monthly_indicators():
         cur.close()
         conn.close()
 
-        data = row['data'] if row and row.get('data') else get_default_indicators_dict()
+        region = request.args.get('region', '').strip() or ('Capital' if month.startswith('cap-') else 'Interior')
+        data = row['data'] if row and row.get('data') else get_default_indicators_dict(region)
 
         output = io.StringIO()
         output.write('\ufeff')
@@ -4535,7 +4551,8 @@ def api_indicators_template():
         writer = csv.writer(output, delimiter=';')
         writer.writerow(['Indicador', 'Área', 'Total', 'FP', 'Tempo'])
 
-        areas = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
+        region = request.args.get('region', 'Interior').strip()
+        areas = INDICATORS_AREAS_CAPITAL if region.lower() == 'capital' else INDICATORS_AREAS_INTERIOR
         for ind in ['RAL', 'REC', 'HFC', 'GPON', 'ME11']:
             for a in areas:
                 writer.writerow([ind, a, 0, 0, ''])
@@ -4587,7 +4604,7 @@ def api_import_monthly_indicators():
         if row and row.get('data'):
             current_data = row['data']
         else:
-            current_data = get_default_indicators_dict()
+            current_data = get_default_indicators_dict('Capital' if ((data.get('region', '').strip().lower() == 'capital') or month.startswith('cap-')) else 'Interior')
 
         sample_lines = [l for l in csv_data.splitlines() if l.strip()][:5]
         sample_txt = "\n".join(sample_lines)
@@ -4600,13 +4617,20 @@ def api_import_monthly_indicators():
 
         reader = csv.reader(io.StringIO(csv_data), delimiter=delim)
 
-        valid_areas = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
+        is_capital = (data.get('region', '').strip().lower() == 'capital') or month.startswith('cap-')
+        valid_areas = INDICATORS_AREAS_CAPITAL if is_capital else INDICATORS_AREAS_INTERIOR
         
         def match_area(txt):
             clean = _clean_str(txt)
             for a in valid_areas:
                 if clean == _clean_str(a):
                     return a
+            if 'centro' in clean or 'zs' in clean: return 'Centro ZS'
+            if 'norte 1' in clean or 'norte1' in clean: return 'Norte 1'
+            if 'norte 2' in clean or 'norte2' in clean: return 'Norte 2'
+            if 'norte 3' in clean or 'norte3' in clean: return 'Norte 3'
+            if 'oeste' in clean: return 'Zona Oeste'
+            if 'sul 2' in clean or 'sul2' in clean: return 'Sul 2'
             if 'baixada' in clean: return 'Baixada'
             if 'metro' in clean: return 'Metropolitana'
             if 'norte' in clean: return 'Norte Fluminense'
