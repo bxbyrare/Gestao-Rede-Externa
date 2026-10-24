@@ -4,7 +4,6 @@ import { Eye, EyeOff, Lock, User as UserIcon, ArrowRight, Loader2 } from 'lucide
 import { useAuth } from '../state/AuthContext';
 import { ApiError } from '../api/client';
 import LiquidEther from '../components/LiquidEther';
-import FullScreenCinematicIntro from '../components/FullScreenCinematicIntro';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 export default function LoginPage() {
@@ -15,7 +14,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [introFinished, setIntroFinished] = useState(false);
   const [isForgotOpen, setIsForgotOpen] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
@@ -36,18 +34,11 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#121214]">
       <LiquidEther />
 
-      {/* Full Screen High-End Cinematic Intro (Google Flow Telecom Orb) */}
-      <FullScreenCinematicIntro onComplete={() => setIntroFinished(true)} durationMs={4000} />
-
       {/* Atmospheric Ambient Lighting Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-red-600/10 blur-[140px] pointer-events-none" />
 
-      {/* Main Login Card Container (Dashboard dark graphite palette: #18181c / #2c2c35) */}
-      <div
-        className={`relative w-full max-w-[420px] z-10 transition-all duration-700 ease-out transform ${
-          introFinished ? 'opacity-100 translate-y-0 scale-100' : 'opacity-85 translate-y-3 scale-[0.98]'
-        }`}
-      >
+      {/* Main Login Card Container */}
+      <div className="relative w-full max-w-[420px] z-10 transition-all duration-700 ease-out transform">
         <div className="relative rounded-3xl p-8 sm:p-9 bg-[#18181c] border border-[#2c2c35] shadow-[0_20px_50px_rgba(0,0,0,0.75)] overflow-hidden">
           {/* Subtle Top Card Border Highlight */}
           <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-red-500/50 to-transparent" />

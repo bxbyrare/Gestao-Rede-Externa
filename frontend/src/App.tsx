@@ -1,8 +1,10 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './state/AuthContext';
 import { NotificationProvider } from './state/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
+import FullScreenCinematicIntro from './components/FullScreenCinematicIntro';
 import LoginPage from './pages/LoginPage';
 import FavoritesPage from './pages/FavoritesPage';
 import PessoasPage from './pages/PessoasPage';
@@ -24,9 +26,21 @@ import NotificacoesPage from './pages/NotificacoesPage';
 import ProfilePage from './pages/ProfilePage';
 
 export default function App() {
+  const location = useLocation();
+  const [introRunId, setIntroRunId] = useState(1);
+  const prevPathRef = useRef(location.pathname);
+
+  useEffect(() => {
+    if (prevPathRef.current !== location.pathname && location.pathname === '/login') {
+      setIntroRunId((n) => n + 1);
+    }
+    prevPathRef.current = location.pathname;
+  }, [location.pathname]);
+
   return (
     <AuthProvider>
       <NotificationProvider>
+        <FullScreenCinematicIntro key={introRunId} durationMs={4100} />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
