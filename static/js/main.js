@@ -4617,9 +4617,9 @@ function initMapaEventos() {
       zoom: 11,
       zoomControl: true
     });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      subdomains: 'abcd',
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      subdomains: 'abc',
       maxZoom: 19
     }).addTo(leafletMapInstance);
     leafletMarkersGroup = L.layerGroup().addTo(leafletMapInstance);

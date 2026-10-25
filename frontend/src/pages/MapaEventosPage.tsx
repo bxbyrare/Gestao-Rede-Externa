@@ -22,6 +22,7 @@ interface MapEvent {
   designation: string;
   ticket: string;
   date: string;
+  subcluster?: string;
   address: string;
   cause: string;
   event_type: string;
@@ -173,7 +174,7 @@ export default function MapaEventosPage() {
                         {ev.event_type}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-300 truncate font-medium">{ev.address}</p>
+                    <p className="text-xs text-slate-300 truncate font-medium" title={ev.address}>{ev.address && !ev.address.toLowerCase().includes("sem endere") ? ev.address : (ev.designation && ev.designation !== "-" ? `${ev.designation} · ${ev.subcluster || ""}` : ev.subcluster || "Rede Externa")}</p>
                     <p className="text-[11px] text-slate-500 font-mono mt-0.5">{ev.date} · {ev.cause}</p>
                   </div>
                 ))}
@@ -186,8 +187,8 @@ export default function MapaEventosPage() {
             <Card className="overflow-hidden bg-[#0F1422] border-white/10 rounded-2xl shadow-xl" style={{ minHeight: 580 }}>
               <MapContainer center={RIO_CENTER} zoom={9} style={{ height: '100%', minHeight: 580, width: '100%' }}>
                 <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                  attribution='&copy; OpenStreetMap &copy; CARTO'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 />
                 {(data?.events ?? []).map((ev) => (
                   <CircleMarker
@@ -199,7 +200,7 @@ export default function MapaEventosPage() {
                     <Popup>
                       <div className="text-xs p-1">
                         <strong className="text-slate-900 block font-bold mb-1">{ev.event_type}</strong>
-                        <div className="text-slate-700 font-medium mb-1">{ev.address}</div>
+                        <div className="text-slate-700 font-medium mb-1">{ev.address && !ev.address.toLowerCase().includes("sem endere") ? ev.address : (ev.designation && ev.designation !== "-" ? `${ev.designation} · ${ev.subcluster || ""}` : ev.subcluster || "Rede Externa")}</div>
                         <span className="text-slate-500 text-[11px]">{ev.date} • {ev.cause}</span>
                       </div>
                     </Popup>

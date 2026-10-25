@@ -358,7 +358,7 @@ def set_security_headers(response):
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
         "font-src 'self' https://fonts.gstatic.com data:",
-        "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org",
+        "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://server.arcgisonline.com https://*.arcgisonline.com",
         "connect-src 'self' https://cloudflareinsights.com https://api.resend.com",
         "object-src 'none'",
         "base-uri 'self'",
@@ -7396,6 +7396,38 @@ def _parse_month_from_col(col3, col7):
     return None
 
 
+
+def _parse_event_datetime_full(val):
+    """Parse any date/datetime representation from fault_searcher_records to datetime."""
+    if not val:
+        return datetime.datetime.min
+    if isinstance(val, datetime.datetime):
+        return val
+    if isinstance(val, datetime.date):
+        return datetime.datetime.combine(val, datetime.time.min)
+    s = str(val).strip()
+    for fmt in [
+        '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y',
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d',
+        '%d-%m-%Y %H:%M:%S', '%d-%m-%Y %H:%M', '%d-%m-%Y',
+        '%d/%m/%y %H:%M', '%d/%m/%y'
+    ]:
+        try:
+            return datetime.datetime.strptime(s, fmt)
+        except Exception:
+            pass
+    import re
+    m = re.search(r'(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})', s)
+    if m:
+        try:
+            d, m_val, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if y < 100: y += 2000
+            return datetime.datetime(y, m_val, d)
+        except Exception:
+            pass
+    return datetime.datetime.min
+
+
 @app.route('/api/mapa-eventos/data', methods=['GET'])
 @login_required
 def api_get_mapa_eventos_data():
@@ -7458,14 +7490,26 @@ def api_get_mapa_eventos_data():
         for r in rows:
             rec_id = r['id']
             
-            # Ensure address is present and valid
-            address_str = (r['col6'] or '').strip()
-            if not address_str or address_str == '-' or address_str.lower() in ['n/a', 'na']:
-                continue
-                
-            col4_val = r['col4'] or ''
-            col9_val = r['col9'] or ''
-            col8_val = r['col8'] or ''
+            # Smart address resolution: never show generic "SEM ENDEREÇO"
+            raw_address = (r['col6'] or '').strip()
+            is_sem_endereco = not raw_address or raw_address == '-' or raw_address.lower() in ['n/a', 'na', 'sem endereço', 'sem endereco']
+            
+            c1_val = (r['col1'] or '').strip()
+            col4_val = (r['col4'] or '').strip()
+            col9_val = (r['col9'] or '').strip()
+            col8_val = (r['col8'] or '').strip()
+
+            if is_sem_endereco:
+                if c1_val and c1_val != '-' and col4_val and col4_val != '-':
+                    address_str = f"{c1_val} · {col4_val}"
+                elif c1_val and c1_val != '-':
+                    address_str = f"Rota {c1_val}"
+                elif col4_val and col4_val != '-':
+                    address_str = f"Subcluster {col4_val}"
+                else:
+                    address_str = "Rede Externa Claro"
+            else:
+                address_str = raw_address
 
             # Classify event type from real Ocorrência / Ofensor fields
             ev_type = _classify_event_type(col9_val, col8_val)
@@ -7480,12 +7524,9 @@ def api_get_mapa_eventos_data():
                 if extracted_area != area:
                     continue
 
-            # Get coordinates from subcluster (col4) or address (col6)
+            # Get coordinates from subcluster (col4) or address (col6 / resolved)
             lat, lng = _get_coords_for_subcluster(col4_val, address_str)
             
-            # The database doesn't store exact coordinates. We use a deterministic jitter 
-            # based on the address string to group identical addresses, with a small 
-            # micro-jitter to prevent perfect overlaps. The max spread is ~1.5km to avoid water.
             import hashlib
             addr_hash = int(hashlib.md5(address_str.encode('utf-8')).hexdigest()[:8], 16)
             random.seed(addr_hash)
@@ -7499,15 +7540,14 @@ def api_get_mapa_eventos_data():
             jitter_lat = base_jitter_lat + micro_jitter_lat
             jitter_lng = base_jitter_lng + micro_jitter_lng
 
-            # Count by month (from col3 date or col7 month field)
-            month_num = _parse_month_from_col(r['col3'], r['col7'])
+            # Parse full datetime for accurate chronological ordering
+            dt_obj = _parse_event_datetime_full(r['col3'])
+            month_num = dt_obj.month if dt_obj != datetime.datetime.min else _parse_month_from_col(r['col3'], r['col7'])
             
-            # If a year filter is active, only count for that year
             if month_num and 1 <= month_num <= 12:
                 if not year_str or year_str in str(r['col3']):
                     monthly_counts[month_num] += 1
 
-            # Apply Month/Year filters to the map markers
             if year_str and year_str not in str(r['col3']):
                 continue
             if month_str:
@@ -7517,24 +7557,29 @@ def api_get_mapa_eventos_data():
             events.append({
                 "id": rec_id,
                 "topic": r['topic'],
-                "designation": r['col1'] or '-',
+                "designation": c1_val or '-',
                 "ticket": r['col2'] or '-',
                 "date": r['col3'] or '-',
                 "subcluster": col4_val,
-                "address": r['col6'] or '-',
+                "address": address_str,
                 "cause": (col9_val or col8_val or 'OCORRÊNCIA DE REDE').upper(),
                 "event_type": ev_type,
                 "lat": round(lat + jitter_lat, 6),
-                "lng": round(lng + jitter_lng, 6)
+                "lng": round(lng + jitter_lng, 6),
+                "_sort_dt": dt_obj
             })
 
-        # Build mini monthly chart using real month counts from the filtered data
+        # STRICT CHRONOLOGICAL SORTING: Show the most recent occurrences first!
+        events.sort(key=lambda x: (x['_sort_dt'], x['id']), reverse=True)
+        for ev in events:
+            ev.pop('_sort_dt', None)
+
+        # Build monthly chart: sequence of most recent months
         chart_months = []
         for m_num in range(1, 13):
             if monthly_counts[m_num] > 0:
                 chart_months.append({"month": MONTH_NAMES_PT[m_num], "count": monthly_counts[m_num]})
 
-        # If no real month data, show last 6 months as zero (still useful context)
         if not chart_months:
             now = datetime.datetime.now()
             for offset in range(5, -1, -1):
@@ -7824,12 +7869,16 @@ def api_estratificacao_data():
             topic_counts[t] += 1
 
             c1 = (r['col1'] or '').strip()
+            c4 = (r['col4'] or '').strip()
             if c1 and c1 != '-' and len(c1) > 2:
                 routes_map[c1].append(r)
 
             c6 = (r['col6'] or '').strip()
-            if c6 and c6 != '-' and len(c6) > 4:
+            if c6 and c6 != '-' and len(c6) > 4 and not c6.upper().startswith('SEM ENDERE'):
                 addr_key = c6.upper().split(',')[0].strip()
+                address_map[addr_key].append(r)
+            elif c1 and c1 != '-' and len(c1) > 2:
+                addr_key = f"{c1} ({c4})" if c4 and c4 != '-' else c1
                 address_map[addr_key].append(r)
 
             of = (r['col8'] or '').strip().upper()
@@ -7849,6 +7898,8 @@ def api_estratificacao_data():
         for r_name, group in routes_map.items():
             if len(group) > 1:
                 total_reinc_events += len(group)
+                # Sort group by most recent event date first
+                group.sort(key=lambda g: (_parse_event_datetime_full(g['col3']), g['id']), reverse=True)
                 tickets = [g['col2'] for g in group if g['col2'] and g['col2'] != '-'][:5]
                 last_dt = group[0]['col3'] or '-'
                 sub = group[0]['col4'] or '-'
