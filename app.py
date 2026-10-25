@@ -1405,11 +1405,22 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS monthly_indicators (
                 id SERIAL PRIMARY KEY,
-                reference_month VARCHAR(20) UNIQUE NOT NULL,
+                reference_month VARCHAR(20) NOT NULL,
                 data JSONB NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        try:
+            cur.execute("""
+                DELETE FROM monthly_indicators a USING monthly_indicators b
+                WHERE a.id < b.id AND a.reference_month = b.reference_month;
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_monthly_indicators_ref_month ON monthly_indicators(reference_month);
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         # 14. Buscador de Falhas Tables [NEW]
         cur.execute("""
@@ -4873,12 +4884,19 @@ def api_save_monthly_indicators():
 
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO monthly_indicators (reference_month, data, updated_at)
-            VALUES (%s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (reference_month) DO UPDATE
-            SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;
-        """, (month, json.dumps(payload, ensure_ascii=False)))
+        cur.execute("SELECT id FROM monthly_indicators WHERE reference_month = %s;", (month,))
+        existing_row = cur.fetchone()
+        if existing_row:
+            cur.execute("""
+                UPDATE monthly_indicators
+                SET data = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (json.dumps(payload, ensure_ascii=False), existing_row['id']))
+        else:
+            cur.execute("""
+                INSERT INTO monthly_indicators (reference_month, data, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP);
+            """, (month, json.dumps(payload, ensure_ascii=False)))
         conn.commit()
         cur.close()
         conn.close()
@@ -4909,7 +4927,7 @@ def api_save_indicator_justificativa():
         conn = get_db()
         cur = conn.cursor()
         
-        cur.execute("SELECT data FROM monthly_indicators WHERE reference_month = %s;", (db_month_key,))
+        cur.execute("SELECT id, data FROM monthly_indicators WHERE reference_month = %s;", (db_month_key,))
         row = cur.fetchone()
         
         current_data = {}
@@ -4922,12 +4940,17 @@ def api_save_indicator_justificativa():
         
         current_data['justificativas'] = justificativa
         
-        cur.execute("""
-            INSERT INTO monthly_indicators (reference_month, data, updated_at)
-            VALUES (%s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (reference_month) DO UPDATE
-            SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;
-        """, (db_month_key, json.dumps(current_data, ensure_ascii=False)))
+        if row and row.get('id'):
+            cur.execute("""
+                UPDATE monthly_indicators
+                SET data = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (json.dumps(current_data, ensure_ascii=False), row['id']))
+        else:
+            cur.execute("""
+                INSERT INTO monthly_indicators (reference_month, data, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP);
+            """, (db_month_key, json.dumps(current_data, ensure_ascii=False)))
         conn.commit()
         cur.close()
         conn.close()
@@ -5234,12 +5257,19 @@ def api_import_monthly_indicators():
             conn.close()
             return jsonify({"error": "Nenhum registro válido de indicador foi encontrado no CSV. Verifique se as colunas estão corretas (Indicador;Área;Total;FP ou Tempo)."}), 400
 
-        cur.execute("""
-            INSERT INTO monthly_indicators (reference_month, data, updated_at)
-            VALUES (%s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (reference_month) DO UPDATE
-            SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;
-        """, (month, json.dumps(current_data, ensure_ascii=False)))
+        cur.execute("SELECT id FROM monthly_indicators WHERE reference_month = %s;", (month,))
+        existing_imp = cur.fetchone()
+        if existing_imp:
+            cur.execute("""
+                UPDATE monthly_indicators
+                SET data = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (json.dumps(current_data, ensure_ascii=False), existing_imp['id']))
+        else:
+            cur.execute("""
+                INSERT INTO monthly_indicators (reference_month, data, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP);
+            """, (month, json.dumps(current_data, ensure_ascii=False)))
         conn.commit()
         cur.close()
         conn.close()
