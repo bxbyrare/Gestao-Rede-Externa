@@ -15,6 +15,11 @@ export interface User {
   permissions?: string[];
   is_master?: boolean;
   is_coordenador?: boolean;
+  totp_enabled?: boolean;
+  totp_verified?: boolean;
+  totp_expires_at?: number;
+  requires_totp_setup?: boolean;
+  requires_totp_verify?: boolean;
 }
 
 export interface ProfileUpdatePayload {
@@ -109,6 +114,11 @@ export interface ManagedUser {
   permissions?: string[];
   is_master?: boolean;
   is_coordenador?: boolean;
+  totp_enabled?: boolean;
+  totp_verified?: boolean;
+  totp_expires_at?: number;
+  requires_totp_setup?: boolean;
+  requires_totp_verify?: boolean;
 }
 
 export interface Evaluation {

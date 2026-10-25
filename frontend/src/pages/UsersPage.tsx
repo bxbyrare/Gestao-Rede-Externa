@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, KeyRound, Lock, Plus, Shield, Trash2 } from 'lucide-react';
+import { Check, KeyRound, Lock, Plus, Shield, Trash2, Smartphone } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { ManagedUser, Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -206,6 +206,20 @@ export default function UsersPage() {
     }
   }
 
+  async function handleResetTotp(u: ManagedUser) {
+    if (!isMaster) return;
+    if (!confirm(`Redefinir o aplicativo autenticador do usuário "${u.username}"?\n\nEle será obrigado a escanear um novo QR Code para conseguir acessar o portal.`)) {
+      return;
+    }
+    try {
+      const res = await api.post<{ success: boolean; message: string }>(`/api/users/${u.id}/reset-totp`);
+      alert(res.message || 'Autenticador redefinido com sucesso!');
+      load();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao redefinir autenticador.');
+    }
+  }
+
   function renderPermissionSummary(u: ManagedUser) {
     if (isMasterCoordenador(u)) {
       return (
@@ -288,6 +302,7 @@ export default function UsersPage() {
                 <th className="px-5 py-3">Pessoa</th>
                 <th className="px-5 py-3">Cargo</th>
                 <th className="px-5 py-3">Permissões Liberadas</th>
+                <th className="px-5 py-3">Autenticador (2FA)</th>
                 <th className="px-5 py-3">Criado em</th>
                 <th className="px-5 py-3 text-right">Ações</th>
               </tr>
@@ -309,9 +324,31 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3">{renderPermissionSummary(u)}</td>
+                    <td className="px-5 py-3">
+                      {u.totp_enabled ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                          <Check className="w-3 h-3" /> Ativo
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
+                          Pendente
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-[var(--color-text-faint)]">{u.created_at}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1.5">
+                        {isMaster && (
+                          <button
+                            onClick={() => handleResetTotp(u)}
+                            aria-label="Resetar Autenticador 2FA"
+                            title="Resetar Autenticador 2FA (força novo QR Code)"
+                            className="h-8 px-2.5 rounded-lg flex items-center gap-1 text-xs font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-colors"
+                          >
+                            <Smartphone className="w-3.5 h-3.5" />
+                            Reset 2FA
+                          </button>
+                        )}
                         {editable ? (
                           <button
                             onClick={() => openEdit(u)}

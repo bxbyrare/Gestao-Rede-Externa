@@ -10,6 +10,7 @@ import { useAuth } from '../state/AuthContext';
 import LiquidEther from './LiquidEther';
 import GlassIcon from './GlassIcon';
 import MandatoryEmailModal from './MandatoryEmailModal';
+import AuthenticatorModal from './AuthenticatorModal';
 import AntiPrintGuard from './AntiPrintGuard';
 
 const COMPANY_LOGOS: Record<string, string> = {
@@ -80,6 +81,7 @@ export default function DashboardLayout() {
       <LiquidEther />
 
       {/* Mandatory Blocking Modal if user has no email registered */}
+      <AuthenticatorModal />
       <MandatoryEmailModal />
 
       {/* Mobile overlay */}

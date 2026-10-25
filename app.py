@@ -104,6 +104,61 @@ if not _env_secret:
             pass
 app.secret_key = _env_secret
 
+
+# --------------------------------------------------------------------------
+# RFC 6238 TOTP AUTHENTICATOR (GOOGLE AUTHENTICATOR / MICROSOFT AUTHENTICATOR)
+# --------------------------------------------------------------------------
+import hmac
+import hashlib
+import time
+import base64
+import struct
+import secrets
+import urllib.parse
+
+def generate_totp_secret():
+    """Generates a cryptographically secure 160-bit base32 secret for TOTP"""
+    return base64.b32encode(secrets.token_bytes(20)).decode('utf-8').replace('=', '')
+
+def get_totp_token(secret, time_step=30, t=None):
+    """Computes current 6-digit TOTP code matching RFC 6238"""
+    if not secret:
+        return None
+    if t is None:
+        t = int(time.time())
+    counter = t // time_step
+    clean_secret = str(secret).strip().replace(' ', '').upper()
+    padding = '=' * ((8 - len(clean_secret) % 8) % 8)
+    try:
+        key = base64.b32decode(clean_secret + padding)
+    except Exception:
+        return None
+    msg = struct.pack(">Q", counter)
+    h = hmac.new(key, msg, hashlib.sha1).digest()
+    o = h[19] & 15
+    code = (struct.unpack(">I", h[o:o+4])[0] & 0x7fffffff) % 1000000
+    return f"{code:06d}"
+
+def verify_totp_token(secret, token, time_step=30, window=1):
+    """Validates 6-digit TOTP token allowing a +/- 1 step window for clock drift"""
+    if not secret or not token:
+        return False
+    token_str = str(token).strip().replace(' ', '')
+    if len(token_str) != 6 or not token_str.isdigit():
+        return False
+    current_t = int(time.time())
+    for offset in range(-window, window + 1):
+        step_token = get_totp_token(secret, time_step=time_step, t=current_t + (offset * time_step))
+        if step_token and step_token == token_str:
+            return True
+    return False
+
+def get_totp_uri(secret, username, issuer="Claro Gestão Rede Externa"):
+    """Builds otpauth:// URI for scanning with Google Authenticator or Microsoft Authenticator"""
+    label = urllib.parse.quote(f"{issuer}:{username}")
+    issuer_q = urllib.parse.quote(issuer)
+    return f"otpauth://totp/{label}?secret={secret}&issuer={issuer_q}&algorithm=SHA1&digits=6&period=30"
+
 # --------------------------------------------------------------------------
 # RESEND EMAIL SERVICE & EXECUTIVE CLARO EMAIL TEMPLATES
 # --------------------------------------------------------------------------
@@ -989,7 +1044,10 @@ def init_db():
             ('phone', 'VARCHAR(50)'),
             ('name', 'VARCHAR(150)'),
             ('email_verified', 'BOOLEAN DEFAULT FALSE'),
-            ('permissions', 'JSONB DEFAULT NULL')
+            ('permissions', 'JSONB DEFAULT NULL'),
+            ('totp_secret', 'VARCHAR(64) DEFAULT NULL'),
+            ('totp_enabled', 'BOOLEAN DEFAULT FALSE'),
+            ('totp_verified_at', 'TIMESTAMP DEFAULT NULL')
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -1000,7 +1058,10 @@ def init_db():
             ('phone', 'VARCHAR(50)'),
             ('name', 'VARCHAR(150)'),
             ('email_verified', 'BOOLEAN DEFAULT FALSE'),
-            ('permissions', 'JSONB DEFAULT NULL')
+            ('permissions', 'JSONB DEFAULT NULL'),
+            ('totp_secret', 'VARCHAR(64) DEFAULT NULL'),
+            ('totp_enabled', 'BOOLEAN DEFAULT FALSE'),
+            ('totp_verified_at', 'TIMESTAMP DEFAULT NULL')
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -1789,6 +1850,16 @@ def login_required(f):
             r = redirect(url_for('login'))
             r.data = b''
             return r
+
+        # 12-hour TOTP Enforcement
+        totp_exp = session.get('totp_expires_at') or 0
+        if not session.get('totp_verified') or time.time() >= totp_exp:
+            if not request.path.startswith('/api/auth/') and not request.path.startswith('/static/'):
+                return jsonify({
+                    "error": "Acesso ao portal restrito: validação de 12 horas do aplicativo autenticador expirada ou pendente.",
+                    "requires_totp": True
+                }), 403
+
         return f(*args, **kwargs)
     return decorated_function
 
@@ -2439,6 +2510,8 @@ def api_login():
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['role'] = user['role']
+            session['totp_verified'] = False
+            session['totp_expires_at'] = 0
             log_action(user['id'], user['username'], "Efetuou login no sistema Claro Gestão Rede Externa.")
 
             # Security IP Check & Alert
@@ -2510,167 +2583,209 @@ def api_logout():
         session.clear()
     return jsonify({"success": True})
 
+@app.route('/api/auth/totp/setup', methods=['GET'])
+def api_totp_setup():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Não autenticado.'}), 401
+    user_id = session['user_id']
+    username = session.get('username', 'usuario')
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, username, totp_secret, totp_enabled FROM users WHERE id = %s;', (user_id,))
+    u = cur.fetchone()
+    if not u:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Usuário não encontrado.'}), 404
+
+    secret = u.get('totp_secret')
+    # If not present or not yet enabled, generate fresh secret
+    if not secret or not u.get('totp_enabled'):
+        secret = generate_totp_secret()
+        cur.execute('UPDATE users SET totp_secret = %s, totp_enabled = FALSE WHERE id = %s;', (secret, user_id))
+        conn.commit()
+
+    cur.close()
+    conn.close()
+
+    otpauth_url = get_totp_uri(secret, username=u.get('username') or username)
+    return jsonify({
+        'success': True,
+        'secret': secret,
+        'otpauth_url': otpauth_url,
+        'username': u.get('username') or username
+    })
+
+@app.route('/api/auth/totp/enable', methods=['POST'])
+def api_totp_enable():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Não autenticado.'}), 401
+    user_id = session['user_id']
+    data = request.get_json(silent=True) or {}
+    code = str(data.get('code') or '').strip().replace(' ', '').replace('-', '')
+
+    if not code or len(code) != 6 or not code.isdigit():
+        return jsonify({'error': 'Código inválido. Digite os 6 dígitos numéricos do seu aplicativo autenticador.'}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, username, totp_secret FROM users WHERE id = %s;', (user_id,))
+    u = cur.fetchone()
+    if not u or not u.get('totp_secret'):
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Segredo de autenticação não encontrado. Inicie a configuração novamente.'}), 400
+
+    secret = u['totp_secret']
+    if not verify_totp_token(secret, code, window=1):
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Código de autenticação incorreto. Verifique a hora do seu celular e tente novamente.'}), 400
+
+    now = datetime.datetime.now()
+    cur.execute('UPDATE users SET totp_enabled = TRUE, totp_verified_at = %s WHERE id = %s;', (now, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    # Authorize session for 12 hours
+    session['totp_verified'] = True
+    session['totp_expires_at'] = time.time() + (12 * 3600)
+
+    log_action(user_id, session.get('username', 'usuario'), 'Ativou e validou o aplicativo autenticador (2FA) com sucesso.')
+    return jsonify({
+        'success': True,
+        'message': 'Aplicativo autenticador ativado com sucesso! Sessão autorizada por 12 horas.',
+        'totp_verified': True,
+        'totp_expires_at': session['totp_expires_at']
+    })
+
+@app.route('/api/auth/totp/verify', methods=['POST'])
+def api_totp_verify():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Não autenticado.'}), 401
+    user_id = session['user_id']
+    data = request.get_json(silent=True) or {}
+    code = str(data.get('code') or '').strip().replace(' ', '').replace('-', '')
+
+    if not code or len(code) != 6 or not code.isdigit():
+        return jsonify({'error': 'Código inválido. Digite os 6 dígitos do seu aplicativo autenticador.'}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, username, totp_secret, totp_enabled FROM users WHERE id = %s;', (user_id,))
+    u = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not u or not u.get('totp_enabled') or not u.get('totp_secret'):
+        return jsonify({'error': 'Usuário ainda não concluiu o cadastro do autenticador.'}), 400
+
+    secret = u['totp_secret']
+    if not verify_totp_token(secret, code, window=1):
+        return jsonify({'error': 'Código de autenticação incorreto ou expirado. Tente novamente.'}), 400
+
+    # Authorize session for 12 hours
+    session['totp_verified'] = True
+    session['totp_expires_at'] = time.time() + (12 * 3600)
+
+    log_action(user_id, session.get('username', 'usuario'), 'Validou sessão de 12 horas via aplicativo autenticador (TOTP).')
+    return jsonify({
+        'success': True,
+        'message': 'Código confirmado! Acesso autorizado por 12 horas.',
+        'totp_verified': True,
+        'totp_expires_at': session['totp_expires_at']
+    })
+
 @app.route('/api/auth/forgot-password', methods=['POST'])
 def api_forgot_password():
     data = request.get_json(silent=True) or {}
     identifier = (data.get('identifier') or '').strip().lower()
 
     if not identifier:
-        return jsonify({"error": "Por favor, informe seu usuário ou e-mail cadastrado."}), 400
+        return jsonify({'error': 'Por favor, informe seu usuário ou e-mail cadastrado.'}), 400
 
-    # Consistent generic response for anti-enumeration security
-    success_msg = "Se as credenciais informadas estiverem cadastradas, enviamos um código de verificação para o e-mail registrado."
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT u.id, u.username, u.totp_enabled
+        FROM users u
+        LEFT JOIN technicians t ON u.tech_id = t.id
+        WHERE LOWER(u.username) = %s OR LOWER(COALESCE(u.email, '')) = %s OR LOWER(COALESCE(t.email, '')) = %s;
+    ''', (identifier, identifier, identifier))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
 
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT u.id, u.username, u.email as u_email, t.email as t_email, u.name as u_name, t.name as t_name
-            FROM users u
-            LEFT JOIN technicians t ON u.tech_id = t.id
-            WHERE LOWER(u.username) = %s OR LOWER(COALESCE(u.email, '')) = %s OR LOWER(COALESCE(t.email, '')) = %s;
-        """, (identifier, identifier, identifier))
-        user = cur.fetchone()
+    if not user:
+        return jsonify({'error': 'Usuário não encontrado no sistema.'}), 404
 
-        generated_code = None
-        if user:
-            target_email = (user.get('u_email') or user.get('t_email') or '').strip().lower()
-            if target_email and '@' in target_email and '.' in target_email:
-                user_id = user['id']
-                user_display = html.escape(str(user.get('u_name') or user.get('t_name') or user['username']))
-                
-                _PASSWORD_RESET_FAILURES[user_id] = 0
-                cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE user_id = %s AND used = FALSE;", (user_id,))
-                
-                # Generate crypto-secure 6-digit numeric token
-                code = f"{secrets.randbelow(900000) + 100000}"
-                generated_code = code
-                
-                expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
-                cur.execute("""
-                    INSERT INTO password_reset_tokens (user_id, token, email, expires_at, used)
-                    VALUES (%s, %s, %s, %s, FALSE);
-                """, (user_id, code, target_email, expires_at))
-                conn.commit()
-
-                # LOG OSTENSIVO NO SERVIDOR (Visível nos logs do ShardCloud)
-                print(f"\n" + "="*60, flush=True)
-                print(f"🔑 [RECUPERAÇÃO DE SENHA - CÓDIGO DE VERIFICAÇÃO]", flush=True)
-                print(f"👤 Usuário: {user['username']} ({user_display})", flush=True)
-                print(f"📧 E-mail: {target_email}", flush=True)
-                print(f"🔢 CÓDIGO DE 6 DÍGITOS: {code}", flush=True)
-                print(f"⏰ Válido por 15 minutos até: {expires_at.strftime('%H:%M:%S')}", flush=True)
-                print(f"="*60 + "\n", flush=True)
-
-                # Dispatch Email via Official Template
-                client_ip = get_client_ip()
-                send_password_reset_email(
-                    to_email=target_email,
-                    user_display=user_display,
-                    code=code,
-                    client_ip=client_ip,
-                    expires_in_minutes=15
-                )
-                log_action(user_id, user['username'], f"Solicitou código de recuperação de senha enviado por email.")
-
-        cur.close()
-        conn.close()
+    if not user.get('totp_enabled'):
         return jsonify({
-            "success": True,
-            "message": success_msg,
-            "code": generated_code,
-            "expires_in_minutes": 15
-        })
-    except Exception as e:
-        print("[AUTH FORGOT PASSWORD ERROR]", e)
-        return jsonify({"success": True, "message": success_msg})
+            'error': 'Sua conta ainda não possui aplicativo autenticador configurado. Contate o coordenador total (alexandre.candido) para redefinir seu acesso.',
+            'requires_coordinator': True
+        }), 400
+
+    return jsonify({
+        'success': True,
+        'totp_required': True,
+        'username': user['username'],
+        'message': 'Autenticador detectado. Digite o código de 6 dígitos gerado no seu aplicativo autenticador para prosseguir com a redefinição de senha.'
+    })
 
 @app.route('/api/auth/reset-password', methods=['POST'])
 def api_reset_password():
     data = request.get_json(silent=True) or {}
     identifier = (data.get('identifier') or '').strip().lower()
-    code = (data.get('code') or '').strip()
+    code = str(data.get('code') or '').strip().replace(' ', '').replace('-', '')
     new_password = data.get('new_password') or ''
 
     if not identifier or not code or not new_password:
-        return jsonify({"error": "Por favor, preencha todos os campos obrigatórios."}), 400
+        return jsonify({'error': 'Por favor, preencha todos os campos obrigatórios.'}), 400
 
     if len(new_password) < 6:
-        return jsonify({"error": "A nova senha deve ter no mínimo 6 caracteres."}), 400
+        return jsonify({'error': 'A nova senha deve ter no mínimo 6 caracteres.'}), 400
 
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT u.id, u.username, u.email as u_email, t.email as t_email, u.name as u_name
-            FROM users u
-            LEFT JOIN technicians t ON u.tech_id = t.id
-            WHERE LOWER(u.username) = %s OR LOWER(COALESCE(u.email, '')) = %s OR LOWER(COALESCE(t.email, '')) = %s;
-        """, (identifier, identifier, identifier))
-        user = cur.fetchone()
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT u.id, u.username, u.totp_secret, u.totp_enabled
+        FROM users u
+        LEFT JOIN technicians t ON u.tech_id = t.id
+        WHERE LOWER(u.username) = %s OR LOWER(COALESCE(u.email, '')) = %s OR LOWER(COALESCE(t.email, '')) = %s;
+    ''', (identifier, identifier, identifier))
+    user = cur.fetchone()
 
-        if not user:
-            cur.close()
-            conn.close()
-            time.sleep(1)
-            return jsonify({"error": "Código de recuperação inválido ou expirado."}), 400
-
-        user_id = user['id']
-
-        cur.execute("""
-            SELECT id, token, expires_at, used
-            FROM password_reset_tokens
-            WHERE user_id = %s AND token = %s AND used = FALSE AND expires_at > NOW()
-            ORDER BY created_at DESC
-            LIMIT 1;
-        """, (user_id, code))
-        token_row = cur.fetchone()
-
-        if not token_row:
-            _PASSWORD_RESET_FAILURES[user_id] += 1
-            if _PASSWORD_RESET_FAILURES[user_id] >= 5:
-                cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE user_id = %s AND used = FALSE;", (user_id,))
-                conn.commit()
-            cur.close()
-            conn.close()
-            time.sleep(1)
-            return jsonify({"error": "Código de verificação incorreto ou expirado. Solicite um novo código."}), 400
-
-        # Mark token as used
-        cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE id = %s;", (token_row['id'],))
-
-        # Update password hash
-        hashed_pw = generate_password_hash(new_password)
-        cur.execute("UPDATE users SET password_hash = %s WHERE id = %s;", (hashed_pw, user_id))
-        conn.commit()
+    if not user or not user.get('totp_enabled') or not user.get('totp_secret'):
         cur.close()
         conn.close()
+        time.sleep(1)
+        return jsonify({'error': 'Usuário não possui autenticador configurado ou não foi localizado. Contate o coordenador alexandre.candido.'}), 400
 
-        log_action(user_id, user['username'], "Redefiniu sua senha de acesso com sucesso via código por e-mail.")
+    user_id = user['id']
+    secret = user['totp_secret']
 
-        # Dispatch confirmation email via Resend
-        target_email = (user.get('u_email') or user.get('t_email') or '').strip().lower()
-        if target_email and '@' in target_email:
-            now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
-            safe_name = html.escape(str(user.get('u_name') or user['username']))
-            send_resend_email(
-                to_email=target_email,
-                subject="[Claro Rede Externa] Senha Redefinida com Sucesso",
-                category_badge="SEGURANÇA DA CONTA",
-                title="Sua Senha foi Redefinida",
-                message_html=f'''
-                    <p>Olá, <strong>{safe_name}</strong>.</p>
-                    <p>Confirmamos que a senha de acesso para a conta de usuário <strong>{html.escape(user['username'])}</strong> foi redefinida com sucesso em <strong>{now_str}</strong>.</p>
-                    <p>Se você realizou esta operação, nenhuma ação adicional é necessária. Caso não reconheça esta alteração, contate imediatamente a coordenação operacional.</p>
-                ''',
-                cta_text="Acessar o Sistema",
-                cta_url="https://gestaoredeexterna.shardweb.app/"
-            )
+    if not verify_totp_token(secret, code, window=1):
+        cur.close()
+        conn.close()
+        time.sleep(1)
+        return jsonify({'error': 'Código do aplicativo autenticador incorreto ou expirado. Tente novamente.'}), 400
 
-        return jsonify({"success": True, "message": "Sua senha foi redefinida com sucesso! Você já pode efetuar login."})
-    except Exception as e:
-        print("[AUTH RESET PASSWORD ERROR]", e)
-        return jsonify({"error": "Erro ao redefinir senha. Tente novamente mais tarde."}), 500
+    # Password update
+    hashed_pw = generate_password_hash(new_password)
+    cur.execute('UPDATE users SET password_hash = %s WHERE id = %s;', (hashed_pw, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    log_action(user_id, user['username'], 'Redefiniu sua senha com sucesso utilizando o aplicativo autenticador (TOTP).')
+
+    return jsonify({
+        'success': True,
+        'message': 'Senha redefinida com sucesso! Você já pode efetuar login com sua nova credencial.'
+    })
+
 
 def get_user_info_dict(user_id):
     try:
@@ -2680,6 +2795,7 @@ def get_user_info_dict(user_id):
             cur.execute("""
                 SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
                        u.email as u_email, u.phone as u_phone, u.name as u_name,
+                       u.totp_secret, u.totp_enabled, u.totp_verified_at,
                        t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
                        t.registration_claro, t.toa_login
                 FROM users u
@@ -2693,6 +2809,7 @@ def get_user_info_dict(user_id):
             cur.execute("""
                 SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
                        u.email as u_email, u.phone as u_phone, u.name as u_name,
+                       u.totp_secret, u.totp_enabled, u.totp_verified_at,
                        t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
                        t.registration_claro, t.toa_login
                 FROM users u
@@ -2727,6 +2844,13 @@ def get_user_info_dict(user_id):
         uname = (row.get('username') or '').strip().lower()
         resolved_perms = resolve_user_permissions(uname, row.get('role'), row.get('permissions'))
 
+        totp_enabled = bool(row.get('totp_enabled'))
+        totp_exp = session.get('totp_expires_at') or 0
+        totp_verified = bool(session.get('totp_verified') and time.time() < totp_exp)
+
+        requires_totp_setup = not totp_enabled
+        requires_totp_verify = totp_enabled and not totp_verified
+
         return {
             "id": row['id'],
             "username": row['username'],
@@ -2743,7 +2867,12 @@ def get_user_info_dict(user_id):
             "toa_login": row.get('toa_login'),
             "permissions": resolved_perms,
             "is_master": uname == MASTER_COORDINATOR_USERNAME,
-            "is_coordenador": is_coordenador_role(uname, row.get('role'))
+            "is_coordenador": is_coordenador_role(uname, row.get('role')),
+            "totp_enabled": totp_enabled,
+            "totp_verified": totp_verified,
+            "totp_expires_at": totp_exp,
+            "requires_totp_setup": requires_totp_setup,
+            "requires_totp_verify": requires_totp_verify
         }
     except Exception as e:
         print("get_user_info_dict error:", e)
@@ -6601,7 +6730,7 @@ def api_get_users():
         conn = get_db()
         cur = conn.cursor()
         cur.execute("""
-            SELECT u.id, u.username, u.role, u.tech_id, u.permissions, t.name AS tech_name, u.created_at 
+            SELECT u.id, u.username, u.role, u.tech_id, u.permissions, u.totp_enabled, t.name AS tech_name, u.created_at 
             FROM users u 
             LEFT JOIN technicians t ON u.tech_id = t.id 
             ORDER BY u.username ASC;
@@ -6617,6 +6746,7 @@ def api_get_users():
             u['permissions'] = resolve_user_permissions(uname, u.get('role'), u.get('permissions'))
             u['is_master'] = (uname == MASTER_COORDINATOR_USERNAME)
             u['is_coordenador'] = is_coordenador_role(uname, u.get('role'))
+            u['totp_enabled'] = bool(u.get('totp_enabled'))
         return jsonify(users)
     except Exception as e:
         print("Backend error log:", e)
@@ -7077,6 +7207,45 @@ def parse_fault_searcher_file(filepath, topic):
 
 
     return parsed_records
+
+
+@app.route('/api/users/<int:user_id>/reset-totp', methods=['POST'])
+@login_required
+def api_admin_reset_totp(user_id):
+    caller = get_user_info_dict(session['user_id'])
+    is_master = bool(caller and (caller.get('is_master') or caller.get('username') == MASTER_COORDINATOR_USERNAME or session.get('username') == MASTER_COORDINATOR_USERNAME))
+    
+    if not is_master:
+        return jsonify({'error': 'Apenas o coordenador geral (alexandre.candido) possui permissão para redefinir o autenticador de usuários.'}), 403
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, username FROM users WHERE id = %s;', (user_id,))
+    target = cur.fetchone()
+
+    if not target:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Usuário não encontrado.'}), 404
+
+    target_name = target['username']
+    cur.execute('''
+        UPDATE users
+        SET totp_secret = NULL,
+            totp_enabled = FALSE,
+            totp_verified_at = NULL
+        WHERE id = %s;
+    ''', (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    log_action(session['user_id'], session['username'], f'Redefiniu o aplicativo autenticador (2FA) do usuário {target_name}. O usuário precisará escanear um novo QR Code.')
+    return jsonify({
+        'success': True,
+        'message': f'Aplicativo autenticador de {target_name} resetado com sucesso! O usuário será forçado a configurar um novo autenticador no próximo login.'
+    })
+
 
 @app.route('/api/buscador/records', methods=['GET'])
 @login_required
