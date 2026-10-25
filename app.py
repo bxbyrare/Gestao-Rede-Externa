@@ -4579,6 +4579,55 @@ def api_save_monthly_indicators():
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
+
+@app.route('/api/indicators/justificativa', methods=['POST', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_save_indicator_justificativa():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    try:
+        data = request.get_json(silent=True) or {}
+        month = (data.get('month') or '').strip().lower()
+        region = (data.get('region') or 'Interior').strip()
+        justificativa = data.get('justificativa', '')
+        
+        if not month:
+            return jsonify({"error": "Mês de referência é obrigatório."}), 400
+            
+        db_month_key = f"cap-{month}" if region.lower() == 'capital' and not month.startswith('cap-') else month
+
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute("SELECT data FROM monthly_indicators WHERE reference_month = %s;", (db_month_key,))
+        row = cur.fetchone()
+        
+        current_data = {}
+        if row and row.get('data'):
+            if isinstance(row['data'], str):
+                try: current_data = json.loads(row['data'])
+                except Exception: current_data = {}
+            elif isinstance(row['data'], dict):
+                current_data = row['data']
+        
+        current_data['justificativas'] = justificativa
+        
+        cur.execute("""
+            INSERT INTO monthly_indicators (reference_month, data, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (reference_month) DO UPDATE
+            SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;
+        """, (db_month_key, json.dumps(current_data, ensure_ascii=False)))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(session['user_id'], session['username'], f"Salvou justificativa dos indicadores para {region} ({month})")
+        return jsonify({"success": True, "message": "Justificativa salva com sucesso!", "month": month, "region": region})
+    except Exception as e:
+        print("Error saving indicator justificativa:", e)
+        return jsonify({"error": "Erro ao salvar justificativa."}), 500
+
 INDICATORS_AREAS_INTERIOR = ['Baixada', 'Metropolitana', 'Norte Fluminense', 'Serra Fluminense', 'Sul Fluminense', 'Lagos']
 INDICATORS_AREAS_CAPITAL = ['Centro ZS', 'Norte 1', 'Norte 2', 'Norte 3', 'Zona Oeste', 'Sul 2']
 

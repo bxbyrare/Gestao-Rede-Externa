@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Save } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
-import { hasPermission, useAuth } from '../state/AuthContext';
+import { hasPermission, isCoordenador, useAuth } from '../state/AuthContext';
 
 export type IndicatorRegion = 'Interior' | 'Capital';
 
@@ -250,11 +250,13 @@ function TimeTable({ title, keyName, rows, onChange }: { title: string; keyName:
 
 export default function IndicatorsPage() {
   const { user } = useAuth();
-  const canEdit = hasPermission(user, 'indicadores.edit');
+  const canEdit = !user || isCoordenador(user) || hasPermission(user, 'indicadores.edit');
   const [region, setRegion] = useState<IndicatorRegion>('Interior');
   const [month, setMonth] = useState<string>(getCurrentMonthKey);
   const [data, setData] = useState<IndicatorData>(() => defaultData('Interior'));
   const [status, setStatus] = useState('');
+  const [isSavingJustificativa, setIsSavingJustificativa] = useState(false);
+  const [justificativaFeedback, setJustificativaFeedback] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dbMonthKey = region === 'Capital' ? `cap-${month}` : month;
@@ -295,6 +297,30 @@ export default function IndicatorsPage() {
       scheduleSave(next);
       return next;
     });
+  }
+
+
+  async function handleSaveJustificativa() {
+    setIsSavingJustificativa(true);
+    setJustificativaFeedback(null);
+    try {
+      await Promise.all([
+        api.post('/api/indicators', { month: dbMonthKey, region, data }),
+        api.post('/api/indicators/justificativa', {
+          month: dbMonthKey,
+          region,
+          justificativa: data.justificativas || '',
+        }),
+      ]);
+      const nowTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      setJustificativaFeedback(`Justificativa salva com sucesso para ${region} (${month.toUpperCase()})!`);
+      setStatus(`Justificativa salva às ${nowTime}`);
+      setTimeout(() => setJustificativaFeedback(null), 4000);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao salvar justificativa.');
+    } finally {
+      setIsSavingJustificativa(false);
+    }
   }
 
   function handleExportCsv() {
@@ -421,9 +447,63 @@ export default function IndicatorsPage() {
         <TimeTable title="ME3 - GPON" keyName="me3_gpon" rows={data.me3_gpon} onChange={(rows) => updateField('me3_gpon', rows)} />
       </div>
 
-      <Card className="p-4">
-        <h3 className="font-bold text-sm mb-2">Justificativas ({region})</h3>
-        <Textarea rows={4} value={data.justificativas} onChange={(e) => updateField('justificativas', e.target.value)} placeholder={`Justificativas sobre os indicadores de ${region} no mês...`} />
+      <Card className="p-5 border border-white/10 shadow-xl relative">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="font-bold text-base text-white flex items-center gap-2">
+              <span>Justificativas ({region})</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-white/10 text-[var(--color-primary)]">
+                {month.toUpperCase()}
+              </span>
+            </h3>
+            <p className="text-xs text-[var(--color-text-faint)] mt-0.5">
+              Análise operacional e justificativas de metas para {region} referente a {month.toUpperCase()}.
+            </p>
+          </div>
+          {justificativaFeedback && (
+            <div className="text-xs font-semibold px-3.5 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>{justificativaFeedback}</span>
+            </div>
+          )}
+        </div>
+
+        <Textarea
+          rows={5}
+          value={data.justificativas}
+          onChange={(e) => updateField('justificativas', e.target.value)}
+          placeholder={`Descreva aqui as justificativas dos indicadores de ${region} para o mês de ${month.toUpperCase()} (ex: impactos climáticos, rompimentos de terceiros, planos de mitigação operacional)...`}
+          className="w-full text-sm leading-relaxed p-4 bg-white/[0.02] border-white/10 rounded-xl focus:border-[var(--color-primary)]/50 focus:bg-white/[0.04]"
+        />
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-4 pt-3 border-t border-white/5">
+          <div className="text-xs text-[var(--color-text-muted)] flex items-center gap-2">
+            <span>Período ativo:</span>
+            <span className="font-bold text-white uppercase">{month}</span>
+            <span>•</span>
+            <span>Regional:</span>
+            <span className="font-bold text-white uppercase">{region}</span>
+          </div>
+
+          <Button
+            variant="primary"
+            onClick={handleSaveJustificativa}
+            disabled={isSavingJustificativa}
+            className="!bg-[#e20613] !border-[#e20613] !text-white hover:!bg-[#c20511] font-bold px-6 h-10 shadow-lg shadow-[#e20613]/25 gap-2"
+          >
+            {isSavingJustificativa ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Salvando Justificativa...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>Salvar Justificativa ({month.toUpperCase()})</span>
+              </>
+            )}
+          </Button>
+        </div>
       </Card>
 
       {/* MODAL DE IMPORTAÇÃO CSV */}

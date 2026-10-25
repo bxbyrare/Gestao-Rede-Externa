@@ -1481,8 +1481,11 @@
             <h4 style="color: #ffffff; font-weight: 800; font-size: 1.05rem; margin: 0;">Justificativas Operacionais do Mês</h4>
           </div>
           <textarea id="indicator-justificativas" rows="4" placeholder="Digite aqui as justificativas operacionais para metas não atingidas no mês selecionado..."></textarea>
-          <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
-            <span id="indicator-auto-save-status" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); opacity: 0; transition: opacity 0.3s;"></span>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 10px; flex-wrap: wrap;">
+            <span id="indicator-auto-save-status" style="font-size: 0.8rem; font-weight: 600; color: #34d399; transition: opacity 0.3s;"></span>
+            <button type="button" id="btn-save-indicators" onclick="saveMonthlyIndicators()" class="btn btn-primary" style="background: #e20613; border: 1px solid #e20613; color: #fff; font-weight: 700; border-radius: 20px; padding: 8px 22px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-shadow: 0 4px 15px rgba(226,6,19,0.3);">
+              💾 Salvar Justificativas & Metas
+            </button>
           </div>
         </div>
 
