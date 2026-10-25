@@ -78,9 +78,8 @@ export default function DashboardLayout() {
   // If user is not TOTP verified yet, block full layout and render exclusive security prompt
   if (user && !user.totp_verified) {
     return (
-      <div className="app-shell-bg anti-print-protected min-h-screen flex items-center justify-center relative overflow-hidden">
+      <div className="anti-print-protected min-h-screen flex items-center justify-center relative overflow-hidden bg-[#06080D]">
         <AntiPrintGuard />
-        <LiquidEther />
         <AuthenticatorModal />
       </div>
     );
