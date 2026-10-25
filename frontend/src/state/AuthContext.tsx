@@ -143,6 +143,15 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ],
   },
   {
+    id: 'pos_evento',
+    name: 'Pós Evento',
+    actions: [
+      { key: 'pos_evento.create', label: 'Adicionar' },
+      { key: 'pos_evento.edit', label: 'Editar' },
+      { key: 'pos_evento.delete', label: 'Remover' },
+    ],
+  },
+  {
     id: 'avaliacao',
     name: 'Avaliação Técnica',
     actions: [

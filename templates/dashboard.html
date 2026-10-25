@@ -92,6 +92,14 @@
           </button>
         </li>
         <li>
+          <button class="menu-btn" data-tab="pos-evento-tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            <span>Pós Evento</span>
+          </button>
+        </li>
+        <li>
           <button class="menu-btn" data-tab="mapa-eventos-tab">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
@@ -360,6 +368,89 @@
               
             </tbody>
           </table>
+        </div>
+      </section>
+
+      
+            <!-- Tab: Pós Evento -->
+      <section class="tab-pane" id="pos-evento-tab">
+        <div style="background: #18181f; border-bottom: 2px solid var(--border); padding: 14px 20px; border-radius: 12px 12px 0 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <img src="{{ url_for('static', filename='img/logo_flat.png') }}" alt="Claro" style="height: 24px;" onerror="this.style.display='none'">
+            <h3 style="font-size: 1.3rem; font-weight: 800; color: #ffffff; margin: 0; letter-spacing: -0.3px;">
+              Pós Evento
+            </h3>
+            <span style="background: rgba(226,6,19,0.15); color: #ff334b; border: 1px solid rgba(226,6,19,0.3); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; text-transform: uppercase;">
+              Vistoria de Campo
+            </span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px; gap: 8px;">
+              <span style="font-size: 12px; font-weight: 700; color: #a1a1aa; text-transform: uppercase;">Mês:</span>
+              <select id="pos-evento-month-select" onchange="window.posEventoController && window.posEventoController.changeMonth(this.value)" style="background: transparent; color: #fff; border: none; font-size: 13px; font-weight: 600; outline: none; cursor: pointer;">
+                <option value="ALL" style="background: #18181f;">Todos os Meses</option>
+              </select>
+            </div>
+
+            <button onclick="window.posEventoController && window.posEventoController.exportCsv()" class="btn-secondary" style="height: 38px; padding: 0 16px; border-radius: 20px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Exportar Tarefas (CSV)
+            </button>
+
+            <button onclick="window.posEventoController && window.posEventoController.openCreateModal()" class="btn-primary" style="height: 38px; padding: 0 18px; border-radius: 20px; font-size: 13px; font-weight: 700; background: #e20613; border: 1px solid #e20613; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(226,6,19,0.3);">
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              Nova Atividade
+            </button>
+          </div>
+        </div>
+
+        <!-- KPIs Resumo Superior -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 20px;">
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px 20px;">
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; margin-bottom: 6px;">Total Cadastros no Mês</div>
+            <div id="pos-kpi-total" style="font-size: 28px; font-weight: 900; color: #ffffff;">0</div>
+            <div style="font-size: 11px; color: #71717a; margin-top: 4px;">Vistorias registradas</div>
+          </div>
+
+          <div style="background: rgba(16,185,129,0.03); border: 1px solid rgba(16,185,129,0.2); border-radius: 14px; padding: 16px 20px;">
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #34d399; margin-bottom: 6px;">Concluídos</div>
+            <div id="pos-kpi-concluidos" style="font-size: 28px; font-weight: 900; color: #34d399;">0</div>
+            <div id="pos-kpi-concluidos-pct" style="font-size: 11px; color: #10b981; margin-top: 4px;">0% do total</div>
+          </div>
+
+          <div style="background: rgba(245,158,11,0.03); border: 1px solid rgba(245,158,11,0.2); border-radius: 14px; padding: 16px 20px;">
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #fbbf24; margin-bottom: 6px;">Não Concluídos</div>
+            <div id="pos-kpi-nao-concluidos" style="font-size: 28px; font-weight: 900; color: #fbbf24;">0</div>
+            <div style="font-size: 11px; color: #f59e0b; margin-top: 4px;">Pendências de campo</div>
+          </div>
+        </div>
+
+        <!-- Tabela -->
+        <div style="background: #18181f; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.4);">
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
+              <thead>
+                <tr style="background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); color: #a1a1aa; text-transform: uppercase; font-weight: 700;">
+                  <th style="padding: 12px 14px;">Tipo</th>
+                  <th style="padding: 12px 14px;">Nº do Ticket</th>
+                  <th style="padding: 12px 14px;">Data Falha</th>
+                  <th style="padding: 12px 14px;">Área</th>
+                  <th style="padding: 12px 14px; text-align: center;">Lixos Claro no Chão</th>
+                  <th style="padding: 12px 14px; text-align: center;">Pontas de Cabos Claro?</th>
+                  <th style="padding: 12px 14px; text-align: center;">Rede Adequada?</th>
+                  <th style="padding: 12px 14px;">Responsável</th>
+                  <th style="padding: 12px 14px; text-align: center;">Status</th>
+                  <th style="padding: 12px 14px; text-align: right;">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="pos-evento-table-body">
+                <tr>
+                  <td colspan="10" style="padding: 30px; text-align: center; color: #71717a;">Carregando vistorias...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -2948,6 +3039,312 @@
       </div>
     </div>
   </div>
+
+
+  <!-- Modal Pós Evento -->
+  <div class="modal-overlay" id="pos-evento-modal">
+    <div class="modal-card" style="max-width: 600px; background: #18181f; border: 1px solid var(--border); border-radius: 16px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 15px;">
+        <h3 id="pos-evento-modal-title" style="color: #fff; font-weight: 800; font-size: 1.15rem;">Nova Atividade Pós Evento</h3>
+        <button class="btn-close-modal" onclick="window.posEventoController.closeModal()">&times;</button>
+      </div>
+      <form id="pos-evento-form" onsubmit="window.posEventoController.handleSave(event)" style="padding-top: 15px; display: flex; flex-direction: column; gap: 15px;">
+        <input type="hidden" id="pos-evento-id">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Tipo de Ticket *</label>
+            <select id="pos-evento-ticket-type" required style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+              <option value="RAL">RAL</option>
+              <option value="REC">REC</option>
+              <option value="Outage">Outage</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Número do Ticket *</label>
+            <input type="text" id="pos-evento-ticket-number" required placeholder="Ex: 8492019" style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px; font-family: monospace;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Data da Falha *</label>
+            <input type="date" id="pos-evento-fault-date" required style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Área</label>
+            <input type="text" id="pos-evento-area" placeholder="Ex: Zona Sul" style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Lixos Claro no Chão *</label>
+            <select id="pos-evento-trash" required style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+              <option value="Não">Não</option>
+              <option value="Sim">Sim</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Pontas de Cabos Claro? *</label>
+            <select id="pos-evento-cable-ends" required style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+              <option value="Não">Não</option>
+              <option value="Sim">Sim</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Rede Adequada? *</label>
+            <select id="pos-evento-network" required style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+              <option value="Sim">Sim</option>
+              <option value="Não">Não</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Responsável</label>
+            <input type="text" id="pos-evento-responsible" placeholder="Nome do coordenador" style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #a1a1aa; display: block; margin-bottom: 6px;">Status *</label>
+            <select id="pos-evento-status" required style="width: 100%; height: 40px; background: #22222a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 0 10px;">
+              <option value="Não concluido">Não concluido</option>
+              <option value="Concluido">Concluido</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 15px;">
+          <button type="button" class="btn btn-outline" onclick="window.posEventoController.closeModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" style="background: #e20613; border: 1px solid #e20613; font-weight: 700; padding: 0 20px;">Salvar Atividade</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Controller Pós Evento Legado
+    window.posEventoController = {
+      items: [],
+      selectedMonth: 'ALL',
+
+      init() {
+        this.populateMonthOptions();
+        this.loadData();
+      },
+
+      populateMonthOptions() {
+        const select = document.getElementById('pos-evento-month-select');
+        if (!select) return;
+        select.innerHTML = '<option value="ALL">Todos os Meses</option>';
+        const ptMonths = {1:'jan',2:'fev',3:'mar',4:'abr',5:'mai',6:'jun',7:'jul',8:'ago',9:'set',10:'out',11:'nov',12:'dez'};
+        const now = new Date();
+        const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        for (let i = 0; i < 12; i++) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const label = `${ptMonths[d.getMonth() + 1]}/${String(d.getFullYear()).slice(-2)}`;
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = label;
+          if (key === currentKey) {
+            opt.selected = true;
+            this.selectedMonth = key;
+          }
+          select.appendChild(opt);
+        }
+      },
+
+      changeMonth(month) {
+        this.selectedMonth = month;
+        this.loadData();
+      },
+
+      async loadData() {
+        try {
+          const q = this.selectedMonth && this.selectedMonth !== 'ALL' ? `?month=${this.selectedMonth}` : '';
+          const res = await fetch(`/api/pos-eventos${q}`);
+          if (!res.ok) throw new Error('Falha ao buscar pós eventos');
+          this.items = await res.json();
+          this.render();
+        } catch (e) {
+          console.error(e);
+        }
+      },
+
+      render() {
+        // KPIs
+        const total = this.items.length;
+        const concluidos = this.items.filter(i => (i.status||'').toLowerCase() === 'concluido').length;
+        const naoConcluidos = total - concluidos;
+        const pct = total > 0 ? Math.round((concluidos / total) * 100) : 0;
+
+        const elTot = document.getElementById('pos-kpi-total');
+        if (elTot) elTot.textContent = total;
+        const elConc = document.getElementById('pos-kpi-concluidos');
+        if (elConc) elConc.textContent = concluidos;
+        const elPct = document.getElementById('pos-kpi-concluidos-pct');
+        if (elPct) elPct.textContent = `${pct}% do total`;
+        const elNao = document.getElementById('pos-kpi-nao-concluidos');
+        if (elNao) elNao.textContent = naoConcluidos;
+
+        // Table
+        const tbody = document.getElementById('pos-evento-table-body');
+        if (!tbody) return;
+        if (this.items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="10" style="padding: 30px; text-align: center; color: #71717a;">Nenhuma atividade cadastrada neste mês.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = this.items.map(item => {
+          const isConc = (item.status||'').toLowerCase() === 'concluido';
+          const isLixoSim = (item.trash_on_ground||'').toLowerCase() === 'sim';
+          const isPontaSim = (item.cable_ends||'').toLowerCase() === 'sim';
+          const isRedeSim = (item.adequate_network||'').toLowerCase() === 'sim';
+
+          return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+              <td style="padding: 12px 14px; font-weight: 700;">
+                <span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; background: rgba(56,189,248,0.15); color: #38bdf8;">${item.ticket_type}</span>
+              </td>
+              <td style="padding: 12px 14px; font-family: monospace; font-weight: 700; color: #fff;">${item.ticket_number}</td>
+              <td style="padding: 12px 14px; color: #e4e4e7;">${item.fault_date_formatted || item.fault_date}</td>
+              <td style="padding: 12px 14px; color: #e4e4e7;">${item.area || '—'}</td>
+              <td style="padding: 12px 14px; text-align: center;">
+                <span style="padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; ${isLixoSim ? 'background: rgba(244,63,94,0.2); color: #fda4af;' : 'background: rgba(16,185,129,0.1); color: #34d399;'}">${item.trash_on_ground}</span>
+              </td>
+              <td style="padding: 12px 14px; text-align: center;">
+                <span style="padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; ${isPontaSim ? 'background: rgba(244,63,94,0.2); color: #fda4af;' : 'background: rgba(16,185,129,0.1); color: #34d399;'}">${item.cable_ends}</span>
+              </td>
+              <td style="padding: 12px 14px; text-align: center;">
+                <span style="padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; ${isRedeSim ? 'background: rgba(16,185,129,0.15); color: #34d399;' : 'background: rgba(244,63,94,0.2); color: #fda4af;'}">${item.adequate_network}</span>
+              </td>
+              <td style="padding: 12px 14px; color: #fff;">${item.responsible || '—'}</td>
+              <td style="padding: 12px 14px; text-align: center;">
+                <span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; ${isConc ? 'background: rgba(16,185,129,0.2); color: #6ee7b7;' : 'background: rgba(245,158,11,0.2); color: #fde68a;'}">${item.status}</span>
+              </td>
+              <td style="padding: 12px 14px; text-align: right;">
+                <button onclick="window.posEventoController.copyWhatsApp(${item.id})" title="Copiar WhatsApp" style="background: none; border: none; cursor: pointer; color: #10b981; font-size: 15px; margin-right: 6px;">💬</button>
+                <button onclick="window.posEventoController.duplicate(${item.id})" title="Duplicar" style="background: none; border: none; cursor: pointer; color: #38bdf8; font-size: 15px; margin-right: 6px;">📋</button>
+                <button onclick="window.posEventoController.openEditModal(${item.id})" title="Editar" style="background: none; border: none; cursor: pointer; color: #fbbf24; font-size: 15px; margin-right: 6px;">✏️</button>
+                <button onclick="window.posEventoController.delete(${item.id})" title="Excluir" style="background: none; border: none; cursor: pointer; color: #f43f5e; font-size: 15px;">🗑️</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      },
+
+      openCreateModal() {
+        document.getElementById('pos-evento-id').value = '';
+        document.getElementById('pos-evento-ticket-type').value = 'RAL';
+        document.getElementById('pos-evento-ticket-number').value = '';
+        document.getElementById('pos-evento-fault-date').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('pos-evento-area').value = '';
+        document.getElementById('pos-evento-trash').value = 'Não';
+        document.getElementById('pos-evento-cable-ends').value = 'Não';
+        document.getElementById('pos-evento-network').value = 'Sim';
+        document.getElementById('pos-evento-responsible').value = '';
+        document.getElementById('pos-evento-status').value = 'Não concluido';
+        document.getElementById('pos-evento-modal-title').textContent = 'Nova Atividade Pós Evento';
+        document.getElementById('pos-evento-modal').classList.add('active');
+      },
+
+      openEditModal(id) {
+        const item = this.items.find(i => i.id === id);
+        if (!item) return;
+        document.getElementById('pos-evento-id').value = item.id;
+        document.getElementById('pos-evento-ticket-type').value = item.ticket_type;
+        document.getElementById('pos-evento-ticket-number').value = item.ticket_number;
+        document.getElementById('pos-evento-fault-date').value = item.fault_date;
+        document.getElementById('pos-evento-area').value = item.area;
+        document.getElementById('pos-evento-trash').value = item.trash_on_ground;
+        document.getElementById('pos-evento-cable-ends').value = item.cable_ends;
+        document.getElementById('pos-evento-network').value = item.adequate_network;
+        document.getElementById('pos-evento-responsible').value = item.responsible;
+        document.getElementById('pos-evento-status').value = item.status;
+        document.getElementById('pos-evento-modal-title').textContent = 'Editar Atividade Pós Evento';
+        document.getElementById('pos-evento-modal').classList.add('active');
+      },
+
+      duplicate(id) {
+        const item = this.items.find(i => i.id === id);
+        if (!item) return;
+        this.openCreateModal();
+        document.getElementById('pos-evento-ticket-type').value = item.ticket_type;
+        document.getElementById('pos-evento-ticket-number').value = `${item.ticket_number} (Cópia)`;
+        document.getElementById('pos-evento-fault-date').value = item.fault_date;
+        document.getElementById('pos-evento-area').value = item.area;
+        document.getElementById('pos-evento-trash').value = item.trash_on_ground;
+        document.getElementById('pos-evento-cable-ends').value = item.cable_ends;
+        document.getElementById('pos-evento-network').value = item.adequate_network;
+        document.getElementById('pos-evento-responsible').value = item.responsible;
+      },
+
+      closeModal() {
+        document.getElementById('pos-evento-modal').classList.remove('active');
+      },
+
+      async handleSave(e) {
+        e.preventDefault();
+        const id = document.getElementById('pos-evento-id').value;
+        const payload = {
+          ticket_type: document.getElementById('pos-evento-ticket-type').value,
+          ticket_number: document.getElementById('pos-evento-ticket-number').value,
+          fault_date: document.getElementById('pos-evento-fault-date').value,
+          area: document.getElementById('pos-evento-area').value,
+          trash_on_ground: document.getElementById('pos-evento-trash').value,
+          cable_ends: document.getElementById('pos-evento-cable-ends').value,
+          adequate_network: document.getElementById('pos-evento-network').value,
+          responsible: document.getElementById('pos-evento-responsible').value,
+          status: document.getElementById('pos-evento-status').value
+        };
+
+        try {
+          const res = id
+            ? await fetch(`/api/pos-eventos/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+            : await fetch('/api/pos-eventos', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+          if (!res.ok) throw new Error('Erro ao salvar');
+          this.closeModal();
+          this.loadData();
+        } catch (err) {
+          alert('Erro ao salvar atividade.');
+        }
+      },
+
+      async delete(id) {
+        if (!confirm('Deseja realmente remover esta atividade?')) return;
+        try {
+          await fetch(`/api/pos-eventos/${id}`, { method: 'DELETE' });
+          this.loadData();
+        } catch (err) {
+          alert('Erro ao remover.');
+        }
+      },
+
+      copyWhatsApp(id) {
+        const item = this.items.find(i => i.id === id);
+        if (!item) return;
+        const text = `🚨 *VISTORIA PÓS EVENTO — CLARO BRASIL* 🚨\n━━━━━━━━━━━━━━━━━━━━━━\n📋 *Tipo de Ticket:* ${item.ticket_type}\n🔢 *Nº do Ticket:* ${item.ticket_number}\n📅 *Data da Falha:* ${item.fault_date_formatted || item.fault_date}\n📍 *Área:* ${item.area || 'Não informada'}\n🗑️ *Lixos da Claro no Chão:* ${item.trash_on_ground}\n🔌 *Pontas de Cabos da Claro:* ${item.cable_ends}\n📡 *Rede Adequada:* ${item.adequate_network}\n👤 *Responsável:* ${item.responsible || 'Não informado'}\n📊 *Status:* ${item.status}\n━━━━━━━━━━━━━━━━━━━━━━\n_Gestão de Rede Externa Claro_`;
+        navigator.clipboard.writeText(text).then(() => {
+          alert('Texto formatado para WhatsApp copiado!');
+        });
+      },
+
+      exportCsv() {
+        window.location.href = `/api/pos-eventos/export${this.selectedMonth && this.selectedMonth !== 'ALL' ? '?month=' + this.selectedMonth : ''}`;
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.querySelector('[data-tab="pos-evento-tab"]');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          window.posEventoController.init();
+        });
+      }
+    });
+  </script>
 
 </body>
 </html>

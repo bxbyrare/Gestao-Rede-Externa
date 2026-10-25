@@ -4,7 +4,7 @@ import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, FolderKanban, FileText, Route as RouteIcon, BarChart3,
   Settings, Menu, X, LogOut, BellRing, ShieldCheck, CheckSquare,
-  UserCheck, AlertTriangle, ArrowRight,
+  UserCheck, AlertTriangle, ArrowRight, CalendarCheck,
 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import LiquidEther from './LiquidEther';
@@ -45,6 +45,7 @@ const NAV_ITEMS = [
   { to: '/buscador', label: 'Buscador', icon: Search },
   { to: '/auditoria', label: 'Auditoria', icon: ShieldCheck },
   { to: '/aceitacao', label: 'Aceitação', icon: CheckSquare },
+  { to: '/pos-evento', label: 'Pós Evento', icon: CalendarCheck },
   { to: '/mapa-eventos', label: 'Mapa de Eventos', icon: MapPinned },
   { to: '/avaliacao', label: 'Avaliação', icon: ClipboardCheck },
   { to: '/projetos', label: 'Projetos', icon: FolderKanban },

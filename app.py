@@ -1341,6 +1341,46 @@ def init_db():
         # Seed initial admin user if empty
         
         # 21. System Live Alerts Table (Notificações em Tempo Real com Som & Toasts)
+        
+        # 21.5. Pos Eventos (Vistoria de Eventos em Campo Claro)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pos_eventos (
+                id SERIAL PRIMARY KEY,
+                ticket_type VARCHAR(50) NOT NULL,
+                ticket_number VARCHAR(100) NOT NULL,
+                fault_date DATE NOT NULL,
+                area VARCHAR(150),
+                trash_on_ground VARCHAR(10) NOT NULL DEFAULT 'Não',
+                cable_ends VARCHAR(10) NOT NULL DEFAULT 'Não',
+                adequate_network VARCHAR(10) NOT NULL DEFAULT 'Sim',
+                responsible VARCHAR(150),
+                status VARCHAR(50) NOT NULL DEFAULT 'Não concluido',
+                created_by VARCHAR(150),
+                created_by_id INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        for col, coltype in [
+            ('ticket_type', 'VARCHAR(50)'),
+            ('ticket_number', 'VARCHAR(100)'),
+            ('fault_date', 'DATE'),
+            ('area', 'VARCHAR(150)'),
+            ('trash_on_ground', "VARCHAR(10) DEFAULT 'Não'"),
+            ('cable_ends', "VARCHAR(10) DEFAULT 'Não'"),
+            ('adequate_network', "VARCHAR(10) DEFAULT 'Sim'"),
+            ('responsible', 'VARCHAR(150)'),
+            ('status', "VARCHAR(50) DEFAULT 'Não concluido'"),
+            ('created_by', 'VARCHAR(150)'),
+            ('created_by_id', 'INT'),
+            ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+            ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE pos_eventos ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS system_live_alerts (
                 id SERIAL PRIMARY KEY,
@@ -9629,6 +9669,440 @@ def api_get_live_alerts():
     except Exception as e:
         print("Error in live-alerts:", e)
         return jsonify({"alerts": [], "latest_id": since_id}), 200
+
+
+
+
+# --------------------------------------------------------------------------
+# API POS EVENTOS (Vistorias em Campo Claro)
+# --------------------------------------------------------------------------
+PT_MONTHS_MAP = {
+    1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun',
+    7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'
+}
+
+def format_pos_evento_row(r):
+    f_date = r['fault_date']
+    if hasattr(f_date, 'strftime'):
+        f_date_iso = f_date.strftime('%Y-%m-%d')
+        f_date_fmt = f_date.strftime('%d/%m/%Y')
+        month_key = f_date.strftime('%Y-%m')
+        month_label = f"{PT_MONTHS_MAP.get(f_date.month, '')}/{f_date.strftime('%y')}"
+    elif isinstance(f_date, str) and len(f_date) >= 10:
+        f_date_iso = f_date[:10]
+        parts = f_date_iso.split('-')
+        if len(parts) == 3:
+            y, m, d = parts
+            f_date_fmt = f"{d}/{m}/{y}"
+            month_key = f"{y}-{m}"
+            m_int = int(m) if m.isdigit() else 1
+            month_label = f"{PT_MONTHS_MAP.get(m_int, '')}/{y[-2:]}"
+        else:
+            f_date_fmt = f_date_iso
+            month_key = ''
+            month_label = ''
+    else:
+        f_date_iso = ''
+        f_date_fmt = ''
+        month_key = ''
+        month_label = ''
+
+    return {
+        "id": r['id'],
+        "ticket_type": r['ticket_type'] or '',
+        "ticket_number": r['ticket_number'] or '',
+        "fault_date": f_date_iso,
+        "fault_date_formatted": f_date_fmt,
+        "month_key": month_key,
+        "month_label": month_label,
+        "area": r['area'] or '',
+        "trash_on_ground": r['trash_on_ground'] or 'Não',
+        "cable_ends": r['cable_ends'] or 'Não',
+        "adequate_network": r['adequate_network'] or 'Sim',
+        "responsible": r['responsible'] or '',
+        "status": r['status'] or 'Não concluido',
+        "created_by": r.get('created_by') or '',
+        "created_at": r['created_at'].isoformat() if r.get('created_at') and hasattr(r['created_at'], 'isoformat') else str(r.get('created_at') or '')
+    }
+
+
+@app.route('/api/pos-eventos', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/pos-eventos/', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_pos_eventos():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    if request.method == 'GET':
+        conn = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    id, ticket_type, ticket_number, fault_date, area,
+                    trash_on_ground, cable_ends, adequate_network,
+                    responsible, status, created_by, created_by_id,
+                    created_at, updated_at
+                FROM pos_eventos
+                ORDER BY fault_date DESC, id DESC;
+            """)
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            month_filter = (request.args.get('month') or '').strip().lower()
+            status_filter = (request.args.get('status') or '').strip()
+            ticket_type_filter = (request.args.get('ticket_type') or '').strip()
+            search_query = (request.args.get('search') or '').strip().lower()
+
+            results = []
+            for r in rows:
+                formatted = format_pos_evento_row(r)
+
+                # Month filter (can match '2026-10' or 'out/26')
+                if month_filter and month_filter != 'all' and month_filter != 'todos':
+                    if formatted['month_key'].lower() != month_filter and formatted['month_label'].lower() != month_filter:
+                        continue
+
+                # Status filter
+                if status_filter and status_filter != 'ALL':
+                    if formatted['status'].lower() != status_filter.lower():
+                        continue
+
+                # Ticket type filter
+                if ticket_type_filter and ticket_type_filter != 'ALL':
+                    if formatted['ticket_type'].lower() != ticket_type_filter.lower():
+                        continue
+
+                # Search filter
+                if search_query:
+                    match_str = f"{formatted['ticket_number']} {formatted['area']} {formatted['responsible']} {formatted['ticket_type']}".lower()
+                    if search_query not in match_str:
+                        continue
+
+                results.append(formatted)
+
+            return jsonify(results), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error listing pos_eventos:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao listar eventos pós evento."}), 500
+
+    if request.method == 'POST':
+        conn = None
+        try:
+            data = request.get_json(silent=True) or request.form.to_dict() or {}
+            ticket_type = (data.get('ticket_type') or '').strip()
+            ticket_number = (data.get('ticket_number') or '').strip()
+            fault_date_str = (data.get('fault_date') or '').strip()
+            area = (data.get('area') or '').strip()
+            trash_on_ground = (data.get('trash_on_ground') or 'Não').strip()
+            cable_ends = (data.get('cable_ends') or 'Não').strip()
+            adequate_network = (data.get('adequate_network') or 'Sim').strip()
+            responsible = (data.get('responsible') or '').strip()
+            status = (data.get('status') or 'Não concluido').strip()
+
+            if not ticket_type or ticket_type not in ['RAL', 'REC', 'Outage']:
+                return jsonify({"error": "Tipo de Ticket inválido. Escolha RAL, REC ou Outage."}), 400
+            if not ticket_number:
+                return jsonify({"error": "O campo Número do ticket é obrigatório."}), 400
+            if not fault_date_str:
+                return jsonify({"error": "O campo Data da falha é obrigatório."}), 400
+
+            if trash_on_ground not in ['Sim', 'Não']:
+                trash_on_ground = 'Não'
+            if cable_ends not in ['Sim', 'Não']:
+                cable_ends = 'Não'
+            if adequate_network not in ['Sim', 'Não']:
+                adequate_network = 'Sim'
+            if status not in ['Concluido', 'Não concluido']:
+                status = 'Não concluido'
+
+            try:
+                f_date = datetime.datetime.strptime(fault_date_str[:10], '%Y-%m-%d').date()
+            except Exception:
+                f_date = datetime.date.today()
+
+            created_by = session.get('user_name') or session.get('username') or 'Coordenador'
+            raw_creator_id = session.get('user_id')
+            clean_creator_id = None
+            if raw_creator_id:
+                try: clean_creator_id = int(raw_creator_id)
+                except Exception: clean_creator_id = None
+
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO pos_eventos (
+                    ticket_type, ticket_number, fault_date, area,
+                    trash_on_ground, cable_ends, adequate_network,
+                    responsible, status, created_by, created_by_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, created_at;
+            """, (
+                ticket_type, ticket_number, f_date, area,
+                trash_on_ground, cable_ends, adequate_network,
+                responsible, status, created_by, clean_creator_id
+            ))
+            inserted = cur.fetchone()
+            new_id = inserted['id'] if isinstance(inserted, dict) else inserted[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return jsonify({
+                "id": new_id,
+                "message": "Atividade cadastrada com sucesso!",
+                "item": {
+                    "id": new_id,
+                    "ticket_type": ticket_type,
+                    "ticket_number": ticket_number,
+                    "fault_date": f_date.strftime('%Y-%m-%d'),
+                    "fault_date_formatted": f_date.strftime('%d/%m/%Y'),
+                    "month_key": f_date.strftime('%Y-%m'),
+                    "month_label": f"{PT_MONTHS_MAP.get(f_date.month, '')}/{f_date.strftime('%y')}",
+                    "area": area,
+                    "trash_on_ground": trash_on_ground,
+                    "cable_ends": cable_ends,
+                    "adequate_network": adequate_network,
+                    "responsible": responsible,
+                    "status": status,
+                    "created_by": created_by
+                }
+            }), 201
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error creating pos_evento:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao cadastrar atividade pós evento."}), 500
+
+
+@app.route('/api/pos-eventos/<int:event_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/pos-eventos/<int:event_id>/', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_pos_evento_detail(event_id):
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    conn = None
+    if request.method == 'GET':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    id, ticket_type, ticket_number, fault_date, area,
+                    trash_on_ground, cable_ends, adequate_network,
+                    responsible, status, created_by, created_by_id,
+                    created_at, updated_at
+                FROM pos_eventos
+                WHERE id = %s;
+            """, (event_id,))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+
+            if not row:
+                return jsonify({"error": "Registro não encontrado."}), 404
+
+            return jsonify(format_pos_evento_row(row)), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            return jsonify({"error": "Erro ao buscar evento."}), 500
+
+    if request.method == 'PUT':
+        try:
+            data = request.get_json(silent=True) or request.form.to_dict() or {}
+            ticket_type = (data.get('ticket_type') or '').strip()
+            ticket_number = (data.get('ticket_number') or '').strip()
+            fault_date_str = (data.get('fault_date') or '').strip()
+            area = (data.get('area') or '').strip()
+            trash_on_ground = (data.get('trash_on_ground') or 'Não').strip()
+            cable_ends = (data.get('cable_ends') or 'Não').strip()
+            adequate_network = (data.get('adequate_network') or 'Sim').strip()
+            responsible = (data.get('responsible') or '').strip()
+            status = (data.get('status') or 'Não concluido').strip()
+
+            if ticket_type and ticket_type not in ['RAL', 'REC', 'Outage']:
+                return jsonify({"error": "Tipo de Ticket inválido."}), 400
+            if trash_on_ground not in ['Sim', 'Não']:
+                trash_on_ground = 'Não'
+            if cable_ends not in ['Sim', 'Não']:
+                cable_ends = 'Não'
+            if adequate_network not in ['Sim', 'Não']:
+                adequate_network = 'Sim'
+            if status not in ['Concluido', 'Não concluido']:
+                status = 'Não concluido'
+
+            conn = get_db()
+            cur = conn.cursor()
+
+            # Handle date parse if provided
+            if fault_date_str:
+                try:
+                    f_date = datetime.datetime.strptime(fault_date_str[:10], '%Y-%m-%d').date()
+                    cur.execute("""
+                        UPDATE pos_eventos
+                        SET ticket_type = COALESCE(NULLIF(%s, ''), ticket_type),
+                            ticket_number = COALESCE(NULLIF(%s, ''), ticket_number),
+                            fault_date = %s,
+                            area = %s,
+                            trash_on_ground = %s,
+                            cable_ends = %s,
+                            adequate_network = %s,
+                            responsible = %s,
+                            status = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s;
+                    """, (ticket_type, ticket_number, f_date, area, trash_on_ground, cable_ends, adequate_network, responsible, status, event_id))
+                except Exception:
+                    cur.execute("""
+                        UPDATE pos_eventos
+                        SET ticket_type = COALESCE(NULLIF(%s, ''), ticket_type),
+                            ticket_number = COALESCE(NULLIF(%s, ''), ticket_number),
+                            area = %s,
+                            trash_on_ground = %s,
+                            cable_ends = %s,
+                            adequate_network = %s,
+                            responsible = %s,
+                            status = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s;
+                    """, (ticket_type, ticket_number, area, trash_on_ground, cable_ends, adequate_network, responsible, status, event_id))
+            else:
+                cur.execute("""
+                    UPDATE pos_eventos
+                    SET ticket_type = COALESCE(NULLIF(%s, ''), ticket_type),
+                        ticket_number = COALESCE(NULLIF(%s, ''), ticket_number),
+                        area = %s,
+                        trash_on_ground = %s,
+                        cable_ends = %s,
+                        adequate_network = %s,
+                        responsible = %s,
+                        status = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s;
+                """, (ticket_type, ticket_number, area, trash_on_ground, cable_ends, adequate_network, responsible, status, event_id))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return jsonify({"message": "Atividade pós evento atualizada com sucesso!"}), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error updating pos_evento:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao atualizar atividade pós evento."}), 500
+
+    if request.method == 'DELETE':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM pos_eventos WHERE id = %s;", (event_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"message": "Registro de pós evento removido com sucesso!"}), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
+                try: conn.close()
+                except Exception: pass
+            print("Error deleting pos_evento:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao remover registro."}), 500
+
+
+@app.route('/api/pos-eventos/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_pos_eventos_export():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                ticket_type, ticket_number, fault_date, area,
+                trash_on_ground, cable_ends, adequate_network,
+                responsible, status, created_by, created_at
+            FROM pos_eventos
+            ORDER BY fault_date DESC, id DESC;
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        month_filter = (request.args.get('month') or '').strip().lower()
+
+        output = io.StringIO()
+        output.write('\ufeff')  # UTF-8 BOM for Excel
+        writer = csv.writer(output, delimiter=';')
+
+        # Header matching the user requirements
+        writer.writerow([
+            'Tipo de Ticket',
+            'Número do Ticket',
+            'Data da Falha',
+            'Área',
+            'Lixos da Claro no Chão',
+            'Pontas de Cabos da Claro?',
+            'Rede Adequada?',
+            'Responsável',
+            'Status',
+            'Cadastrado Por',
+            'Data de Cadastro'
+        ])
+
+        for r in rows:
+            formatted = format_pos_evento_row(r)
+            if month_filter and month_filter != 'all' and month_filter != 'todos':
+                if formatted['month_key'].lower() != month_filter and formatted['month_label'].lower() != month_filter:
+                    continue
+
+            writer.writerow([
+                formatted['ticket_type'],
+                formatted['ticket_number'],
+                formatted['fault_date_formatted'],
+                formatted['area'],
+                formatted['trash_on_ground'],
+                formatted['cable_ends'],
+                formatted['adequate_network'],
+                formatted['responsible'],
+                formatted['status'],
+                formatted['created_by'],
+                formatted['created_at'][:19].replace('T', ' ')
+            ])
+
+        output.seek(0)
+        filename = f"pos_eventos_claro_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+    except Exception as e:
+        print("Error exporting pos_eventos:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao exportar tarefas pós evento."}), 500
 
 
 if __name__ == '__main__':
