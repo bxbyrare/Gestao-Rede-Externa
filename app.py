@@ -292,7 +292,49 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
                     print(f"[RESEND NOTICE 401] Chave Resend ({current_key[:10]}...) inválida. Tentando chave alternativa...")
                     continue
                 elif resp.status_code == 403:
-                    print(f"[RESEND NOTICE 403] O Resend free-tier restringe envios para domínios externos ({clean_target}). Cadastre um domínio verificado em resend.com: {resp.text}")
+                    print(f"[RESEND NOTICE 403] {resp.text}")
+                    # Extrai o e-mail autorizado da conta Resend para entrega imediata em modo sandbox
+                    m = re.search(r'own email address \(([^)]+)\)', resp.text)
+                    sandbox_email = m.group(1).strip() if m else os.environ.get('RESEND_DEV_EMAIL', 'rarerx64@gmail.com').strip()
+                    
+                    if sandbox_email and clean_target != sandbox_email:
+                        print(f"[RESEND SANDBOX REDIRECT] Entregando email para a conta autorizada {sandbox_email} (destinatário: {clean_target})...")
+                        banner = f'''
+                            <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 20px;">
+                                <tr>
+                                    <td style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.5); border-left: 4px solid #F59E0B; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #FDE68A; line-height: 1.5;">
+                                        <strong style="color: #FBBF24;">⚠️ MODO DE TESTES / RESEND SANDBOX:</strong><br>
+                                        Este comunicado foi entregue para <strong>{sandbox_email}</strong> porque o domínio de destino (<strong>{clean_target}</strong>) requer um domínio verificado em <a href="https://resend.com/domains" target="_blank" style="color: #FBBF24; text-decoration: underline;">resend.com/domains</a>.<br>
+                                        <span style="color: #CBD5E1;">Destinatário original pretendido:</span> <strong style="color: #FFFFFF;">{clean_target}</strong>
+                                    </td>
+                                </tr>
+                            </table>
+                        '''
+                        redirect_html = full_html.replace('<!-- Main Content -->', f'<!-- Main Content -->\n{banner}')
+                        redirect_subject = f"[Para: {clean_target}] {safe_subject}"
+                        try:
+                            s_resp = requests.post(
+                                'https://api.resend.com/emails',
+                                headers={
+                                    'Authorization': f'Bearer {current_key}',
+                                    'Content-Type': 'application/json'
+                                },
+                                json={
+                                    'from': RESEND_FROM_EMAIL,
+                                    'to': [sandbox_email],
+                                    'subject': redirect_subject,
+                                    'html': redirect_html
+                                },
+                                timeout=10
+                            )
+                            if s_resp.status_code in [200, 201]:
+                                s_data = s_resp.json() if s_resp.text else {}
+                                print(f"[RESEND SUCCESS - SANDBOX] Email entregue com sucesso para {sandbox_email} | ID: {s_data.get('id')}")
+                                return
+                            else:
+                                print(f"[RESEND NOTICE] Tentativa sandbox para {sandbox_email} retornou status {s_resp.status_code}: {s_resp.text}")
+                        except Exception as s_ex:
+                            print(f"[RESEND ERROR] Falha no redirecionamento sandbox: {s_ex}")
                     return
                 else:
                     print(f"[RESEND NOTICE] Tentativa para {clean_target} retornou status {resp.status_code}: {resp.text}")
