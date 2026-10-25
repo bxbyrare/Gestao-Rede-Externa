@@ -32,3 +32,4 @@ Thumbs.db
 
 _run_local.py
 .local_test_env.json
+.flask_secret_key

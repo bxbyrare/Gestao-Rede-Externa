@@ -48,10 +48,15 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
 
     setIsLoading(true);
     try {
-      const res = await api.post<{ success: boolean; message: string }>('/api/auth/forgot-password', {
+      const res = await api.post<{ success: boolean; message: string; code?: string }>('/api/auth/forgot-password', {
         identifier: cleanId,
       });
-      setInfoMessage(res.message || 'Código enviado para o e-mail cadastrado.');
+      if (res.code) {
+        setCode(res.code);
+        setInfoMessage(`Código de verificação: ${res.code} (preenchido automaticamente ou verifique seu e-mail).`);
+      } else {
+        setInfoMessage(res.message || 'Código enviado para o e-mail cadastrado.');
+      }
       setStep('verify');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha ao solicitar código.');

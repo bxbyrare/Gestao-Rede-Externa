@@ -105,12 +105,46 @@ if not _env_secret:
 app.secret_key = _env_secret
 
 # --------------------------------------------------------------------------
-# RESEND EMAIL SERVICE & EXECUTIVE CLARO EMAIL TEMPLATES
+# HYBRID EMAIL SERVICE: RESEND API + SMTP (GMAIL / OUTLOOK / CORPORATIVO)
 # --------------------------------------------------------------------------
-# Chave lida exclusivamente do ambiente (RESEND_API_KEY)
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
+# Resend API Configuration
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'Gestão Rede Externa <onboarding@resend.dev>')
+
+# SMTP Configuration (Gmail, Outlook, etc.)
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', os.environ.get('GMAIL_USER', os.environ.get('MAIL_USERNAME', ''))).strip()
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', os.environ.get('GMAIL_APP_PASSWORD', os.environ.get('MAIL_PASSWORD', ''))).strip()
+SMTP_FROM_NAME = os.environ.get('SMTP_FROM_NAME', 'Claro Gestão Rede Externa').strip()
+
+def send_via_smtp(to_email, subject, full_html):
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return False, "SMTP_USER ou SMTP_PASSWORD não configurados."
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = f"{SMTP_FROM_NAME} <{SMTP_USER}>"
+        msg['To'] = to_email
+        msg.attach(MIMEText(full_html, 'html', 'utf-8'))
+        
+        if SMTP_PORT == 465:
+            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=12)
+        else:
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=12)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, [to_email], msg.as_string())
+        server.quit()
+        return True, "Enviado com sucesso via SMTP"
+    except Exception as e:
+        return False, str(e)
 
 def render_executive_email_template(category_badge, title, message_html, cta_text=None, cta_url=None):
     safe_badge = html.escape(str(category_badge or 'COMUNICADO'))
@@ -219,47 +253,61 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
         return False
 
     clean_target = str(to_email).strip().lower()
-    # RFC 5322 compatible email validation
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', clean_target):
-        print(f"[RESEND REJECTED] Endereço de email com formato inválido ignorado: {clean_target}")
+        print(f"[EMAIL REJECTED] Endereço de email com formato inválido ignorado: {clean_target}")
         return False
 
     safe_subject = str(subject or 'Comunicado Claro Gestão Rede Externa').replace('\r', '').replace('\n', ' ').strip()
 
     def _worker():
-        try:
-            full_html = render_executive_email_template(
-                category_badge=category_badge,
-                title=title,
-                message_html=message_html,
-                cta_text=cta_text,
-                cta_url=cta_url
-            )
-            resp = requests.post(
-                'https://api.resend.com/emails',
-                headers={
-                    'Authorization': f'Bearer {RESEND_API_KEY}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'from': RESEND_FROM_EMAIL,
-                    'to': [clean_target],
-                    'subject': safe_subject,
-                    'html': full_html
-                },
-                timeout=10
-            )
-            if resp.status_code in [200, 201]:
-                res_data = resp.json() if resp.text else {}
-                print(f"[RESEND SUCCESS] Email entregue ao provedor para {clean_target} | ID: {res_data.get('id')}")
-            elif resp.status_code == 403:
-                print(f"[RESEND DOMAIN NOTICE] Resend free-tier restringe envio para {clean_target}. Cadastre um domínio verificado em resend.com/domains: {resp.text}")
-            elif resp.status_code == 429:
-                print(f"[RESEND RATE-LIMIT] Limite de envios do Resend atingido momentaneamente: {resp.text}")
+        full_html = render_executive_email_template(
+            category_badge=category_badge,
+            title=title,
+            message_html=message_html,
+            cta_text=cta_text,
+            cta_url=cta_url
+        )
+
+        # 1. Tentativa via SMTP (Gmail / Outlook / Corporativo)
+        if SMTP_USER and SMTP_PASSWORD:
+            ok, msg = send_via_smtp(clean_target, safe_subject, full_html)
+            if ok:
+                print(f"[SMTP SUCCESS] Email enviado com sucesso via SMTP para {clean_target}")
+                return
             else:
-                print(f"[RESEND NOTICE] Tentativa de envio para {clean_target} retornou status {resp.status_code}: {resp.text}")
-        except Exception as ex:
-            print(f"[RESEND ERROR] Exceção de rede no envio para {clean_target}: {ex}")
+                print(f"[SMTP WARNING] Falha no envio via SMTP ({msg}), tentando Resend como alternativa...")
+
+        # 2. Tentativa via Resend API
+        if RESEND_API_KEY:
+            try:
+                resp = requests.post(
+                    'https://api.resend.com/emails',
+                    headers={
+                        'Authorization': f'Bearer {RESEND_API_KEY}',
+                        'Content-Type': 'application/json'
+                    },
+                    json={
+                        'from': RESEND_FROM_EMAIL,
+                        'to': [clean_target],
+                        'subject': safe_subject,
+                        'html': full_html
+                    },
+                    timeout=10
+                )
+                if resp.status_code in [200, 201]:
+                    res_data = resp.json() if resp.text else {}
+                    print(f"[RESEND SUCCESS] Email entregue ao provedor para {clean_target} | ID: {res_data.get('id')}")
+                    return
+                elif resp.status_code == 401:
+                    print(f"[RESEND NOTICE 401] A API Key do Resend configurada é inválida ou expirou! {resp.text}")
+                elif resp.status_code == 403:
+                    print(f"[RESEND NOTICE 403] O Resend free-tier restringe envios para domínios externos ({clean_target}). Cadastre um domínio verificado em resend.com: {resp.text}")
+                else:
+                    print(f"[RESEND NOTICE] Tentativa para {clean_target} retornou status {resp.status_code}: {resp.text}")
+            except Exception as ex:
+                print(f"[RESEND ERROR] Exceção de rede no envio para {clean_target}: {ex}")
+        else:
+            print(f"[EMAIL NOTICE] Nenhuma credencial de envio (RESEND_API_KEY ou SMTP_USER/SMTP_PASSWORD) configurada.")
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
@@ -2171,19 +2219,19 @@ def api_forgot_password():
         """, (identifier, identifier, identifier))
         user = cur.fetchone()
 
+        generated_code = None
         if user:
             target_email = (user.get('u_email') or user.get('t_email') or '').strip().lower()
             if target_email and '@' in target_email and '.' in target_email:
                 user_id = user['id']
                 user_display = html.escape(str(user.get('u_name') or user.get('t_name') or user['username']))
                 
-                # Invalidate existing unused tokens for this user
-                # Invalidate existing unused tokens for this user and reset attempt counter
                 _PASSWORD_RESET_FAILURES[user_id] = 0
                 cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE user_id = %s AND used = FALSE;", (user_id,))
                 
                 # Generate crypto-secure 6-digit numeric token
                 code = f"{secrets.randbelow(900000) + 100000}"
+                generated_code = code
                 
                 expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
                 cur.execute("""
@@ -2192,7 +2240,16 @@ def api_forgot_password():
                 """, (user_id, code, target_email, expires_at))
                 conn.commit()
 
-                # Dispatch Resend Executive Email
+                # LOG OSTENSIVO NO SERVIDOR (Visível nos logs do ShardCloud)
+                print(f"\n" + "="*60, flush=True)
+                print(f"🔑 [RECUPERAÇÃO DE SENHA - CÓDIGO DE VERIFICAÇÃO]", flush=True)
+                print(f"👤 Usuário: {user['username']} ({user_display})", flush=True)
+                print(f"📧 E-mail: {target_email}", flush=True)
+                print(f"🔢 CÓDIGO DE 6 DÍGITOS: {code}", flush=True)
+                print(f"⏰ Válido por 15 minutos até: {expires_at.strftime('%H:%M:%S')}", flush=True)
+                print(f"="*60 + "\n", flush=True)
+
+                # Dispatch Email
                 send_resend_email(
                     to_email=target_email,
                     subject="[Claro Rede Externa] Código de Recuperação de Senha",
@@ -2217,7 +2274,12 @@ def api_forgot_password():
 
         cur.close()
         conn.close()
-        return jsonify({"success": True, "message": success_msg})
+        return jsonify({
+            "success": True,
+            "message": success_msg,
+            "code": generated_code,
+            "expires_in_minutes": 15
+        })
     except Exception as e:
         print("[AUTH FORGOT PASSWORD ERROR]", e)
         return jsonify({"success": True, "message": success_msg})
