@@ -25,6 +25,7 @@ import EscalaPage from './pages/EscalaPage';
 import RotasPage from './pages/RotasPage';
 import NotificacoesPage from './pages/NotificacoesPage';
 import ProfilePage from './pages/ProfilePage';
+import FormResponderPage from './pages/FormResponderPage';
 
 export default function App() {
   const location = useLocation();
@@ -44,6 +45,7 @@ export default function App() {
         <FullScreenCinematicIntro key={introRunId} durationMs={4100} />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/f/:slug" element={<FormResponderPage />} />
           <Route
             path="/"
             element={

@@ -34,6 +34,8 @@ interface FormItem {
   category: string;
   description: string | null;
   link: string | null;
+  questions?: any[] | null;
+  questions_count?: number;
   created_at: string;
 }
 
@@ -45,8 +47,16 @@ interface FormResponse {
   submitted_at: string;
 }
 
+interface FormFormData {
+  title: string;
+  category: string;
+  link: string;
+  description: string;
+  questions?: any[];
+}
+
 const CATEGORIES = ['Inspeção', 'Vistoria', 'Rede Externa', 'Técnico', 'Relatório', 'Outros'];
-const emptyForm = { title: '', category: 'Inspeção', link: '', description: '' };
+const emptyForm: FormFormData = { title: '', category: 'Inspeção', link: '', description: '', questions: [] };
 
 // Utilitário para formatar datas amigáveis (ex: 04/09/2026 às 12:55)
 function formatSubmissionDate(dateStr: string): string {
@@ -119,9 +129,15 @@ export default function FormulariosPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<FormItem | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<FormFormData>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const [conversionStatus, setConversionStatus] = useState<{
+    success: boolean;
+    message: string;
+    count?: number;
+  } | null>(null);
 
   const [responsesModal, setResponsesModal] = useState<FormItem | null>(null);
   const [responses, setResponses] = useState<FormResponse[] | null>(null);
@@ -163,16 +179,77 @@ export default function FormulariosPage() {
     );
   }, [forms, search]);
 
+  async function handleConvertGoogleForm() {
+    if (!form.link.trim()) {
+      setConversionStatus({
+        success: false,
+        message: 'Por favor, insira o link do formulário Google antes de converter.',
+      });
+      return;
+    }
+    setIsConverting(true);
+    setConversionStatus(null);
+    try {
+      const res = await api.post<{
+        success: boolean;
+        title: string;
+        description: string;
+        questions: any[];
+        count: number;
+      }>('/api/forms/convert-google-form', { url: form.link });
+
+      if (res && res.success) {
+        setForm((prev) => ({
+          ...prev,
+          title: prev.title.trim() ? prev.title : (res.title || prev.title),
+          description: prev.description.trim() ? prev.description : (res.description || prev.description),
+          questions: res.questions || [],
+        }));
+        setConversionStatus({
+          success: true,
+          message: `Convertido com sucesso! ${res.count || 0} pergunta(s) importada(s) para execução nativa no Gestão.`,
+          count: res.count,
+        });
+      }
+    } catch (err) {
+      setConversionStatus({
+        success: false,
+        message:
+          err instanceof ApiError
+            ? err.message
+            : 'Falha ao converter formulário Google. Verifique se o formulário está acessível publicamente.',
+      });
+    } finally {
+      setIsConverting(false);
+    }
+  }
+
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
+    setConversionStatus(null);
     setError(null);
     setModalOpen(true);
   }
 
   function openEdit(f: FormItem) {
     setEditing(f);
-    setForm({ title: f.title, category: f.category, link: f.link || '', description: f.description || '' });
+    setForm({
+      title: f.title,
+      category: f.category,
+      link: f.link || '',
+      description: f.description || '',
+      questions: f.questions || [],
+    });
+    setConversionStatus(
+      f.questions && f.questions.length > 0
+        ? {
+            success: true,
+            message: `Este formulário possui ${f.questions.length} pergunta(s) nativas cadastradas.`,
+            count: f.questions.length,
+          }
+        : null
+    );
     setError(null);
     setModalOpen(true);
   }
@@ -203,12 +280,9 @@ export default function FormulariosPage() {
   }
 
   function copyLink(f: FormItem) {
-    const url =
-      f.link && (f.link.startsWith('http://') || f.link.startsWith('https://'))
-        ? f.link
-        : `${window.location.origin}/f/${f.slug}`;
+    const url = `${window.location.origin}/f/${f.slug}`;
     navigator.clipboard.writeText(url).then(
-      () => alert('Link copiado para a área de transferência!'),
+      () => alert(`Link interno do formulário copiado!\n${url}`),
       () => prompt('Copie o link do formulário:', url)
     );
   }
@@ -461,53 +535,79 @@ export default function FormulariosPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((f) => (
-            <Card key={f.id} className="p-5 flex flex-col gap-3 animate-in hover:border-white/20 transition-all">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[var(--color-primary-dim)] text-[var(--color-primary)]">
-                  {f.category}
-                </span>
-                <div className="flex items-center gap-1">
-                  {canEdit && (
-                    <button
-                      onClick={() => openEdit(f)}
-                      aria-label="Editar formulário"
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      onClick={() => deleteForm(f)}
-                      aria-label="Excluir formulário"
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+          {filtered.map((f) => {
+            const qCount = f.questions_count ?? (f.questions ? f.questions.length : 0);
+            return (
+              <Card key={f.id} className="p-5 flex flex-col gap-3 animate-in hover:border-white/20 transition-all">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[var(--color-primary-dim)] text-[var(--color-primary)]">
+                      {f.category}
+                    </span>
+                    {qCount > 0 ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 inline-flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5" />
+                        {qCount} pergunta{qCount > 1 ? 's' : ''} nativa{qCount > 1 ? 's' : ''}
+                      </span>
+                    ) : f.link ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                        Link Externo
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {canEdit && (
+                      <button
+                        onClick={() => openEdit(f)}
+                        aria-label="Editar formulário"
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07]"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => deleteForm(f)}
+                        aria-label="Excluir formulário"
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)]"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <h4 className="font-bold text-base leading-snug">{f.title}</h4>
-              <p className="text-xs text-[var(--color-text-muted)] line-clamp-2">
-                {f.description || 'Sem instruções adicionais.'}
-              </p>
-              <div className="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
-                <button
-                  onClick={() => copyLink(f)}
-                  className="flex-1 h-9 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/[0.07] transition-colors"
-                >
-                  <Copy className="w-3.5 h-3.5" /> Copiar Link
-                </button>
-                <button
-                  onClick={() => openResponses(f)}
-                  className="flex-1 h-9 rounded-full bg-[var(--color-primary-dim)] border border-[var(--color-primary)]/20 flex items-center justify-center gap-1.5 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25 transition-colors"
-                >
-                  <FileText className="w-3.5 h-3.5" /> Respostas
-                </button>
-              </div>
-            </Card>
-          ))}
+                <h4 className="font-bold text-base leading-snug">{f.title}</h4>
+                <p className="text-xs text-[var(--color-text-muted)] line-clamp-2">
+                  {f.description || 'Sem instruções adicionais.'}
+                </p>
+                <div className="grid grid-cols-3 gap-2 mt-auto pt-3 border-t border-white/5">
+                  <a
+                    href={`/f/${f.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
+                    title="Abrir e responder formulário no Gestão"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-blue-400" /> Abrir
+                  </a>
+                  <button
+                    onClick={() => copyLink(f)}
+                    className="h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
+                    title="Copiar link oficial do formulário para técnicos"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copiar
+                  </button>
+                  <button
+                    onClick={() => openResponses(f)}
+                    className="h-9 rounded-full bg-[var(--color-primary-dim)] border border-[var(--color-primary)]/20 flex items-center justify-center gap-1 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25 transition-colors"
+                    title="Visualizar respostas e evidências"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> Respostas
+                  </button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -521,7 +621,7 @@ export default function FormulariosPage() {
             <Button variant="ghost" onClick={() => setModalOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={submitForm} disabled={isSaving}>
+            <Button onClick={submitForm} disabled={isSaving || isConverting}>
               {isSaving ? 'Salvando...' : 'Salvar Formulário'}
             </Button>
           </>
@@ -552,15 +652,76 @@ export default function FormulariosPage() {
           </Select>
         </Field>
         <Field
-          label="Link do Google Forms (opcional)"
-          hint="Cole um link do Google Forms para copiar as perguntas automaticamente — o formulário precisa estar com acesso público."
+          label="Link do Google Forms (Conversão Nativa)"
+          hint="Cole a URL pública do Google Forms e clique em 'Converter' para migrar todas as perguntas, opções e upload de fotos para o Gestão."
         >
-          <Input
-            value={form.link}
-            onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
-            placeholder="https://forms.gle/... ou docs.google.com/forms/..."
-          />
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={form.link}
+              onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
+              placeholder="https://forms.gle/... ou https://docs.google.com/forms/..."
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isConverting || !form.link.trim()}
+              onClick={handleConvertGoogleForm}
+              className="whitespace-nowrap px-4 shrink-0 text-xs font-semibold border border-white/10 hover:border-white/20 bg-white/[0.04]"
+            >
+              {isConverting ? (
+                <>Convertendo...</>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  Converter Google Form
+                </>
+              )}
+            </Button>
+          </div>
         </Field>
+
+        {conversionStatus && (
+          <div
+            className={`rounded-xl p-3 text-xs border mb-3 ${
+              conversionStatus.success
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+            }`}
+          >
+            <div className="font-semibold flex items-center gap-1.5">
+              {conversionStatus.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <X className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              {conversionStatus.message}
+            </div>
+            {conversionStatus.success && form.questions && form.questions.length > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-emerald-500/20 text-[11px] text-emerald-200/90 space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                <span className="font-semibold text-emerald-300 block mb-1">
+                  Estrutura importada ({form.questions.length} perguntas):
+                </span>
+                {form.questions.slice(0, 10).map((q, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-[11px] bg-black/20 px-2 py-1 rounded">
+                    <span className="truncate max-w-[280px]">
+                      {idx + 1}. {q.title}
+                    </span>
+                    <span className="uppercase text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                      {q.type}
+                    </span>
+                  </div>
+                ))}
+                {form.questions.length > 10 && (
+                  <div className="text-[10px] text-emerald-300/70 italic text-center pt-1">
+                    + {form.questions.length - 10} outras perguntas incluídas...
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <Field label="Descrição / Instruções de Preenchimento">
           <Textarea
             rows={3}

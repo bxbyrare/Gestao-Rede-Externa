@@ -2278,10 +2278,19 @@ def parse_google_form(url):
                     field_type = 'select'
                 elif q_type_code == 4:
                     field_type = 'checkbox'
+                elif q_type_code == 5:
+                    field_type = 'scale'
                 elif q_type_code == 9:
                     field_type = 'date'
                 elif q_type_code == 10:
                     field_type = 'time'
+                elif q_type_code == 13:
+                    field_type = 'file'
+
+                # Heuristic for photos/evidence in inspections
+                title_lower = str(q_title).lower()
+                if any(w in title_lower for w in ['foto', 'evidência', 'evidencia', 'anexo', 'imagem', 'comprovante']):
+                    field_type = 'file'
 
                 if q_sub and isinstance(q_sub, list) and len(q_sub) > 0:
                     sub_item = q_sub[0]
@@ -4304,6 +4313,27 @@ def api_bulk_import_route_lines(route_id):
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
 # --- FORMS API ---
+
+@app.route('/api/forms/convert-google-form', methods=['POST'])
+@login_required
+def api_convert_google_form():
+    data = request.get_json(silent=True) or {}
+    url = (data.get('url') or data.get('link') or '').strip()
+    if not url:
+        return jsonify({"error": "Por favor, informe o link do Google Forms."}), 400
+
+    parsed, parse_err = parse_google_form(url)
+    if parse_err:
+        return jsonify({"error": parse_err}), 400
+
+    return jsonify({
+        "success": True,
+        "title": parsed.get('title'),
+        "description": parsed.get('description'),
+        "questions": parsed.get('questions'),
+        "count": len(parsed.get('questions') or [])
+    })
+
 @app.route('/api/forms', methods=['GET', 'POST'], strict_slashes=False)
 @login_required
 def api_forms():
@@ -4313,10 +4343,19 @@ def api_forms():
             conn = get_db()
             cur = conn.cursor()
             if category:
-                cur.execute("SELECT id, title, slug, category, description, link, created_at FROM forms WHERE category = %s ORDER BY id DESC;", (category,))
+                cur.execute("SELECT id, title, slug, category, description, link, questions, created_at FROM forms WHERE category = %s ORDER BY id DESC;", (category,))
             else:
-                cur.execute("SELECT id, title, slug, category, description, link, created_at FROM forms ORDER BY id DESC;")
+                cur.execute("SELECT id, title, slug, category, description, link, questions, created_at FROM forms ORDER BY id DESC;")
             forms = cur.fetchall()
+            for f in forms:
+                q_data = f.get('questions')
+                if isinstance(q_data, str):
+                    try:
+                        q_data = json.loads(q_data)
+                    except Exception:
+                        q_data = []
+                f['questions'] = q_data or []
+                f['questions_count'] = len(q_data) if q_data else 0
             cur.close()
             conn.close()
             return jsonify(forms)
@@ -4332,8 +4371,8 @@ def api_forms():
             description = data.get('description', '').strip()
             link = data.get('link', '').strip()
 
-            questions = None
-            if link and ('forms.gle' in link or 'docs.google.com/forms' in link):
+            questions = data.get('questions')
+            if not questions and link and ('forms.gle' in link or 'docs.google.com/forms' in link):
                 parsed, parse_err = parse_google_form(link)
                 if parse_err:
                     return jsonify({"error": parse_err}), 400
@@ -4387,7 +4426,7 @@ def api_form_detail(form_id):
         try:
             conn = get_db()
             cur = conn.cursor()
-            cur.execute("SELECT id, title, slug, category, description, link, created_at FROM forms WHERE id = %s;", (form_id,))
+            cur.execute("SELECT id, title, slug, category, description, link, questions, created_at FROM forms WHERE id = %s;", (form_id,))
             f = cur.fetchone()
             cur.close()
             conn.close()
@@ -4429,12 +4468,26 @@ def api_form_detail(form_id):
 
             new_slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"form-{form_id}"
 
+            questions = data.get('questions')
+            if not questions and link and ('forms.gle' in link or 'docs.google.com/forms' in link):
+                parsed, _ = parse_google_form(link)
+                if parsed and parsed.get('questions'):
+                    questions = parsed['questions']
+            
+            questions_json = json.dumps(questions, ensure_ascii=False) if questions is not None else None
+
             conn = get_db()
             cur = conn.cursor()
-            cur.execute(
-                "UPDATE forms SET title = %s, slug = COALESCE(NULLIF(slug, ''), %s), category = %s, description = %s, link = %s WHERE id = %s;",
-                (title, new_slug, category, description, link, form_id)
-            )
+            if questions_json is not None:
+                cur.execute(
+                    "UPDATE forms SET title = %s, slug = COALESCE(NULLIF(slug, ''), %s), category = %s, description = %s, link = %s, questions = %s WHERE id = %s;",
+                    (title, new_slug, category, description, link, questions_json, form_id)
+                )
+            else:
+                cur.execute(
+                    "UPDATE forms SET title = %s, slug = COALESCE(NULLIF(slug, ''), %s), category = %s, description = %s, link = %s WHERE id = %s;",
+                    (title, new_slug, category, description, link, form_id)
+                )
             conn.commit()
             cur.close()
             conn.close()
@@ -4448,43 +4501,44 @@ def api_form_detail(form_id):
 # --- PUBLIC FORM RESPONDER ROUTES (NO LOGIN REQUIRED) ---
 @app.route('/f/<slug>', methods=['GET'], strict_slashes=False)
 def public_form_view(slug):
+    # Route into React SPA so the form is rendered natively inside Claro Gestão
+    return serve_react_app()
+
+@app.route('/api/public/forms/<slug>', methods=['GET'], strict_slashes=False)
+def api_public_form_get(slug):
     try:
         conn = get_db()
         cur = conn.cursor()
-        
-        # 1. Search by exact slug
         cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE slug = %s;", (slug,))
         f = cur.fetchone()
-        
-        # 2. Search by numeric ID if slug is digit
-        if not f and slug.isdigit() and 'user_id' in session:
+        if not f and slug.isdigit():
             cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE id = %s;", (int(slug),))
             f = cur.fetchone()
-
         cur.close()
         conn.close()
 
         if not f:
-            return "Formulário não encontrado ou inativo.", 404
+            return jsonify({"error": "Formulário não encontrado ou inativo."}), 404
 
-        # If form has an external link defined (like Google Forms or Microsoft Forms), redirect directly to it
-        if f.get('link') and (f['link'].startswith('http://') or f['link'].startswith('https://')):
-            r = redirect(f['link'])
-            r.data = b''
-            return r
+        questions = f.get('questions')
+        if isinstance(questions, str):
+            try:
+                questions = json.loads(questions)
+            except Exception:
+                questions = []
 
-        # If form has dynamic questions (JSONB), use the dynamic template
-        questions_data = f.get('questions')
-        if questions_data:
-            if isinstance(questions_data, str):
-                questions_data = json.loads(questions_data)
-            return render_template('public_form_dynamic.html', form=f, questions=questions_data)
-
-        # Fallback to legacy hardcoded template
-        return render_template('public_form.html', form=f)
+        return jsonify({
+            "id": f['id'],
+            "title": f['title'],
+            "slug": f['slug'],
+            "category": f.get('category') or 'Inspeção',
+            "description": f.get('description') or '',
+            "link": f.get('link') or '',
+            "questions": questions or []
+        })
     except Exception as e:
-        print("Erro interno ao carregar formulário:", e)
-        return "Erro interno ao carregar o formulário.", 500
+        print("API public form get error:", e)
+        return jsonify({"error": "Erro ao buscar dados do formulário."}), 500
 
 @app.route('/f/<slug>/submit', methods=['POST'], strict_slashes=False)
 def public_form_submit(slug):
