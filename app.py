@@ -2705,6 +2705,23 @@ def api_totp_verify():
         'totp_expires_at': session['totp_expires_at']
     })
 
+
+@app.route('/api/auth/totp/reconfigure', methods=['POST'])
+def api_totp_reconfigure():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Não autenticado.'}), 401
+    user_id = session['user_id']
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET totp_secret = NULL, totp_enabled = FALSE, totp_verified_at = NULL WHERE id = %s;", (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    session['totp_verified'] = False
+    session['totp_expires_at'] = 0
+    log_action(user_id, session.get('username', 'usuario'), "Solicitou reconfiguração do aplicativo autenticador (2FA).")
+    return jsonify({"success": True, "message": "Autenticador redefinido com sucesso! Vincule seu novo aplicativo."})
+
 @app.route('/api/auth/forgot-password', methods=['POST'])
 def api_forgot_password():
     data = request.get_json(silent=True) or {}
