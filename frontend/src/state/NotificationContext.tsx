@@ -115,7 +115,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Poll live alerts from backend every 6 seconds
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.totp_verified) return;
 
     let isMounted = true;
 

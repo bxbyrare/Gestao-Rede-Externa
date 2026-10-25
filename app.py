@@ -1051,6 +1051,7 @@ def init_db():
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
+                conn.commit()
             except Exception:
                 conn.rollback()
         for col, coltype in [
@@ -1065,6 +1066,7 @@ def init_db():
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
+                conn.commit()
             except Exception:
                 conn.rollback()
         
@@ -2565,7 +2567,12 @@ def api_login():
                 "username": user['username'],
                 "role": user['role'],
                 "company": get_user_company(user['id']),
-                "needs_email": True
+                "needs_email": True,
+                "totp_enabled": bool(user.get('totp_enabled')),
+                "totp_verified": False,
+                "totp_expires_at": 0,
+                "requires_totp_setup": not bool(user.get('totp_enabled')),
+                "requires_totp_verify": bool(user.get('totp_enabled'))
             }
             return jsonify({"user": user_payload})
 
@@ -2802,10 +2809,18 @@ def get_user_info_dict(user_id):
                 LEFT JOIN technicians t ON u.tech_id = t.id
                 WHERE u.id = %s;
             """, (user_id,))
-        except Exception:
+        except Exception as q_err:
             conn.rollback()
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT NULL;")
-            conn.commit()
+            try:
+                cur.execute("""
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT NULL;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64) DEFAULT NULL;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_verified_at TIMESTAMP DEFAULT NULL;
+                """)
+                conn.commit()
+            except Exception:
+                conn.rollback()
             cur.execute("""
                 SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
                        u.email as u_email, u.phone as u_phone, u.name as u_name,

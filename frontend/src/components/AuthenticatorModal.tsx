@@ -15,8 +15,9 @@ export default function AuthenticatorModal() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const isSetupMode = Boolean(user && user.requires_totp_setup);
-  const isVerifyMode = Boolean(user && !user.requires_totp_setup && user.requires_totp_verify);
+  // If user already has TOTP active in DB, they need 12h verification; otherwise they need initial setup
+  const isSetupMode = Boolean(user && !user.totp_enabled);
+  const isVerifyMode = Boolean(user && user.totp_enabled && !user.totp_verified);
 
   // Fetch setup secret & QR if user needs TOTP setup
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function AuthenticatorModal() {
     }
   }, [isSetupMode, setupData]);
 
-  if (!user || (!isSetupMode && !isVerifyMode)) {
+  if (!user || user.totp_verified || (!isSetupMode && !isVerifyMode)) {
     return null;
   }
 

@@ -75,6 +75,17 @@ export default function DashboardLayout() {
 
   const hasMissingProfile = !!(user && !user.needs_email && user.profile_complete === false && !dismissBanner);
 
+  // If user is not TOTP verified yet, block full layout and render exclusive security prompt
+  if (user && !user.totp_verified) {
+    return (
+      <div className="app-shell-bg anti-print-protected min-h-screen flex items-center justify-center relative overflow-hidden">
+        <AntiPrintGuard />
+        <LiquidEther />
+        <AuthenticatorModal />
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell-bg anti-print-protected min-h-screen flex relative">
       <AntiPrintGuard />
