@@ -105,11 +105,8 @@ if not _env_secret:
 app.secret_key = _env_secret
 
 # --------------------------------------------------------------------------
-# HYBRID EMAIL SERVICE: RESEND API + SMTP (GMAIL / OUTLOOK / CORPORATIVO)
+# RESEND EMAIL SERVICE & EXECUTIVE CLARO EMAIL TEMPLATES
 # --------------------------------------------------------------------------
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
 # Resend API Configuration
 import base64
@@ -141,37 +138,6 @@ def get_client_ip():
             if ip:
                 return ip
     return request.remote_addr or '127.0.0.1'
-
-# SMTP Configuration (Gmail, Outlook, etc.)
-SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
-SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_USER = os.environ.get('SMTP_USER', os.environ.get('GMAIL_USER', os.environ.get('MAIL_USERNAME', ''))).strip()
-SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', os.environ.get('GMAIL_APP_PASSWORD', os.environ.get('MAIL_PASSWORD', ''))).strip()
-SMTP_FROM_NAME = os.environ.get('SMTP_FROM_NAME', 'Claro Gestão Rede Externa').strip()
-
-def send_via_smtp(to_email, subject, full_html):
-    if not SMTP_USER or not SMTP_PASSWORD:
-        return False, "SMTP_USER ou SMTP_PASSWORD não configurados."
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = f"{SMTP_FROM_NAME} <{SMTP_USER}>"
-        msg['To'] = to_email
-        msg.attach(MIMEText(full_html, 'html', 'utf-8'))
-        
-        if SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=12)
-        else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=12)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_USER, [to_email], msg.as_string())
-        server.quit()
-        return True, "Enviado com sucesso via SMTP"
-    except Exception as e:
-        return False, str(e)
 
 def render_executive_email_template(category_badge, title, message_html, cta_text=None, cta_url=None):
     safe_badge = html.escape(str(category_badge or 'COMUNICADO'))
@@ -295,16 +261,7 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
             cta_url=cta_url
         )
 
-        # 1. Tentativa via SMTP (Gmail / Outlook / Corporativo)
-        if SMTP_USER and SMTP_PASSWORD:
-            ok, msg = send_via_smtp(clean_target, safe_subject, full_html)
-            if ok:
-                print(f"[SMTP SUCCESS] Email enviado com sucesso via SMTP para {clean_target}")
-                return
-            else:
-                print(f"[SMTP WARNING] Falha no envio via SMTP ({msg}), tentando Resend como alternativa...")
-
-        # 2. Tentativa via Resend API (com fallback automático de chave)
+        # Envio direto via Resend API
         keys_to_try = [RESEND_API_KEY]
         if DEFAULT_RESEND_KEY not in keys_to_try:
             keys_to_try.append(DEFAULT_RESEND_KEY)
