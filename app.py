@@ -163,15 +163,8 @@ def get_totp_uri(secret, username, issuer="Claro Gestão Rede Externa"):
 # RESEND EMAIL SERVICE & EXECUTIVE CLARO EMAIL TEMPLATES
 # --------------------------------------------------------------------------
 
-# Resend API Configuration
-import base64
-_RESEND_KEY_B64 = 'cmVfTnFTVVhlU1pfTnJVVmpiMW5hUk00SjZ0elZQMlRXQXdT'
-try:
-    DEFAULT_RESEND_KEY = base64.b64decode(_RESEND_KEY_B64.encode()).decode('utf-8')
-except Exception:
-    DEFAULT_RESEND_KEY = ''
-_env_resend = os.environ.get('RESEND_API_KEY', '').strip()
-RESEND_API_KEY = _env_resend if (_env_resend and len(_env_resend) > 10 and not _env_resend.startswith('re_5zU')) else DEFAULT_RESEND_KEY
+# Resend API Configuration (Strictly from environment; no hardcoded fallback keys)
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'Gestão Rede Externa <onboarding@resend.dev>')
 
 def get_portal_url(path='/'):
@@ -186,12 +179,20 @@ def get_portal_url(path='/'):
     return f"{base.rstrip('/')}{path}"
 
 def get_client_ip():
-    for h in ['CF-Connecting-IP', 'X-Real-IP', 'X-Forwarded-For']:
-        val = request.headers.get(h)
-        if val:
-            ip = val.split(',')[0].strip()
-            if ip:
+    cf_ip = request.headers.get('CF-Connecting-IP')
+    if cf_ip and cf_ip.strip():
+        return cf_ip.strip()
+    xff = request.headers.get('X-Forwarded-For')
+    if xff:
+        ips = [ip.strip() for ip in xff.split(',') if ip.strip()]
+        for ip in ips:
+            if not ip.startswith(('10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.', '192.168.', '127.')):
                 return ip
+        if ips:
+            return ips[0]
+    x_real = request.headers.get('X-Real-IP')
+    if x_real and x_real.strip():
+        return x_real.strip()
     return request.remote_addr or '127.0.0.1'
 
 def render_executive_email_template(category_badge, title, message_html, cta_text=None, cta_url=None):
@@ -316,89 +317,36 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
             cta_url=cta_url
         )
 
-        # Envio direto via Resend API
-        keys_to_try = [RESEND_API_KEY]
-        if DEFAULT_RESEND_KEY not in keys_to_try:
-            keys_to_try.append(DEFAULT_RESEND_KEY)
+        # Envio direto via Resend API exclusivamente com a chave de ambiente
+        if not RESEND_API_KEY:
+            print("[RESEND NOTICE] RESEND_API_KEY não configurada no ambiente. Envio cancelado de forma segura.")
+            return
 
-        for current_key in keys_to_try:
-            if not current_key:
-                continue
-            try:
-                resp = requests.post(
-                    'https://api.resend.com/emails',
-                    headers={
-                        'Authorization': f'Bearer {current_key}',
-                        'Content-Type': 'application/json'
-                    },
-                    json={
-                        'from': RESEND_FROM_EMAIL,
-                        'to': [clean_target],
-                        'subject': safe_subject,
-                        'html': full_html
-                    },
-                    timeout=10
-                )
-                if resp.status_code in [200, 201]:
-                    res_data = resp.json() if resp.text else {}
-                    print(f"[RESEND SUCCESS] Email entregue ao provedor para {clean_target} | ID: {res_data.get('id')}")
-                    return
-                elif resp.status_code == 401:
-                    print(f"[RESEND NOTICE 401] Chave Resend ({current_key[:10]}...) inválida. Tentando chave alternativa...")
-                    continue
-                elif resp.status_code == 403:
-                    print(f"[RESEND NOTICE 403] {resp.text}")
-                    # Extrai o e-mail autorizado da conta Resend para entrega imediata em modo sandbox
-                    m = re.search(r'own email address \(([^)]+)\)', resp.text)
-                    sandbox_email = m.group(1).strip() if m else os.environ.get('RESEND_DEV_EMAIL', 'rarerx64@gmail.com').strip()
-                    
-                    if sandbox_email and clean_target != sandbox_email:
-                        print(f"[RESEND SANDBOX REDIRECT] Entregando email para a conta autorizada {sandbox_email} (destinatário: {clean_target})...")
-                        banner = f'''
-                            <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 20px;">
-                                <tr>
-                                    <td style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.5); border-left: 4px solid #F59E0B; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #FDE68A; line-height: 1.5;">
-                                        <strong style="color: #FBBF24;">⚠️ MODO DE TESTES / RESEND SANDBOX:</strong><br>
-                                        Este comunicado foi entregue para <strong>{sandbox_email}</strong> porque o domínio de destino (<strong>{clean_target}</strong>) requer um domínio verificado em <a href="https://resend.com/domains" target="_blank" style="color: #FBBF24; text-decoration: underline;">resend.com/domains</a>.<br>
-                                        <span style="color: #CBD5E1;">Destinatário original pretendido:</span> <strong style="color: #FFFFFF;">{clean_target}</strong>
-                                    </td>
-                                </tr>
-                            </table>
-                        '''
-                        redirect_html = full_html.replace('<!-- Main Content -->', f'<!-- Main Content -->\n{banner}')
-                        redirect_subject = f"[Para: {clean_target}] {safe_subject}"
-                        try:
-                            s_resp = requests.post(
-                                'https://api.resend.com/emails',
-                                headers={
-                                    'Authorization': f'Bearer {current_key}',
-                                    'Content-Type': 'application/json'
-                                },
-                                json={
-                                    'from': RESEND_FROM_EMAIL,
-                                    'to': [sandbox_email],
-                                    'subject': redirect_subject,
-                                    'html': redirect_html
-                                },
-                                timeout=10
-                            )
-                            if s_resp.status_code in [200, 201]:
-                                s_data = s_resp.json() if s_resp.text else {}
-                                print(f"[RESEND SUCCESS - SANDBOX] Email entregue com sucesso para {sandbox_email} | ID: {s_data.get('id')}")
-                                return
-                            else:
-                                print(f"[RESEND NOTICE] Tentativa sandbox para {sandbox_email} retornou status {s_resp.status_code}: {s_resp.text}")
-                        except Exception as s_ex:
-                            print(f"[RESEND ERROR] Falha no redirecionamento sandbox: {s_ex}")
-                    return
-                else:
-                    print(f"[RESEND NOTICE] Tentativa para {clean_target} retornou status {resp.status_code}: {resp.text}")
-                    return
-            except Exception as ex:
-                print(f"[RESEND ERROR] Exceção de rede no envio para {clean_target}: {ex}")
+        try:
+            resp = requests.post(
+                'https://api.resend.com/emails',
+                headers={
+                    'Authorization': f'Bearer {RESEND_API_KEY}',
+                    'Content-Type': 'application/json'
+                },
+                json={
+                    'from': RESEND_FROM_EMAIL,
+                    'to': [clean_target],
+                    'subject': safe_subject,
+                    'html': full_html
+                },
+                timeout=10
+            )
+            if resp.status_code in [200, 201]:
+                res_data = resp.json() if resp.text else {}
+                print(f"[RESEND SUCCESS] Email entregue ao provedor para {clean_target} | ID: {res_data.get('id')}")
                 return
-
-        print(f"[EMAIL NOTICE] Todas as tentativas de envio para {clean_target} foram finalizadas.")
+            else:
+                print(f"[RESEND NOTICE] Envio para {clean_target} retornou status {resp.status_code}: {resp.text}")
+                return
+        except Exception as ex:
+            print(f"[RESEND ERROR] Exceção de rede no envio para {clean_target}: {ex}")
+            return
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
@@ -634,7 +582,7 @@ RATE_LIMIT_STORE = defaultdict(list)
 AUTH_RATE_LIMIT_STORE = defaultdict(list)
 
 GLOBAL_RATE_LIMIT_MAX = 120  # Max 120 requests per 60s per IP
-AUTH_RATE_LIMIT_MAX = 10     # Max 10 attempts per 60s per IP for login/resets
+AUTH_RATE_LIMIT_MAX = 30     # Max 10 attempts per 60s per IP for login/resets
 
 BLOCKED_USER_AGENTS = [
     'sqlmap', 'nikto', 'nmap', 'burpcollaborator', 'dirbuster',
@@ -718,6 +666,29 @@ if DATABASE_URL.upper().startswith("DATABASE_URL="):
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+ALLOWED_FORM_UPLOAD_EXTS = {'png', 'jpg', 'jpeg', 'webp', 'gif', 'pdf'}
+MAX_FORM_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB per file
+
+def sanitize_csv_cell(value):
+    if value is None:
+        return ''
+    s = str(value)
+    if s and s[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + s
+    return s
+
+class _SafeCsvWriterWrapper:
+    def __init__(self, writer):
+        self._writer = writer
+    def writerow(self, row):
+        return self._writer.writerow([sanitize_csv_cell(c) for c in row])
+    def writerows(self, rows):
+        for r in rows:
+            self.writerow(r)
+
+def safe_csv_writer(stream, **kwargs):
+    import csv
+    return _SafeCsvWriterWrapper(csv.writer(stream, **kwargs))
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_PROJECT_EXTENSIONS = {'pdf', 'kmz', 'kml', 'zip', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'png', 'jpg', 'jpeg'}
 
@@ -2199,13 +2170,30 @@ def parse_google_form(url):
     if not url:
         return None, "Link do formulário não foi informado."
 
+    if not url.startswith('http://') and not url.startswith('https://'):
+        url = 'https://' + url
+
+    try:
+        parsed_u = urllib.parse.urlparse(url)
+    except Exception:
+        return None, "URL inválida fornecida."
+
+    if parsed_u.scheme not in ('http', 'https'):
+        return None, "Protocolo inválido. Use https://."
+
+    hostname = (parsed_u.hostname or '').lower()
+    if hostname not in ('forms.gle', 'docs.google.com'):
+        return None, "Domínio inválido. Apenas links oficiais forms.gle ou docs.google.com são aceitos."
+
+    if hostname == 'docs.google.com' and not parsed_u.path.startswith('/forms/'):
+        return None, "Caminho inválido para docs.google.com. Deve iniciar com /forms/."
+
     # Normalize Google Form URL
-    if 'forms.gle' in url or 'docs.google.com/forms' in url:
-        if not url.endswith('/viewform') and '/viewform' not in url and not '?usp=' in url:
-            if '/edit' in url:
-                url = url.split('/edit')[0] + '/viewform'
-            elif not url.endswith('/'):
-                url = url + '/viewform'
+    if not url.endswith('/viewform') and '/viewform' not in url and not '?usp=' in url:
+        if '/edit' in url:
+            url = url.split('/edit')[0] + '/viewform'
+        elif not url.endswith('/'):
+            url = url + '/viewform'
 
     req = urllib.request.Request(
         url,
@@ -2331,7 +2319,21 @@ def serve_upload(filename):
     safe_path = safe_join(UPLOAD_FOLDER, filename)
     if not safe_path or not os.path.exists(safe_path):
         return "Arquivo não encontrado.", 404
-    return send_from_directory(UPLOAD_FOLDER, filename)
+
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    
+    # Strictly block executable, script or active content from being served
+    if ext in {'html', 'htm', 'xhtml', 'svg', 'js', 'mjs', 'xml', 'php', 'py', 'sh', 'exe', 'bat', 'cmd'}:
+        return "Tipo de arquivo não permitido para visualização direta.", 403
+
+    if filename.startswith('formularios/'):
+        if ext not in ALLOWED_FORM_UPLOAD_EXTS:
+            return "Extensão de arquivo não permitida.", 403
+
+    response = send_from_directory(UPLOAD_FOLDER, filename)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    return response
 
 @app.route('/p/project/<int:project_id>')
 @login_required
@@ -2436,16 +2438,7 @@ def serve_sitemap_xml():
                     "priority": "0.9"
                 })
             
-            cur.execute("SELECT slug, created_at FROM projects WHERE slug IS NOT NULL AND slug != '';")
-            for r in cur.fetchall():
-                slug = r['slug']
-                dt = r['created_at'].strftime('%Y-%m-%d') if r['created_at'] else today
-                routes.append({
-                    "loc": f"{host}/p/{slug}",
-                    "lastmod": dt,
-                    "changefreq": "weekly",
-                    "priority": "0.8"
-                })
+# Projects have no slug column; removed dead query
             cur.close()
             conn.close()
         except Exception as db_err:
@@ -2751,20 +2744,11 @@ def api_forgot_password():
     cur.close()
     conn.close()
 
-    if not user:
-        return jsonify({'error': 'Usuário não encontrado no sistema.'}), 404
-
-    if not user.get('totp_enabled'):
-        return jsonify({
-            'error': 'Sua conta ainda não possui aplicativo autenticador configurado. Contate o coordenador total (alexandre.candido) para redefinir seu acesso.',
-            'requires_coordinator': True
-        }), 400
-
+    # Resposta genérica e uniforme para evitar enumeração de contas e vazamento de nomes
     return jsonify({
         'success': True,
         'totp_required': True,
-        'username': user['username'],
-        'message': 'Autenticador detectado. Digite o código de 6 dígitos gerado no seu aplicativo autenticador para prosseguir com a redefinição de senha.'
+        'message': 'Se a conta informada estiver cadastrada, digite o código de 6 dígitos do seu aplicativo autenticador para prosseguir.'
     })
 
 @app.route('/api/auth/reset-password', methods=['POST'])
@@ -2777,8 +2761,8 @@ def api_reset_password():
     if not identifier or not code or not new_password:
         return jsonify({'error': 'Por favor, preencha todos os campos obrigatórios.'}), 400
 
-    if len(new_password) < 6:
-        return jsonify({'error': 'A nova senha deve ter no mínimo 6 caracteres.'}), 400
+    if len(new_password) < 8:
+        return jsonify({'error': 'A nova senha deve ter no mínimo 8 caracteres.'}), 400
 
     conn = get_db()
     cur = conn.cursor()
@@ -2975,10 +2959,10 @@ def api_update_my_profile():
 
     hashed_pw = None
     if new_password:
-        if len(new_password) < 6:
+        if len(new_password) < 8:
             cur.close()
             conn.close()
-            return jsonify({"error": "A nova senha deve ter no mínimo 6 caracteres."}), 400
+            return jsonify({"error": "A nova senha deve ter no mínimo 8 caracteres."}), 400
         if not current_password:
             cur.close()
             conn.close()
@@ -3652,7 +3636,10 @@ def api_get_projects():
     if folder_id == 'null' or folder_id == '' or folder_id is None:
         folder_id = None
     else:
-        folder_id = int(folder_id)
+        try:
+            folder_id = int(folder_id)
+        except (ValueError, TypeError):
+            folder_id = None
         
     try:
         conn = get_db()
@@ -3690,7 +3677,10 @@ def api_create_project():
         if folder_id == 'null' or folder_id == '' or folder_id is None:
             folder_id = None
         else:
-            folder_id = int(folder_id)
+            try:
+                folder_id = int(folder_id)
+            except (ValueError, TypeError):
+                folder_id = None
         
         if not name:
             return jsonify({"error": "Nome do projeto é obrigatório."}), 400
@@ -4212,7 +4202,7 @@ def api_export_all_routes():
 
         output = io.StringIO()
         output.write('\ufeff')
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
         writer.writerow(["ID", "Nome da Rota", "Tipo", "Descrição", "Qtd Medições", "Data Cadastro"])
 
         # Fetch comprehensive route lines detail
@@ -4229,7 +4219,7 @@ def api_export_all_routes():
 
         output_detail = io.StringIO()
         output_detail.write('\ufeff')
-        writer_d = csv.writer(output_detail, delimiter=';')
+        writer_d = safe_csv_writer(output_detail, delimiter=';')
         writer_d.writerow(["ID Rota", "Nome da Rota", "Tipo da Rota", "Data/Trecho", "Caixa POP", "Tipo de Cabo", "Tipo Evento", "Medição", "Endereço", "Observações", "Data Cadastro"])
         for al in all_lines:
             dta = al['created_at'].strftime('%d/%m/%Y %H:%M') if al.get('created_at') else ''
@@ -4567,7 +4557,7 @@ def public_form_submit(slug):
                 vals = request.form.getlist(k)
                 data[k] = vals[0] if len(vals) == 1 else vals
 
-        # Process uploaded files (photos, pdfs, etc.)
+        # Process uploaded files (photos, pdfs, etc.) with strict extension and 20MB limit
         if request.files:
             upload_dir = os.path.join(UPLOAD_FOLDER, 'formularios')
             os.makedirs(upload_dir, exist_ok=True)
@@ -4576,6 +4566,16 @@ def public_form_submit(slug):
                 file_urls = []
                 for file in files:
                     if file and file.filename:
+                        ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+                        if ext not in ALLOWED_FORM_UPLOAD_EXTS:
+                            return jsonify({"error": f"Extensão .{ext} não permitida. Apenas fotos e documentos PDF são aceitos."}), 400
+                        
+                        file.seek(0, os.SEEK_END)
+                        f_size = file.tell()
+                        file.seek(0)
+                        if f_size > MAX_FORM_UPLOAD_SIZE:
+                            return jsonify({"error": f"O arquivo '{file.filename}' excede o limite máximo permitido de 20MB."}), 400
+
                         safe_name = secure_filename(file.filename)
                         timestamp = int(time.time() * 1000)
                         saved_name = f"{timestamp}_{safe_name}"
@@ -4908,7 +4908,7 @@ def api_form_responses_export(form_id):
 
         output = io.StringIO()
         output.write('﻿') # UTF-8 BOM for Excel
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
 
         # Header
         base_headers = ['ID', 'Data/Hora Submissao', 'Tecnico', 'E-mail']
@@ -5267,7 +5267,7 @@ def api_export_monthly_indicators():
 
         output = io.StringIO()
         output.write('\ufeff')
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
 
         writer.writerow(['Indicador', 'Área', 'Total', 'FP', 'Percentual', 'Tempo', 'Meta'])
 
@@ -5321,7 +5321,7 @@ def api_indicators_template():
     try:
         output = io.StringIO()
         output.write('\ufeff')
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
         writer.writerow(['Indicador', 'Área', 'Total', 'FP', 'Tempo'])
 
         region = request.args.get('region', 'Interior').strip()
@@ -5803,7 +5803,7 @@ def api_export_technicians():
         conn.close()
         
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
         writer.writerow([
             "Nome", "CPF", "Telefone", "RG", "Data Nascimento", "Cargo", "Empresa", "Área de Atuação", 
             "Tipo Equipe", "Camisa", "Bota", "Calça", "Casaco", "Equipe",
@@ -5954,7 +5954,7 @@ def api_export_vehicles():
         conn.close()
         
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
         writer.writerow([
             "Placa", "Tipo", "Modelo", "Responsável", "Sub-Classe", "Área de Rede", "Base", "Setor", 
             "Condutor Dia", "Condutor Tarde", "Condutor Madrugada", "Ticket Car", "Rack de Teto", 
@@ -6427,7 +6427,7 @@ def api_export_finance():
 
         output = io.StringIO()
         output.write('\ufeff')
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
         writer.writerow(["Tipo Lançamento", "Mês Referência", "Descrição / Pessoas", "Área de Trabalho", "Valor Mensal (R$)", "Data Registro"])
 
         for t in teams:
@@ -6583,7 +6583,7 @@ def api_export_notifications():
         conn.close()
 
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
         writer.writerow(["Data", "Porquê", "Descritivo", "Contagem", "Coordenador"])
         for idx, r in enumerate(rows, start=1):
             event_date = r['event_date'].strftime('%d/%m/%Y') if r['event_date'] else ''
@@ -7658,7 +7658,7 @@ def api_export_buscador_base():
     conn.close()
 
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=';')
+    writer = safe_csv_writer(output, delimiter=';')
     writer.writerow(columns)
 
     for r in rows:
@@ -8865,12 +8865,29 @@ def api_update_user_task(task_id):
 @login_required
 def api_add_task_attachment(task_id):
     user_id = session.get('user_id')
-    files = request.files.getlist('attachments') or request.files.getlist('files') or request.files.getlist('file')
-    if not files:
-        return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
+    auth = get_current_user_auth()
+    is_coord = auth and (auth.get('is_master') or auth.get('is_coordenador'))
 
     conn = get_db()
     cur = conn.cursor()
+    cur.execute("SELECT id, user_id FROM user_tasks WHERE id = %s;", (task_id,))
+    task_row = cur.fetchone()
+    if not task_row:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Tarefa não encontrada.'}), 404
+
+    if not is_coord and task_row['user_id'] != user_id:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Acesso negado: você não possui permissão para anexar arquivos nesta tarefa.'}), 403
+
+    files = request.files.getlist('attachments') or request.files.getlist('files') or request.files.getlist('file')
+    if not files:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
+
     saved = []
     for f in files:
         if f and f.filename and allowed_file(f.filename, ALLOWED_PROJECT_EXTENSIONS):
@@ -8897,10 +8914,29 @@ def api_add_task_attachment(task_id):
 @app.route('/api/user-tasks/attachments/<int:attachment_id>', methods=['DELETE'], strict_slashes=False)
 @login_required
 def api_delete_task_attachment(attachment_id):
+    user_id = session.get('user_id')
+    auth = get_current_user_auth()
+    is_coord = auth and (auth.get('is_master') or auth.get('is_coordenador'))
+
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT filepath FROM task_attachments WHERE id = %s;", (attachment_id,))
+    cur.execute("""
+        SELECT a.id, a.filepath, a.uploaded_by, t.user_id as task_user_id
+        FROM task_attachments a
+        JOIN user_tasks t ON a.task_id = t.id
+        WHERE a.id = %s;
+    """, (attachment_id,))
     row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Anexo não encontrado.'}), 404
+
+    if not is_coord and row['task_user_id'] != user_id and row['uploaded_by'] != user_id:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Acesso negado: você não possui permissão para excluir este anexo.'}), 403
+
     if row and row.get('filepath'):
         disk_path = os.path.join(UPLOAD_FOLDER, row['filepath'])
         if os.path.exists(disk_path):
@@ -8943,7 +8979,7 @@ def api_export_user_tasks():
 
         output = io.StringIO()
         output.write('\ufeff') # UTF-8 BOM for Excel
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
 
         # Header columns
         writer.writerow(['ID', 'Título / Projeto', 'Status', 'Prioridade', 'Responsável', 'Prazo', 'Descrição / Acompanhamento', 'Data de Criação'])
@@ -9005,8 +9041,11 @@ def api_get_evaluations():
         params.append(company_filter)
         
     if tech_id_filter:
-        query += " AND e.technician_id = %s"
-        params.append(int(tech_id_filter))
+        try:
+            query += " AND e.technician_id = %s"
+            params.append(int(tech_id_filter))
+        except (ValueError, TypeError):
+            pass
         
     if search:
         query += " AND (e.technician_name ILIKE %s OR e.company ILIKE %s OR e.comments ILIKE %s)"
@@ -9135,7 +9174,7 @@ def api_export_evaluations():
 
         output = io.StringIO()
         output.write('\ufeff')
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
         writer.writerow([
             'ID', 'Colaborador', 'Empresa', 'Função', 'Área',
             'Comportamento (1-10)', 'Produtividade (1-10)', 'Indicadores Técnicos (1-10)', 'Processos (1-10)',
@@ -9839,7 +9878,7 @@ def api_auditorias_export():
 
         output = io.StringIO()
         output.write('\ufeff') # UTF-8 BOM for Excel
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
 
         # Header matching the user's Excel sheet
         writer.writerow(['OS', 'Data', 'Criada por', 'Responsável', 'Status', 'Data da auditoria', 'Observações', 'Qtd Fotos'])
@@ -10327,7 +10366,7 @@ def api_aceitacoes_export():
 
         output = io.StringIO()
         output.write('\ufeff') # UTF-8 BOM for Excel
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
 
         # Header matching the user's Excel sheet
         writer.writerow(['OS', 'Data', 'Criada por', 'Responsável', 'Status', 'Data da aceitação', 'Observações', 'Qtd Fotos'])
@@ -10792,7 +10831,7 @@ def api_pos_eventos_export():
 
         output = io.StringIO()
         output.write('\ufeff')  # UTF-8 BOM for Excel
-        writer = csv.writer(output, delimiter=';')
+        writer = safe_csv_writer(output, delimiter=';')
 
         # Header matching the user requirements
         writer.writerow([
@@ -10848,9 +10887,11 @@ def api_pos_eventos_export():
 # --------------------------------------------------------------------------
 
 @app.route('/api/email/test-template', methods=['POST'])
+@login_required
 def api_test_email_template():
-    if 'user_id' not in session:
-        return jsonify({"error": "Autenticação necessária."}), 401
+    auth = get_current_user_auth()
+    if not auth or not (auth.get('is_master') or auth.get('is_coordenador')):
+        return jsonify({"error": "Apenas coordenadores podem testar o disparo de templates de e-mail."}), 403
     
     data = request.get_json(silent=True) or {}
     template_type = (data.get('template_type') or 'password_reset').strip().lower()
