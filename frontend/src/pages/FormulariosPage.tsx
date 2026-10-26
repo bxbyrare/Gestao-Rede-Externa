@@ -374,10 +374,9 @@ export default function FormulariosPage() {
   }
 
   function copyLink(f: FormItem) {
-    const hasNative = f.questions && f.questions.length > 0;
-    const url = !hasNative && f.link ? f.link : `${window.location.origin}/f/${f.slug}`;
+    const url = `${window.location.origin}/f/${f.slug}`;
     navigator.clipboard.writeText(url).then(
-      () => alert(`Link do formulário copiado!\n${url}`),
+      () => alert(`Link oficial do formulário copiado!\n${url}`),
       () => prompt('Copie o link do formulário:', url)
     );
   }
@@ -588,7 +587,7 @@ export default function FormulariosPage() {
     <div>
       <PageHeader
         title="Formulários"
-        subtitle="Formulários de campo, links externos e respostas com evidências fotográficas"
+        subtitle="Formulários nativos de campo e respostas com evidências fotográficas"
         actions={
           canCreate ? (
             <div className="flex items-center gap-2">
@@ -603,7 +602,7 @@ export default function FormulariosPage() {
         }
       />
 
-      {/* BARRA DE CONVERSÃO RÁPIDA DE GOOGLE FORMS (Exclusiva para quem tem permissão explícita no Gerenciamento) */}
+      {/* BARRA DE CONVERSÃO RÁPIDA (Exclusiva para quem tem permissão explícita no Gerenciamento) */}
       {canCreate && (
         <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-950/25 via-white/[0.02] to-white/[0.01] border border-white/10 relative overflow-hidden backdrop-blur-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
@@ -613,13 +612,13 @@ export default function FormulariosPage() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                Importar Google Forms
+                Importar Google ou Microsoft Forms
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  Conversão Nativa
+                  Gera Formulário Gestão
                 </span>
               </h3>
               <p className="text-xs text-[var(--color-text-muted)]">
-                Cole o link público (<code className="text-white/80">forms.gle/...</code> ou <code className="text-white/80">docs.google.com/forms/...</code>) para transformar em formulário nativo do Gestão e copiar o link oficial.
+                Cole o link público (Google Forms ou Microsoft Forms) para extrair as perguntas e gerar um formulário próprio nativo do Gestão, sem links externos.
               </p>
             </div>
           </div>
@@ -631,7 +630,7 @@ export default function FormulariosPage() {
             <Input
               value={quickLink}
               onChange={(e) => setQuickLink(e.target.value)}
-              placeholder="Cole o link do Google Forms aqui (ex: https://forms.gle/XYZ...)"
+              placeholder="Cole o link do formulário aqui (ex: forms.gle/... ou forms.office.com/...)"
               className="pl-10 font-mono text-xs"
               disabled={isQuickConverting}
             />
@@ -744,11 +743,11 @@ export default function FormulariosPage() {
                         <Sparkles className="w-2.5 h-2.5" />
                         {qCount} pergunta{qCount > 1 ? 's' : ''} nativa{qCount > 1 ? 's' : ''}
                       </span>
-                    ) : f.link ? (
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                        Link Externo
+                    ) : (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                        Formulário Gestão
                       </span>
-                    ) : null}
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {canEdit && (
@@ -777,11 +776,11 @@ export default function FormulariosPage() {
                 </p>
                 <div className="grid grid-cols-3 gap-2 mt-auto pt-3 border-t border-white/5">
                   <a
-                    href={(f.questions && f.questions.length > 0) || !f.link ? `/f/${f.slug}` : f.link}
+                    href={`/f/${f.slug}`}
                     target="_blank"
                     rel="noreferrer"
                     className="h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
-                    title={(f.questions && f.questions.length > 0) || !f.link ? "Abrir e responder formulário no Gestão" : "Abrir formulário no Google Forms"}
+                    title="Abrir e responder formulário no Gestão"
                   >
                     <ExternalLink className="w-3.5 h-3.5 text-blue-400" /> Abrir
                   </a>
@@ -830,16 +829,16 @@ export default function FormulariosPage() {
         <div className="mb-4 p-3.5 rounded-xl bg-gradient-to-br from-red-950/20 via-white/[0.02] to-transparent border border-white/10">
           <label className="text-xs font-bold text-white flex items-center gap-1.5 mb-1">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Importar do Google Forms (Recomendado)
+            Importar Google Forms ou Microsoft Forms (Gera Formulário Nativo)
           </label>
           <p className="text-[11px] text-[var(--color-text-muted)] mb-2.5">
-            Cole a URL pública do Google Forms e clique em <b>Converter</b> para preencher título, instruções e perguntas automaticamente.
+            Cole a URL pública do Google Forms ou Microsoft Forms para extrair as perguntas. O formulário gerado será 100% nativo do Gestão, sem links externos.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
               value={form.link}
               onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
-              placeholder="https://forms.gle/... ou https://docs.google.com/forms/..."
+              placeholder="https://forms.gle/... ou https://forms.office.com/..."
               className="flex-1 font-mono text-xs"
             />
             <Button
@@ -854,7 +853,7 @@ export default function FormulariosPage() {
               ) : (
                 <>
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  Converter
+                  Importar Perguntas
                 </>
               )}
             </Button>

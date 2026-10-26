@@ -9,7 +9,6 @@ import {
   User,
   AlertCircle,
   ArrowRight,
-  ExternalLink,
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../state/AuthContext';
@@ -250,14 +249,14 @@ export default function FormResponderPage() {
     );
   }
 
-  // Se o formulário for um link externo (como Google Forms) e não possuir perguntas nativas
+  // Se o formulário ainda não possuir perguntas nativas cadastradas
   if (form && (!form.questions || form.questions.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#06080D] relative">
         <GsapSecurityBackground />
         <div className="relative z-10 w-full max-w-lg rounded-[28px] p-2 bg-gradient-to-b from-white/[0.1] to-white/[0.02] border border-white/10 backdrop-blur-2xl">
           <div className="rounded-[22px] p-8 bg-[#090C13]/95 border border-white/[0.05] text-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-red-600/15 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto shadow-lg shadow-red-600/10">
+            <div className="w-14 h-14 rounded-2xl bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto shadow-lg shadow-blue-600/10">
               <FileText className="w-7 h-7" />
             </div>
             <div>
@@ -268,26 +267,14 @@ export default function FormResponderPage() {
                 {form.title}
               </h1>
               <p className="text-xs text-neutral-400 mt-2 leading-relaxed">
-                {form.description || 'Este formulário é gerenciado externamente via Google Forms.'}
+                {form.description || 'Formulário nativo em configuração. Adicione as perguntas no painel de gestão para habilitar o envio de respostas.'}
               </p>
             </div>
-            {form.link && (
-              <div className="pt-2">
-                <a
-                  href={form.link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-2 w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold text-xs tracking-wider uppercase transition-all shadow-lg shadow-red-600/25"
-                >
-                  <ExternalLink className="w-4 h-4" /> Acessar Google Forms
-                </a>
-              </div>
-            )}
             <div className="pt-2 border-t border-white/5">
               <button
                 type="button"
                 onClick={() => navigate('/')}
-                className="text-xs text-neutral-400 hover:text-white transition-colors"
+                className="text-xs text-neutral-400 hover:text-white transition-colors cursor-pointer"
               >
                 Voltar ao Sistema Claro Gestão
               </button>

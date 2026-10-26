@@ -1595,19 +1595,156 @@ def init_db():
         except Exception:
             conn.rollback()
 
-        # Seed default Inventário - Maquinário form if not existing
-        cur.execute("SELECT id FROM forms WHERE slug = 'inventario-maquinario';")
-        if not cur.fetchone():
+        # --------------------------------------------------------------------------
+        # FORMULÁRIOS NATIVOS CLARO GESTÃO (SEM LINKS EXTERNOS)
+        # --------------------------------------------------------------------------
+        vistoria_default_questions = [
+            {"title": "E-mail do Técnico", "type": "text", "options": [], "required": True},
+            {"title": "Data da Vistoria", "type": "date", "options": [], "required": True},
+            {"title": "Nome do Inspetor / Técnico", "type": "text", "options": [], "required": True},
+            {"title": "Região / Área", "type": "select", "options": [
+                "METROPOLITANA", "CENTRO ZONA SUL", "NORTE 1", "NORTE 2", "NORTE 3",
+                "ZONA OESTE", "BAIXADA FLUMINENSE", "REGIÃO DOS LAGOS", "SUL FLUMINENSE", "REGIÃO SERRANA"
+            ], "required": True},
+            {"title": "Cidade / Subcluster", "type": "text", "options": [], "required": False},
+            {"title": "Endereço / Logradouro / Ponto de Referência", "type": "text", "options": [], "required": False},
+            {"title": "Número da OS / Task TOA", "type": "text", "options": [], "required": False},
+            {"title": "Tecnologia da Rede", "type": "radio", "options": ["HFC", "Fibra (FTTH)", "Metálico"], "required": False},
+            {"title": "Identificação do Node / Rota de Fibra", "type": "text", "options": [], "required": False},
+            {"title": "Tipo de Vistoria / Ocorrência", "type": "select", "options": [
+                "Vistoria Preventiva / Rotina", "Auditoria de Campo", "Vandalismo / Furto de Cabo",
+                "Cabo Baixo / Rompimento", "Atenuação / Nível Fora do Padrão", "Caixa / Armário Danificado", "Outro"
+            ], "required": False},
+            {"title": "Rede Externa Conforme Padrão Claro?", "type": "radio", "options": ["Sim", "Não"], "required": False},
+            {"title": "Lixo de Rede no Chão Recolhido?", "type": "radio", "options": ["Sim", "Não"], "required": False},
+            {"title": "Pontas de Cabos Recolhidas?", "type": "radio", "options": ["Sim", "Não"], "required": False},
+            {"title": "Fotos e Evidências da Vistoria", "type": "file", "options": [], "required": False},
+            {"title": "Observações e Parecer Técnico", "type": "textarea", "options": [], "required": False}
+        ]
+
+        inventario_default_questions = [
+            {"title": "Técnico Responsável", "type": "text", "options": [], "required": True},
+            {"title": "Data do Inventário", "type": "date", "options": [], "required": True},
+            {"title": "Empresa / Parceira", "type": "select", "options": ["Claro", "FFA", "Procisa", "Outra"], "required": True},
+            {"title": "Tipo de Maquinário / Equipamento", "type": "select", "options": [
+                "Máquina de Fusão de Fibra", "OTDR (Refletômetro Óptico)", "Clivador de Precisão",
+                "Power Meter Óptico", "Identificador de Fibra Ativa (AFI)", "Gerador de Energia Portátil",
+                "Escada Extensível Fibra", "Conjunto de EPI / Linha de Vida", "Detector de Tensão / Multímetro", "Outro"
+            ], "required": True},
+            {"title": "Marca / Fabricante", "type": "text", "options": [], "required": False},
+            {"title": "Modelo do Equipamento", "type": "text", "options": [], "required": False},
+            {"title": "Número de Série / Plaqueta de Patrimônio", "type": "text", "options": [], "required": True},
+            {"title": "Estado Geral de Conservação", "type": "select", "options": [
+                "Excelente (Novo / Pouco Uso)", "Bom (Operacional)", "Regular (Desgaste Natural)", "Danificado (Necessita Manutenção / Reparo)"
+            ], "required": True},
+            {"title": "Calibração / Aferição em Dia?", "type": "radio", "options": ["Sim", "Não", "Não se aplica"], "required": False},
+            {"title": "Fotos do Equipamento e Número de Série", "type": "file", "options": [], "required": False},
+            {"title": "Observações sobre o Estado ou Pendências", "type": "textarea", "options": [], "required": False}
+        ]
+
+        cadastro_equipe_default_questions = [
+            {"title": "Nome Completo do Colaborador", "type": "text", "options": [], "required": True},
+            {"title": "CPF", "type": "text", "options": [], "required": True},
+            {"title": "Telefone de Contato / WhatsApp", "type": "text", "options": [], "required": True},
+            {"title": "E-mail Corporativo ou Pessoal", "type": "text", "options": [], "required": True},
+            {"title": "Empresa / Parceira Vinculada", "type": "select", "options": ["Claro", "FFA", "Procisa", "Outra"], "required": True},
+            {"title": "Cargo / Função Operacional", "type": "select", "options": ["Supervisor", "Técnico de Rede", "Auxiliar de Campo", "Coordenador"], "required": True},
+            {"title": "Matrícula Claro", "type": "text", "options": [], "required": False},
+            {"title": "Login TOA (Oracle Field Service)", "type": "text", "options": [], "required": False},
+            {"title": "Cluster / Base Operacional", "type": "select", "options": [
+                "METROPOLITANA", "CENTRO ZONA SUL", "NORTE 1", "NORTE 2", "NORTE 3",
+                "ZONA OESTE", "BAIXADA FLUMINENSE", "REGIÃO DOS LAGOS", "SUL FLUMINENSE", "REGIÃO SERRANA"
+            ], "required": False},
+            {"title": "Certificações Normativas Ativas", "type": "checkbox", "options": [
+                "NR-06 (EPI)", "NR-10 (Segurança em Eletricidade)", "NR-35 (Trabalho em Altura)", "ASO (Atestado de Saúde Ocupacional)"
+            ], "required": False},
+            {"title": "Foto do Colaborador / Documento / ASO", "type": "file", "options": [], "required": False},
+            {"title": "Observações Adicionais", "type": "textarea", "options": [], "required": False}
+        ]
+
+        # Sincroniza e migra Vistoria Externa (eliminando links externos e garantindo link nativo /f/vistoria-externa)
+        try:
             cur.execute("""
-                INSERT INTO forms (title, slug, category, description, link)
-                VALUES (%s, %s, %s, %s, %s);
-            """, (
-                'Inventário - Maquinário',
-                'inventario-maquinario',
-                'Inspeção',
-                'Inventário do Maquinário e Ferramental.',
-                '/f/inventario-maquinario'
-            ))
+                UPDATE forms 
+                SET title = 'Formulário de Vistoria Externa',
+                    category = 'Vistoria',
+                    description = 'Formulário oficial para vistorias, registros de campo e auditorias de rede externa.',
+                    slug = 'vistoria-externa',
+                    link = '/f/vistoria-externa',
+                    questions = %s
+                WHERE slug IN ('formulario-vistoria-google', 'vistoria-externa') OR title ILIKE '%vistoria externa%';
+            """, (json.dumps(vistoria_default_questions, ensure_ascii=False),))
+            if cur.rowcount == 0:
+                cur.execute("""
+                    INSERT INTO forms (title, slug, category, description, link, questions)
+                    VALUES (%s, %s, %s, %s, %s, %s);
+                """, (
+                    'Formulário de Vistoria Externa',
+                    'vistoria-externa',
+                    'Vistoria',
+                    'Formulário oficial para vistorias, registros de campo e auditorias de rede externa.',
+                    '/f/vistoria-externa',
+                    json.dumps(vistoria_default_questions, ensure_ascii=False)
+                ))
+        except Exception as e_v:
+            print("Error syncing Vistoria form:", e_v)
+            conn.rollback()
+
+        # Sincroniza e migra Inventário - Maquinário
+        try:
+            cur.execute("""
+                UPDATE forms
+                SET title = 'Inventário - Maquinário',
+                    slug = 'inventario-maquinario',
+                    category = 'Inspeção',
+                    description = 'Inventário do Maquinário e Ferramental.',
+                    link = '/f/inventario-maquinario',
+                    questions = COALESCE(NULLIF(questions, '[]'::jsonb), %s::jsonb)
+                WHERE slug = 'inventario-maquinario' OR title ILIKE '%inventário - maquinário%' OR title ILIKE '%inventario - maquinario%';
+            """, (json.dumps(inventario_default_questions, ensure_ascii=False),))
+            if cur.rowcount == 0:
+                cur.execute("""
+                    INSERT INTO forms (title, slug, category, description, link, questions)
+                    VALUES (%s, %s, %s, %s, %s, %s);
+                """, (
+                    'Inventário - Maquinário',
+                    'inventario-maquinario',
+                    'Inspeção',
+                    'Inventário do Maquinário e Ferramental.',
+                    '/f/inventario-maquinario',
+                    json.dumps(inventario_default_questions, ensure_ascii=False)
+                ))
+        except Exception as e_inv:
+            print("Error syncing Inventário form:", e_inv)
+            conn.rollback()
+
+        # Sincroniza e migra Cadastro de Equipe
+        try:
+            cur.execute("""
+                UPDATE forms
+                SET title = 'Cadastro equipe',
+                    slug = 'cadastro-equipe',
+                    category = 'Outros',
+                    description = 'Formulário oficial para cadastro de colaboradores e técnicos de campo.',
+                    link = '/f/cadastro-equipe',
+                    questions = COALESCE(NULLIF(questions, '[]'::jsonb), %s::jsonb)
+                WHERE slug = 'cadastro-equipe' OR title ILIKE '%cadastro equipe%' OR title ILIKE '%cadastro de equipe%';
+            """, (json.dumps(cadastro_equipe_default_questions, ensure_ascii=False),))
+            if cur.rowcount == 0:
+                cur.execute("""
+                    INSERT INTO forms (title, slug, category, description, link, questions)
+                    VALUES (%s, %s, %s, %s, %s, %s);
+                """, (
+                    'Cadastro equipe',
+                    'cadastro-equipe',
+                    'Outros',
+                    'Formulário oficial para cadastro de colaboradores e técnicos de campo.',
+                    '/f/cadastro-equipe',
+                    json.dumps(cadastro_equipe_default_questions, ensure_ascii=False)
+                ))
+        except Exception as e_cad:
+            print("Error syncing Cadastro equipe form:", e_cad)
+            conn.rollback()
 
         # Seed and synchronize default "Inspeção Visual" form with Mudanças 1, 2 e 3
         try:
@@ -1627,25 +1764,26 @@ def init_db():
                 {"title": "Observações", "type": "textarea", "options": [], "required": False}
             ]
 
-            cur.execute("SELECT id, questions FROM forms WHERE slug = 'inspecao-visual' OR title ILIKE '%inspeção visual%' OR title ILIKE '%inspecao visual%';")
+            cur.execute("SELECT id, slug, questions FROM forms WHERE slug IN ('inspecao-visual', 'inspecao-visual-2026') OR title ILIKE '%inspeção visual%' OR title ILIKE '%inspecao visual%';")
             inspecao_row = cur.fetchone()
             if not inspecao_row:
                 cur.execute("""
                     INSERT INTO forms (title, slug, category, description, link, questions)
                     VALUES (%s, %s, %s, %s, %s, %s);
                 """, (
-                    'Inspeção Visual',
-                    'inspecao-visual',
+                    'Inspeção VISUAL 2026',
+                    'inspecao-visual-2026',
                     'Inspeção',
-                    'Formulário oficial de inspeção visual de rede externa, registro de ocorrências, fotos para evidência e controle interno.',
-                    '/f/inspecao-visual',
+                    'Este forms segue para levantarmos as pendências que temos em nossas regiões para que sejam abertos WFC.',
+                    '/f/inspecao-visual-2026',
                     json.dumps(inspecao_default_questions, ensure_ascii=False)
                 ))
             else:
                 q_raw = inspecao_row.get('questions')
                 q_list = json.loads(q_raw) if isinstance(q_raw, str) else (q_raw if isinstance(q_raw, list) else [])
+                target_slug = inspecao_row.get('slug') or 'inspecao-visual-2026'
                 if not q_list:
-                    cur.execute("UPDATE forms SET questions = %s WHERE id = %s;", (json.dumps(inspecao_default_questions, ensure_ascii=False), inspecao_row['id']))
+                    cur.execute("UPDATE forms SET questions = %s, link = %s WHERE id = %s;", (json.dumps(inspecao_default_questions, ensure_ascii=False), f"/f/{target_slug}", inspecao_row['id']))
                 else:
                     titles = [str(q.get('title', '')).strip().lower() for q in q_list if isinstance(q, dict)]
                     has_hfc = any('hfc ou fibra' in t or 'rede hfc' in t for t in titles)
@@ -1673,28 +1811,24 @@ def init_db():
                         if not has_wfc:
                             new_q.append({"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False})
 
-                        cur.execute("UPDATE forms SET questions = %s WHERE id = %s;", (json.dumps(new_q, ensure_ascii=False), inspecao_row['id']))
+                        cur.execute("UPDATE forms SET questions = %s, link = %s WHERE id = %s;", (json.dumps(new_q, ensure_ascii=False), f"/f/{target_slug}", inspecao_row['id']))
         except Exception as e_seed:
             print("Error seeding/updating Inspeção Visual form:", e_seed)
             conn.rollback()
 
-        # Seed Google Form (Vistoria e Campo)
+        # Garante link nativo e remove menções de links externos em todos os formulários da base
         try:
-            google_form_url = 'https://docs.google.com/forms/d/e/1FAIpQLSe1tMB7qoB17WhasNSPS8m-B_5Aigi-xuvKp2gvgrOfPO_ifA/viewform?usp=header'
-            cur.execute("SELECT id FROM forms WHERE link ILIKE %s OR slug = 'formulario-vistoria-google';", (f"%1FAIpQLSe1tMB7qoB17WhasNSPS8m-B_5Aigi-xuvKp2gvgrOfPO_ifA%",))
-            if not cur.fetchone():
-                cur.execute("""
-                    INSERT INTO forms (title, slug, category, description, link)
-                    VALUES (%s, %s, %s, %s, %s);
-                """, (
-                    'Formulário de Vistoria Externa (Google Forms)',
-                    'formulario-vistoria-google',
-                    'Vistoria',
-                    'Formulário oficial via Google Forms para vistorias, registros de campo e auditorias de rede externa.',
-                    google_form_url
-                ))
-        except Exception as e_gf:
-            print("Error seeding Google Form:", e_gf)
+            cur.execute("""
+                UPDATE forms
+                SET link = CONCAT('/f/', slug)
+                WHERE link IS NULL OR link LIKE 'http%' OR link != CONCAT('/f/', slug);
+
+                UPDATE forms
+                SET title = TRIM(REPLACE(REPLACE(REPLACE(title, '(Google Forms)', ''), '(Google Form)', ''), '(Microsoft Forms)', ''))
+                WHERE title ILIKE '%google form%' OR title ILIKE '%microsoft form%';
+            """)
+        except Exception as e_glob:
+            print("Error normalizing forms links:", e_glob)
             conn.rollback()
 
         # 14. Password Reset Tokens Table (Link Criptografado por E-mail Brevo)
@@ -2462,6 +2596,145 @@ import urllib.request
 import urllib.error
 import re
 import json
+
+def parse_microsoft_form(url):
+    url = (url or '').strip()
+    if not url:
+        return None, "Link do formulário Microsoft não foi informado."
+
+    if not url.startswith('http://') and not url.startswith('https://'):
+        url = 'https://' + url
+
+    try:
+        parsed_u = urllib.parse.urlparse(url)
+    except Exception:
+        return None, "URL inválida fornecida."
+
+    hostname = (parsed_u.hostname or '').lower()
+    if 'forms.office.com' not in hostname and 'forms.microsoft.com' not in hostname:
+        return None, "Domínio inválido para Microsoft Forms. Use forms.office.com."
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+        }
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            final_url = resp.geturl()
+            if 'login.microsoftonline.com' in final_url or 'login.live.com' in final_url:
+                return None, "Formulário privado ou requer login corporativo Microsoft 365. Altere as permissões para público ('Qualquer pessoa pode responder') para importar automaticamente."
+            html = resp.read().decode('utf-8', errors='ignore')
+    except urllib.error.HTTPError as e:
+        if e.code in [401, 403]:
+            return None, "Formulário privado ou protegido por login Microsoft 365."
+        return None, f"Erro de conexão com o Microsoft Forms (HTTP {e.code})."
+    except Exception as e:
+        return None, f"Falha ao acessar Microsoft Forms: {e}"
+
+    if 'login.microsoftonline.com' in html or 'login.live.com' in html:
+        return None, "Formulário privado ou requer login Microsoft 365."
+
+    title = "Formulário Importado (Microsoft Forms)"
+    description = ""
+    parsed_questions = []
+
+    # 1. Tenta extrair JSON embutido na página
+    json_blobs = re.findall(r'<script[^>]*type=[\'"]application/json[\'"][^>]*>(.*?)</script>', html, re.DOTALL)
+    data_dict = None
+    for jb in json_blobs:
+        if 'questions' in jb or 'formInfo' in jb or 'title' in jb:
+            try:
+                candidate = json.loads(jb.strip())
+                if isinstance(candidate, dict):
+                    data_dict = candidate
+                    break
+            except Exception:
+                pass
+
+    if not data_dict:
+        js_matches = re.findall(r'(?:window\.__INITIAL_STATE__|window\.formContext|formModel)\s*=\s*(\{.*?\});', html, re.DOTALL)
+        for jm in js_matches:
+            try:
+                candidate = json.loads(jm.strip())
+                if isinstance(candidate, dict):
+                    data_dict = candidate
+                    break
+            except Exception:
+                pass
+
+    if data_dict:
+        form_info = data_dict.get('formInfo') or data_dict.get('form') or data_dict
+        if isinstance(form_info, dict):
+            title = form_info.get('title') or form_info.get('name') or title
+            description = form_info.get('description') or form_info.get('subtitle') or ""
+            raw_qs = form_info.get('questions') or form_info.get('questionList') or []
+            if isinstance(raw_qs, list):
+                for q in raw_qs:
+                    if not isinstance(q, dict):
+                        continue
+                    q_title = q.get('title') or q.get('name') or 'Pergunta'
+                    q_type = str(q.get('type') or '').lower()
+                    is_required = bool(q.get('required') or q.get('isRequired'))
+                    opts = []
+                    choices = q.get('choices') or q.get('options') or []
+                    if isinstance(choices, list):
+                        for c in choices:
+                            if isinstance(c, dict) and c.get('description'):
+                                opts.append(str(c['description']))
+                            elif isinstance(c, str):
+                                opts.append(c)
+
+                    f_type = 'text'
+                    if 'choice' in q_type:
+                        f_type = 'checkbox' if q.get('allowMultipleChoice') else ('select' if len(opts) > 4 else 'radio')
+                    elif 'text' in q_type:
+                        f_type = 'textarea' if q.get('isMultiLine') else 'text'
+                    elif 'date' in q_type:
+                        f_type = 'date'
+                    elif 'rating' in q_type or 'scale' in q_type:
+                        f_type = 'scale'
+                    elif 'upload' in q_type or 'file' in q_type:
+                        f_type = 'file'
+
+                    title_lower = str(q_title).lower()
+                    if any(w in title_lower for w in ['foto', 'evidência', 'evidencia', 'anexo', 'imagem', 'comprovante']):
+                        f_type = 'file'
+
+                    parsed_questions.append({
+                        "title": q_title,
+                        "type": f_type,
+                        "options": opts,
+                        "required": is_required
+                    })
+
+    if not parsed_questions:
+        q_elements = re.findall(r'<div[^>]*class="[^"]*question-title-box[^"]*"[^>]*>.*?<span[^>]*>(.*?)</span>', html, re.DOTALL)
+        if q_elements:
+            for qe in q_elements:
+                clean_t = re.sub(r'<[^>]+>', '', qe).strip()
+                if clean_t:
+                    t_lower = clean_t.lower()
+                    f_type = 'file' if any(w in t_lower for w in ['foto', 'evidência', 'evidencia', 'anexo']) else 'text'
+                    parsed_questions.append({
+                        "title": clean_t,
+                        "type": f_type,
+                        "options": [],
+                        "required": False
+                    })
+
+    if not parsed_questions:
+        return None, "Não foi possível extrair a lista de perguntas deste formulário Microsoft. Verifique se o formulário é público e possui perguntas cadastradas."
+
+    return {
+        "title": title.strip() or "Formulário de Campo",
+        "description": description.strip(),
+        "questions": parsed_questions
+    }, None
+
 
 def parse_google_form(url):
     url = (url or '').strip()
@@ -4724,14 +4997,20 @@ def api_bulk_import_route_lines(route_id):
 # --- FORMS API ---
 
 @app.route('/api/forms/convert-google-form', methods=['POST'])
+@app.route('/api/forms/convert-external-form', methods=['POST'])
 @login_required
 def api_convert_google_form():
     data = request.get_json(silent=True) or {}
     url = (data.get('url') or data.get('link') or '').strip()
     if not url:
-        return jsonify({"error": "Por favor, informe o link do Google Forms."}), 400
+        return jsonify({"error": "Por favor, informe o link do formulário (Google Forms ou Microsoft Forms)."}), 400
 
-    parsed, parse_err = parse_google_form(url)
+    u_lower = url.lower()
+    if 'forms.office.com' in u_lower or 'forms.microsoft.com' in u_lower:
+        parsed, parse_err = parse_microsoft_form(url)
+    else:
+        parsed, parse_err = parse_google_form(url)
+
     if parse_err:
         return jsonify({"error": parse_err}), 400
 
@@ -4765,6 +5044,7 @@ def api_forms():
                         q_data = []
                 f['questions'] = q_data or []
                 f['questions_count'] = len(q_data) if q_data else 0
+                f['link'] = f"/f/{f['slug']}"
             cur.close()
             conn.close()
             return jsonify(forms)
@@ -4781,8 +5061,12 @@ def api_forms():
             link = data.get('link', '').strip()
 
             questions = data.get('questions')
-            if not questions and link and ('forms.gle' in link or 'docs.google.com/forms' in link):
-                parsed, parse_err = parse_google_form(link)
+            if not questions and link and ('forms.gle' in link or 'docs.google.com/forms' in link or 'forms.office.com' in link or 'forms.microsoft.com' in link):
+                if 'forms.office.com' in link.lower() or 'forms.microsoft.com' in link.lower():
+                    parsed, parse_err = parse_microsoft_form(link)
+                else:
+                    parsed, parse_err = parse_google_form(link)
+
                 if parsed:
                     if not title:
                         title = parsed.get('title')
@@ -4791,17 +5075,9 @@ def api_forms():
                     questions = parsed.get('questions')
                 elif not title:
                     return jsonify({"error": parse_err}), 400
-                    if not title:
-                        title = parsed['title']
-                    if not description:
-                        description = parsed['description']
-                    questions = parsed['questions']
 
             if not title:
                 return jsonify({"error": "Nome do formulário é obrigatório."}), 400
-
-            if link and not link.startswith('http://') and not link.startswith('https://'):
-                link = 'https://' + link
 
             # Generate unique slug for form
             slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
@@ -4816,11 +5092,12 @@ def api_forms():
             if cur.fetchone():
                 slug = f"{slug}-{int(time.time() % 10000)}"
 
+            native_link = f"/f/{slug}"
             questions_json = json.dumps(questions, ensure_ascii=False) if questions else None
 
             cur.execute(
                 "INSERT INTO forms (title, slug, category, description, link, questions) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
-                (title, slug, category, description, link, questions_json)
+                (title, slug, category, description, native_link, questions_json)
             )
             new_id = cur.fetchone()['id']
             conn.commit()
@@ -4846,6 +5123,7 @@ def api_form_detail(form_id):
             conn.close()
             if not f:
                 return jsonify({"error": "Formulário não encontrado."}), 404
+            f['link'] = f"/f/{f['slug']}"
             return jsonify(f)
         except Exception as e:
             print("Backend error log:", e)
@@ -4877,14 +5155,15 @@ def api_form_detail(form_id):
             if not title:
                 return jsonify({"error": "Nome do formulário é obrigatório."}), 400
 
-            if link and not link.startswith('http://') and not link.startswith('https://'):
-                link = 'https://' + link
-
             new_slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"form-{form_id}"
+            native_link = f"/f/{new_slug}"
 
             questions = data.get('questions')
-            if not questions and link and ('forms.gle' in link or 'docs.google.com/forms' in link):
-                parsed, _ = parse_google_form(link)
+            if not questions and link and ('forms.gle' in link or 'docs.google.com/forms' in link or 'forms.office.com' in link or 'forms.microsoft.com' in link):
+                if 'forms.office.com' in link.lower() or 'forms.microsoft.com' in link.lower():
+                    parsed, _ = parse_microsoft_form(link)
+                else:
+                    parsed, _ = parse_google_form(link)
                 if parsed and parsed.get('questions'):
                     questions = parsed['questions']
             
@@ -4895,12 +5174,12 @@ def api_form_detail(form_id):
             if questions_json is not None:
                 cur.execute(
                     "UPDATE forms SET title = %s, slug = COALESCE(NULLIF(slug, ''), %s), category = %s, description = %s, link = %s, questions = %s WHERE id = %s;",
-                    (title, new_slug, category, description, link, questions_json, form_id)
+                    (title, new_slug, category, description, native_link, questions_json, form_id)
                 )
             else:
                 cur.execute(
                     "UPDATE forms SET title = %s, slug = COALESCE(NULLIF(slug, ''), %s), category = %s, description = %s, link = %s WHERE id = %s;",
-                    (title, new_slug, category, description, link, form_id)
+                    (title, new_slug, category, description, native_link, form_id)
                 )
             conn.commit()
             cur.close()
@@ -4927,6 +5206,19 @@ def api_public_form_get(slug):
         cur = conn.cursor()
         cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE slug = %s;", (slug,))
         f = cur.fetchone()
+        if not f:
+            if slug == 'inspecao-visual-2026':
+                cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE slug = 'inspecao-visual';")
+                f = cur.fetchone()
+            elif slug == 'inspecao-visual':
+                cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE slug = 'inspecao-visual-2026';")
+                f = cur.fetchone()
+            elif slug == 'vistoria-externa':
+                cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE slug = 'formulario-vistoria-google';")
+                f = cur.fetchone()
+            elif slug == 'formulario-vistoria-google':
+                cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE slug = 'vistoria-externa';")
+                f = cur.fetchone()
         if not f and slug.isdigit():
             cur.execute("SELECT id, title, slug, category, description, link, questions FROM forms WHERE id = %s;", (int(slug),))
             f = cur.fetchone()
@@ -4949,7 +5241,7 @@ def api_public_form_get(slug):
             "slug": f['slug'],
             "category": f.get('category') or 'Inspeção',
             "description": f.get('description') or '',
-            "link": f.get('link') or '',
+            "link": f"/f/{f['slug']}",
             "questions": questions or []
         })
     except Exception as e:
@@ -4964,6 +5256,19 @@ def public_form_submit(slug):
         cur = conn.cursor()
         cur.execute("SELECT id FROM forms WHERE slug = %s;", (slug,))
         f = cur.fetchone()
+        if not f:
+            if slug == 'inspecao-visual-2026':
+                cur.execute("SELECT id FROM forms WHERE slug = 'inspecao-visual';")
+                f = cur.fetchone()
+            elif slug == 'inspecao-visual':
+                cur.execute("SELECT id FROM forms WHERE slug = 'inspecao-visual-2026';")
+                f = cur.fetchone()
+            elif slug == 'vistoria-externa':
+                cur.execute("SELECT id FROM forms WHERE slug = 'formulario-vistoria-google';")
+                f = cur.fetchone()
+            elif slug == 'formulario-vistoria-google':
+                cur.execute("SELECT id FROM forms WHERE slug = 'vistoria-externa';")
+                f = cur.fetchone()
         if not f and slug.isdigit() and 'user_id' in session:
             cur.execute("SELECT id FROM forms WHERE id = %s;", (int(slug),))
             f = cur.fetchone()
