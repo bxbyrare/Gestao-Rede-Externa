@@ -653,41 +653,93 @@ _USED_TOTP_BUCKETS = defaultdict(dict) # user_id -> {bucket_idx: expiry_ts}
 _TOTP_FAILURES = defaultdict(list)     # user_id -> [failure_timestamps]
 
 PROBED_EXPLOIT_PATHS = (
-    '/.env', '/.git', '/wp-admin', '/wp-login.php', '/phpmyadmin', '/pma',
+    '/.env', '/.git', '/wp-admin', '/wp-login', '/phpmyadmin', '/pma',
     '/xmlrpc.php', '/.aws', '/etc/passwd', '/win.ini', '/boot.ini',
     '/cgi-bin/', '/swagger', '/actuator', '/console', '/shell',
-    '/install.php', '/setup.php', '/web.config', '/.htaccess'
+    '/install.php', '/setup.php', '/web.config', '/.htaccess',
+    '/modules.php', '/members.asp', '/megabook', '/mailman/', '/ldap/',
+    '/jigsaw/', '/isapi/', '/gallery/', '/guestbook/', '/admin.cgi',
+    '/cactid/', '/awstats/', '/cgi-sys/', '/scripts/', '/msadc/'
 )
+
+DANGEROUS_SCANNER_EXTS = (
+    '.php', '.asp', '.aspx', '.jsp', '.jspx', '.cgi', '.dll', '.exe',
+    '.cfm', '.action', '.do', '.pl', '.sh', '.bash', '.bak', '.old',
+    '.config', '.sql', '.yaml', '.yml', '.ini'
+)
+
+DANGEROUS_SCANNER_PAYLOADS = (
+    '<script', '</script', 'alert(', 'document.cookie', 'document.domain',
+    'javascript:', 'onerror=', 'onload=', 'prompt(', 'confirm(',
+    'union select', 'union all select', "' or '1'='1", "1=1--", "1=1#",
+    'sleep(', 'benchmark(', 'waitfor delay', 'load_file(', 'select * from',
+    '../', '..\\', '%2e%2e', '0x27', '0x3c', '@@version'
+)
+
+# Logger Filter: Suppresses repetitive scanner probe noise from stdout logs
+import logging
+class ScannerLogFilter(logging.Filter):
+    def filter(self, record):
+        try:
+            msg = record.getMessage().lower()
+            if any(ext in msg for ext in ('.php', '.asp', '.cgi', '.dll', '<script', 'alert(', 'document.cookie', 'modules.php')):
+                return False
+        except Exception:
+            pass
+        return True
+
+logging.getLogger('werkzeug').addFilter(ScannerLogFilter())
+logging.getLogger('gunicorn.access').addFilter(ScannerLogFilter())
 
 @app.before_request
 def enforce_security_policies():
     client_ip = get_client_ip()
     now = time.time()
 
-    # 0. Active IP Security Ban Check (Temporary ban against penetration tools & scanners)
+    # 0. Active IP Security Ban Check with Scanner Tarpit
     if client_ip in _SECURITY_BAN_LIST:
         if now < _SECURITY_BAN_LIST[client_ip]:
-            return jsonify({
-                "error": "Acesso temporariamente bloqueado por atividades suspeitas detectadas.",
-                "status": 403
-            }), 403
+            # TARPIT: Sleep 2.5 seconds to throttle and stall automated scanners (Nikto, Burp, Ffuf)
+            time.sleep(2.5)
+            resp = jsonify({
+                "error": "Acesso bloqueado por varredura/tentativa de ataque detectada. Conexão interrompida.",
+                "status": 429
+            })
+            resp.status_code = 429
+            resp.headers['Retry-After'] = '7200'
+            resp.headers['Connection'] = 'close'
+            return resp
         else:
             del _SECURITY_BAN_LIST[client_ip]
 
-    # 1. Anti-Scanner / Exploit Probing Detection (Burp Suite, Metasploit, Sqlmap, Nuclei, Nikto)
+    # 1. Deep Anti-Scanner / Exploit Probing Detection (Nikto, Burp Suite, Metasploit, Sqlmap, Nuclei)
     path_lower = request.path.lower()
-    for probe_path in PROBED_EXPLOIT_PATHS:
-        if probe_path in path_lower:
-            _SECURITY_BAN_LIST[client_ip] = now + 900 # Ban for 15 minutes
-            print(f"[SECURITY ALERT] [EXPLOIT PROBE DETECTED & BANNED] IP: {client_ip} probed {request.path}")
-            return jsonify({"error": "Tentativa de ataque bloqueada. IP banido temporariamente.", "status": 403}), 403
+    query_decoded = ''
+    try:
+        query_decoded = urllib.parse.unquote(request.query_string.decode('utf-8', errors='ignore')).lower()
+    except Exception:
+        pass
+
+    # Check for unauthorized file extensions (.php, .asp, .cgi, .dll, etc. on a Python/React app)
+    is_dangerous_ext = any(path_lower.endswith(ext) or (ext + '/') in path_lower or (ext + '?') in path_lower for ext in DANGEROUS_SCANNER_EXTS)
+    is_known_probe = any(probe_path in path_lower for probe_path in PROBED_EXPLOIT_PATHS)
+    is_malicious_payload = any(dp in query_decoded or dp in path_lower for dp in DANGEROUS_SCANNER_PAYLOADS)
 
     user_agent = (request.headers.get('User-Agent') or '').lower()
-    for bad_ua in BLOCKED_USER_AGENTS:
-        if bad_ua in user_agent:
-            _SECURITY_BAN_LIST[client_ip] = now + 900
-            print(f"[SECURITY ALERT] [PEN-TEST TOOL DETECTED & BANNED] IP: {client_ip} tool: {bad_ua}")
-            return jsonify({"error": "Acesso negado por políticas de segurança do servidor.", "status": 403}), 403
+    is_bad_ua = any(bad_ua in user_agent for bad_ua in BLOCKED_USER_AGENTS)
+
+    if is_dangerous_ext or is_known_probe or is_malicious_payload or is_bad_ua:
+        _SECURITY_BAN_LIST[client_ip] = now + 7200 # Ban for 2 hours
+        # Tarpit defense: slow down scanner to a dead halt
+        time.sleep(2.5)
+        resp = jsonify({
+            "error": "Tentativa de ataque cibernético detectada. Conexão interrompida.",
+            "status": 429
+        })
+        resp.status_code = 429
+        resp.headers['Retry-After'] = '7200'
+        resp.headers['Connection'] = 'close'
+        return resp
 
     # 1.1 Strict Origin / Referer Validation against Cross-Site Request Forgery (CSRF)
     if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
