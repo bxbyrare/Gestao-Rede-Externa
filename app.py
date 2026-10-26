@@ -2025,13 +2025,17 @@ def _resolve_required_permission(path, method):
     if p.startswith('/api/routes/') and method in ('POST', 'PUT'):
         return 'rotas.edit'
 
-    # Forms & Responses
-    if (p == '/api/forms' or p.endswith('/responses/import') or p == '/api/admin/extract_machinery_excel') and method == 'POST':
+    # Forms & Responses (Criacao e conversao acessivel a todos os usuarios logados)
+    if p == '/api/forms/convert-google-form' and method == 'POST':
+        return None
+    if (p == '/api/forms' or p.endswith('/responses/import')) and method == 'POST':
+        return None
+    if (p == '/api/admin/extract_machinery_excel') and method == 'POST':
         return 'formularios.create'
     if (p.startswith('/api/forms/') or p.startswith('/api/form-responses/')) and method == 'DELETE':
         return 'formularios.delete'
     if (p.startswith('/api/forms/') or p.startswith('/api/form-responses/')) and method in ('POST', 'PUT'):
-        return 'formularios.edit'
+        return None
 
     # Monthly Indicators
     if p in ('/api/indicators', '/api/indicators/import') and method == 'POST':

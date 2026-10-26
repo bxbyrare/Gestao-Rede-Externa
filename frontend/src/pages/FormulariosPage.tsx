@@ -20,12 +20,15 @@ import {
   ShieldCheck,
   ExternalLink,
   X,
+  Link as LinkIcon,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
 import AccordionGallery from '../components/AccordionGallery';
-import { hasPermission, useAuth } from '../state/AuthContext';
+import { hasPermission, isCoordenador, isMasterCoordenador, useAuth } from '../state/AuthContext';
 
 interface FormItem {
   id: number;
@@ -120,12 +123,20 @@ function extractPhotoUrls(value: unknown): string[] {
 
 export default function FormulariosPage() {
   const { user } = useAuth();
-  const canCreate = hasPermission(user, 'formularios.create');
-  const canEdit = hasPermission(user, 'formularios.edit');
-  const canDelete = hasPermission(user, 'formularios.delete');
+  const canEdit = true;
+  const canDelete = isCoordenador(user) || isMasterCoordenador(user) || hasPermission(user, 'formularios.delete');
   const [forms, setForms] = useState<FormItem[] | null>(null);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+
+  // Estados da Barra Rápida de Conversão Google Forms
+  const [quickLink, setQuickLink] = useState('');
+  const [isQuickConverting, setIsQuickConverting] = useState(false);
+  const [quickAlert, setQuickAlert] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    link?: string;
+  } | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<FormItem | null>(null);
@@ -224,6 +235,74 @@ export default function FormulariosPage() {
     }
   }
 
+  async function handleQuickConvert(e: React.FormEvent) {
+    e.preventDefault();
+    const rawLink = quickLink.trim();
+    if (!rawLink) {
+      setQuickAlert({
+        type: 'error',
+        message: 'Por favor, insira o link do formulário Google para converter.',
+      });
+      return;
+    }
+    setIsQuickConverting(true);
+    setQuickAlert(null);
+    try {
+      // 1. Converter perguntas e estrutura via API
+      const res = await api.post<{
+        success: boolean;
+        title: string;
+        description: string;
+        questions: any[];
+        count: number;
+      }>('/api/forms/convert-google-form', { url: rawLink });
+
+      if (!res || !res.success) {
+        throw new Error('Não foi possível extrair os dados do formulário.');
+      }
+
+      // 2. Salvar automaticamente no Gestão
+      const saveRes = await api.post<{
+        success: boolean;
+        id: number;
+        slug: string;
+      }>('/api/forms', {
+        title: res.title || 'Formulário de Campo',
+        category: 'Inspeção',
+        description: res.description || '',
+        link: rawLink,
+        questions: res.questions || [],
+      });
+
+      const internalUrl = `${window.location.origin}/f/${saveRes.slug}`;
+
+      // 3. Copiar para a área de transferência
+      try {
+        await navigator.clipboard.writeText(internalUrl);
+      } catch {
+        // Fallback
+      }
+
+      setQuickAlert({
+        type: 'success',
+        message: `Formulário "${res.title}" importado com sucesso (${res.count || 0} perguntas)! O link oficial foi copiado para sua área de transferência.`,
+        link: internalUrl,
+      });
+      setQuickLink('');
+      load();
+    } catch (err) {
+      setQuickAlert({
+        type: 'error',
+        message:
+          err instanceof ApiError
+            ? err.message
+            : 'Falha ao converter formulário Google. Verifique se o link está público.',
+      });
+    } finally {
+      setIsQuickConverting(false);
+    }
+  }
+
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
@@ -262,10 +341,24 @@ export default function FormulariosPage() {
     setError(null);
     setIsSaving(true);
     try {
-      if (editing) await api.put(`/api/forms/${editing.id}`, form);
-      else await api.post('/api/forms', form);
-      setModalOpen(false);
-      load();
+      if (editing) {
+        await api.put(`/api/forms/${editing.id}`, form);
+        setModalOpen(false);
+        load();
+      } else {
+        const res = await api.post<{ success: boolean; id: number; slug: string }>('/api/forms', form);
+        setModalOpen(false);
+        load();
+        if (res && res.slug) {
+          const newUrl = `${window.location.origin}/f/${res.slug}`;
+          try {
+            await navigator.clipboard.writeText(newUrl);
+            alert(`✓ Formulário "${form.title}" criado com sucesso!\n\nLink oficial copiado:\n${newUrl}`);
+          } catch {
+            prompt('Formulário criado! Copie o link abaixo:', newUrl);
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao salvar.');
     } finally {
@@ -495,13 +588,109 @@ export default function FormulariosPage() {
         title="Formulários"
         subtitle="Formulários de campo, links externos e respostas com evidências fotográficas"
         actions={
-          canCreate ? (
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4" /> Cadastrar Formulário
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={openCreate}
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-[var(--color-primary-dim)] transition-all hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" /> Novo Formulário
             </Button>
-          ) : undefined
+          </div>
         }
       />
+
+      {/* BARRA DE CONVERSÃO RÁPIDA DE GOOGLE FORMS */}
+      <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-950/25 via-white/[0.02] to-white/[0.01] border border-white/10 relative overflow-hidden backdrop-blur-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[var(--color-primary-dim)] border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Importar Google Forms
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  Conversão Nativa
+                </span>
+              </h3>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Cole o link público (<code className="text-white/80">forms.gle/...</code> ou <code className="text-white/80">docs.google.com/forms/...</code>) para transformar em formulário nativo do Gestão e copiar o link oficial.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleQuickConvert} className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <LinkIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
+            <Input
+              value={quickLink}
+              onChange={(e) => setQuickLink(e.target.value)}
+              placeholder="Cole o link do Google Forms aqui (ex: https://forms.gle/XYZ...)"
+              className="pl-10 font-mono text-xs"
+              disabled={isQuickConverting}
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={isQuickConverting || !quickLink.trim()}
+            className="whitespace-nowrap px-5 font-semibold text-xs flex items-center justify-center gap-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white shadow-md shadow-red-950/30"
+          >
+            {isQuickConverting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Convertendo e Copiando...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                Converter & Copiar Link
+              </>
+            )}
+          </Button>
+        </form>
+
+        {quickAlert && (
+          <div
+            className={`mt-3 p-3 rounded-xl text-xs border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              quickAlert.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+            }`}
+          >
+            <div className="flex items-center gap-2 truncate">
+              {quickAlert.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span className="truncate">{quickAlert.message}</span>
+            </div>
+            {quickAlert.link && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(quickAlert.link!);
+                    alert(`Link oficial copiado!\n${quickAlert.link}`);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 text-[11px] font-semibold border border-emerald-500/30 flex items-center gap-1"
+                >
+                  <Copy className="w-3 h-3" /> Copiar Link
+                </button>
+                <a
+                  href={quickAlert.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[11px] font-semibold flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" /> Abrir Form
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1 max-w-md">
@@ -632,6 +821,40 @@ export default function FormulariosPage() {
             {error}
           </div>
         )}
+        <div className="mb-4 p-3.5 rounded-xl bg-gradient-to-br from-red-950/20 via-white/[0.02] to-transparent border border-white/10">
+          <label className="text-xs font-bold text-white flex items-center gap-1.5 mb-1">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            Importar do Google Forms (Recomendado)
+          </label>
+          <p className="text-[11px] text-[var(--color-text-muted)] mb-2.5">
+            Cole a URL pública do Google Forms e clique em <b>Converter</b> para preencher título, instruções e perguntas automaticamente.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={form.link}
+              onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
+              placeholder="https://forms.gle/... ou https://docs.google.com/forms/..."
+              className="flex-1 font-mono text-xs"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isConverting || !form.link.trim()}
+              onClick={handleConvertGoogleForm}
+              className="whitespace-nowrap px-4 shrink-0 text-xs font-semibold border border-white/10 hover:border-white/20 bg-white/[0.04]"
+            >
+              {isConverting ? (
+                <>Convertendo...</>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  Converter
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
         <Field label="Nome do Formulário">
           <Input
             value={form.title}
@@ -650,35 +873,6 @@ export default function FormulariosPage() {
               </option>
             ))}
           </Select>
-        </Field>
-        <Field
-          label="Link do Google Forms (Conversão Nativa)"
-          hint="Cole a URL pública do Google Forms e clique em 'Converter' para migrar todas as perguntas, opções e upload de fotos para o Gestão."
-        >
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Input
-              value={form.link}
-              onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
-              placeholder="https://forms.gle/... ou https://docs.google.com/forms/..."
-              className="flex-1"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={isConverting || !form.link.trim()}
-              onClick={handleConvertGoogleForm}
-              className="whitespace-nowrap px-4 shrink-0 text-xs font-semibold border border-white/10 hover:border-white/20 bg-white/[0.04]"
-            >
-              {isConverting ? (
-                <>Convertendo...</>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  Converter Google Form
-                </>
-              )}
-            </Button>
-          </div>
         </Field>
 
         {conversionStatus && (
