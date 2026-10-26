@@ -45,10 +45,10 @@ export default function LoginPage() {
             {/* Top Card Hairline Highlight */}
             <div className="absolute top-0 left-8 right-8 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
-            {/* Corporate Header */}
+            {/* Header */}
             <div className="flex flex-col items-center text-center mb-6">
               {/* Preserved Claro 3D Icon */}
-              <div className="relative w-20 h-20 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-[0_0_35px_rgba(238,44,36,0.35)] mb-3.5 flex items-center justify-center">
+              <div className="relative w-20 h-20 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-[0_0_35px_rgba(238,44,36,0.35)] mb-3 flex items-center justify-center">
                 <img
                   src="/claro-icon.png"
                   alt="Claro"
@@ -56,16 +56,9 @@ export default function LoginPage() {
                 />
               </div>
 
-              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/[0.04] border border-white/10 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-300 mb-2">
-                <span>Acesso Corporativo Seguro</span>
-              </div>
-
               <h1 className="text-xl font-black tracking-tight text-white flex items-center justify-center gap-1.5">
                 Gestão <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-red-400">REDE EXTERNA</span>
               </h1>
-              <p className="text-xs text-neutral-400 mt-1">
-                Operações de Campo &amp; Infraestrutura
-              </p>
             </div>
 
             {/* Error Alert matching Authenticator Modal */}
@@ -171,12 +164,6 @@ export default function LoginPage() {
                 </button>
               </div>
             </form>
-
-            {/* Clean Corporate Footer */}
-            <div className="mt-6 pt-3 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-neutral-400 font-mono uppercase tracking-[0.15em]">
-              <span>Claro Brasil</span>
-              <span className="text-neutral-500">Operações Claro</span>
-            </div>
           </div>
         </div>
       </div>
