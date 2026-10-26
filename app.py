@@ -581,8 +581,8 @@ def safe_float(val, default=0.0):
 RATE_LIMIT_STORE = defaultdict(list)
 AUTH_RATE_LIMIT_STORE = defaultdict(list)
 
-GLOBAL_RATE_LIMIT_MAX = 120  # Max 120 requests per 60s per IP
-AUTH_RATE_LIMIT_MAX = 30     # Max 10 attempts per 60s per IP for login/resets
+GLOBAL_RATE_LIMIT_MAX = 600  # Max 600 requests per 60s per IP (evita falsos positivos em polling de alertas)
+AUTH_RATE_LIMIT_MAX = 30     # Max 30 attempts per 60s per IP for login/resets
 
 BLOCKED_USER_AGENTS = [
     'sqlmap', 'nikto', 'nmap', 'burpcollaborator', 'dirbuster',
@@ -591,7 +591,7 @@ BLOCKED_USER_AGENTS = [
 
 @app.before_request
 def enforce_security_policies():
-    client_ip = request.remote_addr or request.headers.get('X-Forwarded-For', '127.0.0.1').split(',')[0].strip()
+    client_ip = get_client_ip()
     now = time.time()
     
     # 1. Anti-Scanner / Anti-Automated Tool Detection (Burp Suite Automated Scanners, Sqlmap, Nikto, etc.)
@@ -638,7 +638,7 @@ def set_security_headers(response):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
-    elif request.path.startswith('/assets/') or request.path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.svg', '.woff2', '.webp', '.ico')):
+    elif request.path.startswith('/assets/') or request.path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.svg', '.woff2', '.webp', '.ico', '.mp4', '.webm')):
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
 
     # Hardened Content-Security-Policy (Removes unsafe-inline from script-src)
@@ -648,6 +648,7 @@ def set_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
         "font-src 'self' https://fonts.gstatic.com data:",
         "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://server.arcgisonline.com https://*.arcgisonline.com",
+        "media-src 'self' data: blob:",
         "connect-src 'self' https://cloudflareinsights.com https://api.resend.com",
         "object-src 'none'",
         "base-uri 'self'",
@@ -2485,8 +2486,9 @@ _PASSWORD_RESET_FAILURES = defaultdict(int)
 
 @app.route('/api/auth/login', methods=['POST'])
 def api_login():
+    # Limpa qualquer sessão residual para garantir login imediato sem bloqueios indevidos
     if 'user_id' in session:
-        return jsonify({"error": "Já existe uma sessão ativa."}), 400
+        session.clear()
 
     data = request.get_json(silent=True) or {}
     username = (data.get('username') or '').strip().lower()
@@ -2713,8 +2715,19 @@ def api_totp_reconfigure():
     if 'user_id' not in session:
         return jsonify({'error': 'Não autenticado.'}), 401
     user_id = session['user_id']
+    data = request.get_json(silent=True) or {}
+    password = data.get('password') or ''
+    
     conn = get_db()
     cur = conn.cursor()
+    if password:
+        cur.execute("SELECT password_hash FROM users WHERE id = %s;", (user_id,))
+        u_row = cur.fetchone()
+        if not u_row or not check_password_hash(u_row['password_hash'], password):
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Senha incorreta para confirmar a reconfiguração do autenticador.'}), 400
+
     cur.execute("UPDATE users SET totp_secret = NULL, totp_enabled = FALSE, totp_verified_at = NULL WHERE id = %s;", (user_id,))
     conn.commit()
     cur.close()
@@ -2778,7 +2791,7 @@ def api_reset_password():
         cur.close()
         conn.close()
         time.sleep(1)
-        return jsonify({'error': 'Usuário não possui autenticador configurado ou não foi localizado. Contate o coordenador alexandre.candido.'}), 400
+        return jsonify({'error': 'Dados inválidos ou autenticador não localizado. Se precisar de auxílio, contate a coordenação do sistema.'}), 400
 
     user_id = user['id']
     secret = user['totp_secret']
@@ -5024,16 +5037,22 @@ def api_form_responses_import(form_id):
 @app.route('/api/admin/extract_machinery_excel', methods=['POST'], strict_slashes=False)
 @login_required
 def api_extract_machinery_excel():
-    excel_path = os.path.join(r"C:\Users\2d\Downloads", "2 - Inventário - Maquina e ferramentas.xlsx")
-    if not os.path.exists(excel_path):
-        return jsonify({"error": f"Arquivo não encontrado no caminho: {excel_path}"}), 404
+    uploaded_file = request.files.get('file')
+    fallback_path = os.path.join(r"C:\Users\2d\Downloads", "2 - Inventário - Maquina e ferramentas.xlsx")
+
+    if uploaded_file and uploaded_file.filename:
+        file_source = uploaded_file
+    elif os.path.exists(fallback_path):
+        file_source = fallback_path
+    else:
+        return jsonify({"error": "Envie o arquivo .xlsx no campo 'file'."}), 400
 
     import zipfile
     import xml.etree.ElementTree as ET
     import json
 
     try:
-        with zipfile.ZipFile(excel_path, 'r') as z:
+        with zipfile.ZipFile(file_source, 'r') as z:
             shared_strings = []
             if 'xl/sharedStrings.xml' in z.namelist():
                 tree = ET.fromstring(z.read('xl/sharedStrings.xml'))
@@ -10963,9 +10982,7 @@ def api_notify_outdated_profile():
         print("[NOTIFY OUTDATED PROFILE ERROR]", e)
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+
 
 
 # --------------------------------------------------------------------------
@@ -11000,3 +11017,7 @@ def handle_uncaught_exception(e):
     if request.path.startswith('/api/') or request.is_json:
         return jsonify({"error": "Ocorreu uma falha no processamento da solicitação.", "status": 500}), 500
     return render_template('dashboard.html'), 500
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)

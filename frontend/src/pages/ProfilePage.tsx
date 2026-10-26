@@ -307,9 +307,14 @@ export default function ProfilePage() {
             <Button
               type="button"
               onClick={async () => {
-                if (!confirm("Deseja reconfigurar seu aplicativo autenticador? Você precisará ler um novo QR Code ou vincular a nova chave.")) return;
+                const pwd = prompt("Para sua segurança, digite sua senha de acesso para confirmar a reconfiguração do autenticador:");
+                if (pwd === null) return;
+                if (!pwd.trim()) {
+                  alert("A senha de acesso é obrigatória para redefinir o autenticador.");
+                  return;
+                }
                 try {
-                  await api.post('/api/auth/totp/reconfigure');
+                  await api.post('/api/auth/totp/reconfigure', { password: pwd.trim() });
                   updateUserState({ totp_enabled: false, totp_verified: false, requires_totp_setup: true });
                 } catch (err) {
                   alert("Erro ao redefinir autenticador.");
