@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ShieldAlert,
   ArrowRight,
+  Clipboard,
 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import { api, ApiError } from '../api/client';
@@ -32,13 +33,12 @@ export default function AuthenticatorModal() {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Auto-detect mobile device or small screen to prioritize direct phone linking
+  // Auto-detect mobile device or small screen
   const isMobileInitial =
     typeof window !== 'undefined' &&
     (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768);
   const [accessMode, setAccessMode] = useState<'mobile' | 'desktop'>(isMobileInitial ? 'mobile' : 'desktop');
 
-  // If user already has TOTP active in DB, they need 12h verification; otherwise they need initial setup
   const isSetupMode = Boolean(user && !user.totp_enabled);
   const isVerifyMode = Boolean(user && user.totp_enabled && !user.totp_verified);
 
@@ -74,8 +74,8 @@ export default function AuthenticatorModal() {
     if (cardRef.current && (isSetupMode || isVerifyMode)) {
       gsap.fromTo(
         cardRef.current,
-        { opacity: 0, y: 28, scale: 0.98 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: 'power3.out' }
+        { opacity: 0, y: 24, scale: 0.98 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.65, ease: 'power3.out' }
       );
     }
   }, [isSetupMode, isVerifyMode]);
@@ -98,7 +98,24 @@ export default function AuthenticatorModal() {
     setTimeout(() => setCopied(false), 2500);
   }
 
-  // Trigger gentle haptic card shake on error
+  function handlePasteText(pasted: string) {
+    const clean = pasted.trim().replace(/\D/g, '').slice(0, 6);
+    if (clean) {
+      setCode(clean);
+      setError(null);
+    }
+  }
+
+  async function handleClipboardPaste() {
+    try {
+      const text = await navigator.clipboard.readText();
+      handlePasteText(text);
+    } catch {
+      // Fallback: user can paste directly into the cells
+    }
+  }
+
+  // Trigger gentle card shake on error
   function triggerErrorShake() {
     if (cardRef.current) {
       gsap
@@ -165,27 +182,29 @@ export default function AuthenticatorModal() {
     }
   }
 
-  // Array of 6 cells for luxury OTP display
   const digits = code.split('');
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-y-auto select-none">
-      {/* GSAP Living Security Background */}
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-y-auto select-none bg-[#030305]">
+      {/* GSAP Lagos Digital Blueprint Architecture Background */}
       <GsapSecurityBackground />
 
-      {/* DOUBLE-BEZEL (DOPPELRAND) HARDWARE CONTAINER */}
+      {/* LAGOS DIGITAL DOUBLE-BEZEL PRECISION CARD */}
       <div
         ref={cardRef}
-        className="relative z-10 w-full max-w-[480px] rounded-[32px] p-2 bg-gradient-to-b from-white/[0.12] via-white/[0.04] to-white/[0.02] border border-white/[0.08] shadow-[0_32px_80px_-20px_rgba(0,0,0,0.9),0_0_1px_1px_rgba(255,255,255,0.06)] backdrop-blur-3xl my-auto transition-all"
+        className={`relative z-10 w-full max-w-[480px] rounded-[32px] p-2 bg-gradient-to-b from-white/[0.14] via-white/[0.04] to-white/[0.02] border transition-all duration-300 my-auto ${
+          error
+            ? 'border-red-500/50 shadow-[0_32px_80px_-20px_rgba(0,0,0,0.9),0_0_30px_rgba(239,68,68,0.2)]'
+            : 'border-white/[0.1] shadow-[0_32px_80px_-20px_rgba(0,0,0,0.9),0_0_1px_1px_rgba(255,255,255,0.06)]'
+        } backdrop-blur-3xl`}
       >
         {/* Top Edge Specular Hairline */}
-        <div className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent pointer-events-none" />
+        <div className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent pointer-events-none" />
 
         {/* Inner Core */}
-        <div className="relative rounded-[26px] p-6 sm:p-8 bg-[#090C13]/92 border border-white/[0.05] shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] overflow-hidden">
-          {/* Subtle Corner Ambient Mesh (No Neon!) */}
+        <div className="relative rounded-[26px] p-6 sm:p-8 bg-[#090C13]/95 border border-white/[0.06] shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] overflow-hidden">
+          {/* Subtle Ambient Radial Highlight */}
           <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-white/[0.02] blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-24 -left-24 w-48 h-48 rounded-full bg-red-600/[0.04] blur-3xl pointer-events-none" />
 
           {isSuccess ? (
             <div className="py-10 text-center space-y-4">
@@ -203,7 +222,7 @@ export default function AuthenticatorModal() {
             </div>
           ) : isSetupMode ? (
             /* ========================================================= */
-            /* MODE 1: OBLIGATORY INITIAL SETUP                           */
+            /* MODE 1: OBLIGATORY INITIAL SETUP                          */
             /* ========================================================= */
             <div>
               {/* Header */}
@@ -218,136 +237,120 @@ export default function AuthenticatorModal() {
                   <h2 className="text-lg font-bold tracking-tight text-white mt-1">
                     Vincular Autenticador (2FA)
                   </h2>
-                  <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
-                    Para acessar o portal, vincule seu celular via Google ou Microsoft Authenticator.
+                  <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                    Para acessar o portal, vincule seu Google ou Microsoft Authenticator uma única vez.
                   </p>
                 </div>
               </div>
 
-              {error && (
-                <div className="mb-4 p-3 rounded-xl bg-red-950/40 border border-red-800/30 text-red-300 text-xs flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
+              {/* Mode Toggle Pills (Mobile vs Desktop) */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] mb-4">
+                <button
+                  type="button"
+                  onClick={() => setAccessMode('mobile')}
+                  className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    accessMode === 'mobile'
+                      ? 'bg-white text-black shadow-sm'
+                      : 'text-neutral-400 hover:text-white hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Estou no Celular</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccessMode('desktop')}
+                  className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    accessMode === 'desktop'
+                      ? 'bg-white text-black shadow-sm'
+                      : 'text-neutral-400 hover:text-white hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span>Ler QR no PC</span>
+                </button>
+              </div>
 
               {isFetchingSetup ? (
-                <div className="py-14 text-center text-xs text-neutral-400 flex flex-col items-center gap-2.5">
-                  <Loader2 className="w-6 h-6 animate-spin text-neutral-400" />
-                  <span>Gerando chave de segurança criptográfica...</span>
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-6 h-6 text-neutral-400 animate-spin" />
+                  <p className="text-xs text-neutral-400">Gerando chave de segurança criptográfica...</p>
                 </div>
               ) : setupData ? (
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  {/* Segmented Device Selector */}
-                  <div className="flex rounded-xl bg-white/[0.03] p-1 border border-white/[0.06]">
-                    <button
-                      type="button"
-                      onClick={() => setAccessMode('mobile')}
-                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                        accessMode === 'mobile'
-                          ? 'bg-white/[0.1] text-white shadow-sm border border-white/10'
-                          : 'text-neutral-400 hover:text-white'
-                      }`}
-                    >
-                      <Smartphone className="w-3.5 h-3.5" />
-                      <span>No Celular</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAccessMode('desktop')}
-                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                        accessMode === 'desktop'
-                          ? 'bg-white/[0.1] text-white shadow-sm border border-white/10'
-                          : 'text-neutral-400 hover:text-white'
-                      }`}
-                    >
-                      <Monitor className="w-3.5 h-3.5" />
-                      <span>No Computador</span>
-                    </button>
-                  </div>
-
+                <form onSubmit={handleSubmit} className="space-y-4">
                   {accessMode === 'mobile' ? (
-                    /* Mobile 1-Tap Linking & Copy */
-                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-3.5">
-                      <div className="text-center">
-                        <p className="text-xs font-medium text-white">Vincule diretamente no app do seu celular:</p>
-                        <p className="text-[11px] text-neutral-400 mt-0.5">Sem precisar de câmera</p>
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.08] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                          Vínculo Direto:
+                        </span>
+                        <span className="text-[10px] text-neutral-500 font-mono">1-Clique</span>
                       </div>
-
                       <a
                         href={setupData.otpauth_url}
-                        className="w-full py-3 px-4 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all border border-white/15 active:scale-[0.98] cursor-pointer shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)]"
+                        className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-neutral-100 text-black font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98]"
                       >
-                        <Smartphone className="w-4 h-4 text-neutral-300" />
-                        <span>Abrir no Google / Microsoft Authenticator</span>
-                        <ExternalLink className="w-3.5 h-3.5 text-neutral-400 ml-1" />
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Abrir no App Autenticador</span>
                       </a>
-
-                      <div className="pt-2 border-t border-white/[0.06] space-y-2">
-                        <div className="flex items-center justify-between text-[11px] text-neutral-400">
-                          <span>Chave manual para colar:</span>
-                          <span className="font-mono text-[10px] text-neutral-400">Base32</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <code className="flex-1 font-mono text-xs text-neutral-200 bg-black/40 px-3 py-2 rounded-xl border border-white/[0.08] select-all truncate">
-                            {setupData.secret}
-                          </code>
+                      <div className="pt-2 border-t border-white/[0.06]">
+                        <p className="text-[11px] text-neutral-400 mb-1.5">Ou cole esta chave no app:</p>
+                        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-black/40 border border-white/10 font-mono text-xs text-neutral-200">
+                          <span className="truncate tracking-wider">{setupData.secret}</span>
                           <button
                             type="button"
                             onClick={handleCopySecret}
-                            className="px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/10 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                            className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors shrink-0"
+                            title="Copiar Chave"
                           >
                             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            <span>{copied ? 'Copiado' : 'Copiar'}</span>
                           </button>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    /* Desktop QR Code */
-                    <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
-                      <p className="text-xs font-medium text-neutral-300 mb-3 text-center">
-                        Escaneie o QR Code com o aplicativo autenticador:
-                      </p>
-                      <div className="p-3 bg-[#0D111A] rounded-2xl border border-white/10 shadow-2xl">
-                        <QRCodeSVG
-                          value={setupData.otpauth_url}
-                          size={160}
-                          bgColor="#0D111A"
-                          fgColor="#FFFFFF"
-                          level="M"
-                          includeMargin={false}
-                        />
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.08] flex flex-col items-center text-center">
+                      <div className="p-3 bg-white rounded-2xl shadow-xl mb-3">
+                        <QRCodeSVG value={setupData.otpauth_url} size={150} level="M" />
                       </div>
-                      <div className="mt-3 flex items-center gap-2 text-[11px] text-neutral-400">
-                        <span>Chave:</span>
-                        <code className="font-mono text-neutral-200 bg-white/[0.04] px-2 py-0.5 rounded border border-white/[0.08]">
-                          {setupData.secret}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={handleCopySecret}
-                          className="p-1 text-neutral-400 hover:text-white"
-                          title="Copiar chave"
-                        >
-                          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        </button>
-                      </div>
+                      <p className="text-xs text-neutral-300 font-medium">Escaneie o código acima no app</p>
                     </div>
                   )}
 
-                  {/* 6-DIGIT DISCRETE OTP CELLS */}
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-2.5 text-center">
-                      Digite o código de 6 dígitos gerado:
-                    </label>
+                  {error && (
+                    <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/40 text-red-300 text-xs flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 shrink-0" />
+                      <span>{error}</span>
+                    </div>
+                  )}
 
-                    {/* Interactive OTP Container */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
+                          Código de 6 Dígitos:
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleClipboardPaste}
+                          className="px-2 py-0.5 rounded-md bg-white/[0.05] hover:bg-white/[0.12] border border-white/15 text-[11px] font-medium text-neutral-300 hover:text-white flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
+                          title="Colar código (Ctrl+V)"
+                        >
+                          <Clipboard className="w-3 h-3 text-neutral-400" />
+                          <span>Colar</span>
+                        </button>
+                      </div>
+                      <span className="text-[11px] text-neutral-400 font-mono">Gerado no App</span>
+                    </div>
+
                     <div
                       onClick={() => inputRef.current?.focus()}
-                      className="relative flex items-center justify-center gap-2 sm:gap-2.5 cursor-text py-1"
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        handlePasteText(e.clipboardData.getData('text'));
+                      }}
+                      className="relative flex items-center justify-center gap-2 sm:gap-2.5 cursor-text py-2"
                     >
-                      {/* Hidden Accessible Native Input */}
                       <input
                         ref={inputRef}
                         type="text"
@@ -356,14 +359,21 @@ export default function AuthenticatorModal() {
                         pattern="[0-9]*"
                         maxLength={6}
                         required
+                        autoFocus
                         value={code}
                         onFocus={() => setIsFocused(true)}
                         onBlur={() => setIsFocused(false)}
-                        onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          handlePasteText(e.clipboardData.getData('text'));
+                        }}
+                        onChange={(e) => {
+                          setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                          setError(null);
+                        }}
                         className="absolute inset-0 w-full h-full opacity-0 pointer-events-auto cursor-text z-20"
                       />
 
-                      {/* 6 Luxury Discrete Cells */}
                       {[0, 1, 2, 3, 4, 5].map((index) => {
                         const digit = digits[index];
                         const isCurrentSlot = isFocused && index === digits.length;
@@ -373,21 +383,21 @@ export default function AuthenticatorModal() {
                           <div
                             key={index}
                             className={`w-11 h-14 sm:w-13 sm:h-16 rounded-2xl flex items-center justify-center font-mono text-2xl font-bold transition-all relative ${
-                              isCurrentSlot
-                                ? 'bg-white/[0.08] border border-white/40 ring-1 ring-white/20 shadow-[0_0_20px_rgba(255,255,255,0.06)] scale-[1.02]'
+                              error
+                                ? 'bg-red-950/20 border border-red-500/60 text-red-200'
+                                : isCurrentSlot
+                                ? 'bg-white/[0.08] border border-white/50 ring-1 ring-white/20 scale-[1.02]'
                                 : isFilled
-                                ? 'bg-white/[0.05] border border-white/20 text-white'
-                                : 'bg-white/[0.02] border border-white/[0.08] text-neutral-500'
+                                ? 'bg-white/[0.06] border border-white/25 text-white'
+                                : 'bg-white/[0.03] border border-white/10 text-neutral-500'
                             }`}
                           >
                             {digit ? (
-                              <span className="text-white animate-fade-in">{digit}</span>
+                              <span className={error ? 'text-red-200' : 'text-white'}>{digit}</span>
                             ) : (
                               <span className="text-neutral-600 text-lg">&bull;</span>
                             )}
-
-                            {/* Minimal Cursor Bar */}
-                            {isCurrentSlot && (
+                            {isCurrentSlot && !error && (
                               <span className="absolute inset-x-3 bottom-2.5 h-[2px] bg-white rounded-full animate-pulse" />
                             )}
                           </div>
@@ -396,19 +406,24 @@ export default function AuthenticatorModal() {
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="pt-1 space-y-2.5">
+                  <div className="pt-2 space-y-3">
                     <button
                       type="submit"
                       disabled={isLoading || code.length !== 6}
-                      className="w-full h-12 rounded-xl bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#EF4444] hover:to-[#B91C1C] text-white font-semibold text-xs tracking-wide uppercase transition-all shadow-[0_4px_24px_rgba(220,38,38,0.3)] active:scale-[0.98] flex items-center justify-between px-5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                        error
+                          ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
+                          : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]'
+                      }`}
                     >
-                      <span>{isLoading ? 'Validando...' : 'Ativar e Liberar Acesso (12h)'}</span>
-                      <div className="w-7 h-7 rounded-lg bg-black/20 border border-white/10 flex items-center justify-center">
+                      <span>{isLoading ? 'Validando...' : 'Confirmar e Ativar Autenticador'}</span>
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                        error ? 'bg-black/20 text-white' : 'bg-black/10 text-black'
+                      }`}>
                         {isLoading ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
-                          <ArrowRight className="w-3.5 h-3.5 text-white" />
+                          <ArrowRight className="w-3.5 h-3.5" />
                         )}
                       </div>
                     </button>
@@ -431,7 +446,7 @@ export default function AuthenticatorModal() {
             /* ========================================================= */
             <div>
               {/* Header */}
-              <div className="flex items-start gap-4 pb-5 mb-5 border-b border-white/[0.06]">
+              <div className="flex items-start gap-4 pb-5 mb-5 border-b border-white/[0.08]">
                 <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/10 text-white flex items-center justify-center shrink-0 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
                   <Lock className="w-5 h-5 text-neutral-200" />
                 </div>
@@ -451,8 +466,8 @@ export default function AuthenticatorModal() {
               </div>
 
               {error && (
-                <div className="mb-4 p-3 rounded-xl bg-red-950/40 border border-red-800/30 text-red-300 text-xs flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                <div className="mb-4 p-3.5 rounded-xl bg-red-950/40 border border-red-800/40 text-red-300 text-xs flex items-center gap-2.5 animate-in fade-in">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-red-400" />
                   <span>{error}</span>
                 </div>
               )}
@@ -460,18 +475,33 @@ export default function AuthenticatorModal() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <div className="flex items-center justify-between mb-3 px-1">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                      Código de 6 Dígitos:
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
+                        Código de 6 Dígitos:
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleClipboardPaste}
+                        className="px-2.5 py-0.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.12] border border-white/15 text-[11px] font-medium text-neutral-300 hover:text-white flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                        title="Colar código (Ctrl+V)"
+                      >
+                        <Clipboard className="w-3 h-3 text-neutral-400" />
+                        <span>Colar</span>
+                      </button>
+                    </div>
                     <span className="text-[11px] text-neutral-400 font-mono">Google / Microsoft App</span>
                   </div>
 
-                  {/* 6 LUXURY DISCRETE CELLS */}
+                  {/* 6 LAGOS DIGITAL PRECISION OTP CELLS */}
                   <div
                     onClick={() => inputRef.current?.focus()}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      handlePasteText(e.clipboardData.getData('text'));
+                    }}
                     className="relative flex items-center justify-center gap-2 sm:gap-2.5 cursor-text py-2"
                   >
-                    {/* Hidden Native Input */}
+                    {/* Hidden Native Input with full paste support */}
                     <input
                       ref={inputRef}
                       type="text"
@@ -484,7 +514,14 @@ export default function AuthenticatorModal() {
                       value={code}
                       onFocus={() => setIsFocused(true)}
                       onBlur={() => setIsFocused(false)}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        handlePasteText(e.clipboardData.getData('text'));
+                      }}
+                      onChange={(e) => {
+                        setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        setError(null);
+                      }}
                       className="absolute inset-0 w-full h-full opacity-0 pointer-events-auto cursor-text z-20"
                     />
 
@@ -498,21 +535,24 @@ export default function AuthenticatorModal() {
                         <div
                           key={index}
                           className={`w-11 h-14 sm:w-13 sm:h-16 rounded-2xl flex items-center justify-center font-mono text-2xl font-bold transition-all relative ${
-                            isCurrentSlot
-                              ? 'bg-white/[0.08] border border-white/40 ring-1 ring-white/20 shadow-[0_0_20px_rgba(255,255,255,0.06)] scale-[1.02]'
+                            error
+                              ? 'bg-red-950/20 border border-red-500/60 text-red-200 shadow-[0_0_15px_rgba(239,68,68,0.15)]'
+                              : isCurrentSlot
+                              ? 'bg-white/[0.08] border border-white/50 ring-1 ring-white/20 shadow-[0_0_20px_rgba(255,255,255,0.08)] scale-[1.02]'
                               : isFilled
-                              ? 'bg-white/[0.05] border border-white/20 text-white'
-                              : 'bg-white/[0.02] border border-white/[0.08] text-neutral-500'
+                              ? 'bg-white/[0.06] border border-white/25 text-white'
+                              : 'bg-white/[0.03] border border-white/10 text-neutral-500'
                           }`}
                         >
                           {digit ? (
-                            <span className="text-white animate-fade-in">{digit}</span>
+                            <span className={error ? 'text-red-200 animate-fade-in' : 'text-white animate-fade-in'}>
+                              {digit}
+                            </span>
                           ) : (
                             <span className="text-neutral-600 text-lg">&bull;</span>
                           )}
 
-                          {/* Minimal Focus Cursor Line */}
-                          {isCurrentSlot && (
+                          {isCurrentSlot && !error && (
                             <span className="absolute inset-x-3 bottom-2.5 h-[2px] bg-white rounded-full animate-pulse" />
                           )}
                         </div>
@@ -525,31 +565,40 @@ export default function AuthenticatorModal() {
                   </p>
                 </div>
 
-                {/* Submit & Footer Actions */}
+                {/* Submit Button: Lagos Digital White by default; Red only if refused */}
                 <div className="space-y-4 pt-1">
                   <button
                     type="submit"
                     disabled={isLoading || code.length !== 6}
-                    className="w-full h-12 rounded-xl bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:from-[#EF4444] hover:to-[#B91C1C] text-white font-semibold text-xs tracking-wide uppercase transition-all shadow-[0_4px_24px_rgba(220,38,38,0.3)] active:scale-[0.98] flex items-center justify-between px-5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                      error
+                        ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
+                        : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:shadow-[0_4px_28px_rgba(255,255,255,0.22)]'
+                    }`}
                   >
                     <span>{isLoading ? 'Validando Código...' : 'Renovar Acesso por 12 Horas'}</span>
-                    <div className="w-7 h-7 rounded-lg bg-black/20 border border-white/10 flex items-center justify-center">
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                        error ? 'bg-black/20 text-white' : 'bg-black/10 text-black'
+                      }`}
+                    >
                       {isLoading ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <ArrowRight className="w-3.5 h-3.5 text-white" />
+                        <ArrowRight className="w-3.5 h-3.5" />
                       )}
                     </div>
                   </button>
 
-                  <div className="flex items-center justify-between text-xs pt-1 border-t border-white/[0.05]">
+                  {/* Footer with updated description requested in Image 3 */}
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-white/[0.08]">
                     <span className="text-neutral-400 text-[11px]">
-                      Perdeu o celular? Contate o coordenador master.
+                      Perdeu acesso ao autenticador? Contate algum coordenador.
                     </span>
                     <button
                       type="button"
                       onClick={() => logout()}
-                      className="text-neutral-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer text-[11px]"
+                      className="text-neutral-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer text-[11px] py-1 px-2 rounded-lg hover:bg-white/[0.04]"
                     >
                       <LogOut className="w-3.5 h-3.5" />
                       <span>Sair</span>

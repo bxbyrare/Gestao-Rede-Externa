@@ -1,18 +1,6 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 
-interface NodePoint {
-  x: number;
-  y: number;
-  baseX: number;
-  baseY: number;
-  vx: number;
-  vy: number;
-  radius: number;
-  phase: number;
-  speed: number;
-}
-
 export default function GsapSecurityBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -32,54 +20,23 @@ export default function GsapSecurityBackground() {
       y: height * 0.5,
       targetX: width * 0.5,
       targetY: height * 0.5,
-      active: false,
     };
-
-    // Responsive node count based on viewport
-    const count = Math.min(65, Math.floor((width * height) / 22000));
-    const nodes: NodePoint[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const x = Math.random() * width;
-      const y = Math.random() * height;
-      nodes.push({
-        x,
-        y,
-        baseX: x,
-        baseY: y,
-        vx: (Math.random() - 0.5) * 0.35,
-        vy: (Math.random() - 0.5) * 0.35,
-        radius: Math.random() * 1.5 + 0.8,
-        phase: Math.random() * Math.PI * 2,
-        speed: Math.random() * 0.015 + 0.005,
-      });
-    }
-
-    // Secondary subtle telemetry rings in background
-    const rings = [
-      { r: Math.min(width, height) * 0.28, rot: 0, speed: 0.0008, dash: [4, 12] },
-      { r: Math.min(width, height) * 0.42, rot: 0, speed: -0.0005, dash: [2, 16] },
-    ];
 
     const handleResize = () => {
       if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
-      rings[0].r = Math.min(width, height) * 0.28;
-      rings[1].r = Math.min(width, height) * 0.42;
     };
 
     const handleMouseMove = (e: MouseEvent) => {
       mouse.targetX = e.clientX;
       mouse.targetY = e.clientY;
-      mouse.active = true;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches[0]) {
         mouse.targetX = e.touches[0].clientX;
         mouse.targetY = e.touches[0].clientY;
-        mouse.active = true;
       }
     };
 
@@ -87,119 +44,104 @@ export default function GsapSecurityBackground() {
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
     window.addEventListener('touchmove', handleTouchMove, { passive: true });
 
-    // GSAP Ticker for buttery 60fps render loop
-    let tickTime = 0;
+    // Concentric blueprint radii
+    const centerRadii = [130, 240, 370, 520, 690, 880, 1100, 1360, 1680];
+    const offsetRadii = [420, 640, 900, 1200, 1550];
+
+    let rotAngle = 0;
+
     const render = () => {
-      tickTime += 0.016;
+      rotAngle += 0.00035;
 
-      // Inertial mouse interpolation via GSAP-style damping
-      mouse.x += (mouse.targetX - mouse.x) * 0.05;
-      mouse.y += (mouse.targetY - mouse.y) * 0.05;
+      // Smooth damped mouse parallax for subtle architectural depth
+      mouse.x += (mouse.targetX - mouse.x) * 0.035;
+      mouse.y += (mouse.targetY - mouse.y) * 0.035;
 
-      // Dark obsidian background with subtle radial depth
-      ctx.fillStyle = '#06080D';
+      const parallaxX = (mouse.x - width * 0.5) * 0.03;
+      const parallaxY = (mouse.y - height * 0.5) * 0.03;
+
+      const cx = width * 0.5 + parallaxX;
+      const cy = height * 0.5 + parallaxY;
+
+      // 1. Pure Matte Lagos Obsidian Dark Base
+      ctx.fillStyle = '#030305';
       ctx.fillRect(0, 0, width, height);
 
-      // Deep atmospheric gradient vignette
-      const centerGrad = ctx.createRadialGradient(
-        width * 0.5,
-        height * 0.45,
-        0,
-        width * 0.5,
-        height * 0.5,
-        Math.max(width, height) * 0.8
-      );
-      centerGrad.addColorStop(0, 'rgba(18, 23, 36, 0.45)');
-      centerGrad.addColorStop(0.45, 'rgba(11, 14, 22, 0.7)');
-      centerGrad.addColorStop(1, '#05070A');
-      ctx.fillStyle = centerGrad;
+      // 2. Soft Ambient Radial Vignette in the Center
+      const centerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(width, height) * 0.75);
+      centerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.035)');
+      centerGlow.addColorStop(0.35, 'rgba(12, 14, 20, 0.5)');
+      centerGlow.addColorStop(0.7, 'rgba(6, 7, 10, 0.9)');
+      centerGlow.addColorStop(1, '#030305');
+      ctx.fillStyle = centerGlow;
       ctx.fillRect(0, 0, width, height);
 
-      // Faint subtle crimson ambient warmth at bottom-center (No harsh neon!)
-      const crimsonWarmth = ctx.createRadialGradient(
-        width * 0.5,
-        height * 0.85,
-        0,
-        width * 0.5,
-        height * 0.85,
-        width * 0.55
-      );
-      crimsonWarmth.addColorStop(0, 'rgba(185, 28, 28, 0.06)');
-      crimsonWarmth.addColorStop(0.6, 'rgba(153, 27, 27, 0.02)');
-      crimsonWarmth.addColorStop(1, 'transparent');
-      ctx.fillStyle = crimsonWarmth;
-      ctx.fillRect(0, 0, width, height);
-
-      // Draw faint telemetry rings
+      // 3. Precision Cardinal Axes Crosshair (Lagos Digital Blueprint Lines)
       ctx.save();
-      ctx.translate(width * 0.5, height * 0.5);
-      rings.forEach((ring) => {
-        ring.rot += ring.speed;
-        ctx.save();
-        ctx.rotate(ring.rot);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 12]);
+
+      // Horizontal axis
+      ctx.beginPath();
+      ctx.moveTo(0, cy);
+      ctx.lineTo(width, cy);
+      ctx.stroke();
+
+      // Vertical axis
+      ctx.beginPath();
+      ctx.moveTo(cx, 0);
+      ctx.lineTo(cx, height);
+      ctx.stroke();
+      ctx.restore();
+
+      // 4. Concentric Architecture Circles (Matching Lagos Digital Image 2)
+      ctx.save();
+      centerRadii.forEach((r, idx) => {
         ctx.beginPath();
-        ctx.arc(0, 0, ring.r, 0, Math.PI * 2);
-        ctx.setLineDash(ring.dash);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+
+        // Subtle variation in opacity and dashed styling
+        if (idx === 1 || idx === 4) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.065)';
+          ctx.setLineDash([6, 14]);
+        } else if (idx === 3 || idx === 6) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.045)';
+          ctx.setLineDash([]);
+        } else {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+          ctx.setLineDash([]);
+        }
+
         ctx.lineWidth = 1;
         ctx.stroke();
-        ctx.restore();
       });
       ctx.restore();
 
-      // Update and connect nodes
-      const maxDist = 135;
-      const maxDistSq = maxDist * maxDist;
-
-      for (let i = 0; i < nodes.length; i++) {
-        const p = nodes[i];
-        p.phase += p.speed;
-
-        // Subtle organic harmonic oscillation
-        p.x += p.vx + Math.cos(p.phase) * 0.25;
-        p.y += p.vy + Math.sin(p.phase) * 0.25;
-
-        // Wrap boundaries
-        if (p.x < 0) p.x = width;
-        if (p.x > width) p.x = 0;
-        if (p.y < 0) p.y = height;
-        if (p.y > height) p.y = 0;
-
-        // Subtle mouse pull
-        if (mouse.active) {
-          const dx = mouse.x - p.x;
-          const dy = mouse.y - p.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 180 && dist > 1) {
-            p.x += (dx / dist) * 0.4;
-            p.y += (dy / dist) * 0.4;
-          }
-        }
-
-        // Draw connections
-        for (let j = i + 1; j < nodes.length; j++) {
-          const p2 = nodes[j];
-          const dx = p.x - p2.x;
-          const dy = p.y - p2.y;
-          const dSq = dx * dx + dy * dy;
-
-          if (dSq < maxDistSq) {
-            const alpha = (1 - Math.sqrt(dSq) / maxDist) * 0.07;
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-            ctx.lineWidth = 0.85;
-            ctx.stroke();
-          }
-        }
-
-        // Draw node point
+      // 5. Secondary Offset Orbital Arcs (Creates the spherical blueprint geometry in Image 2)
+      ctx.save();
+      const offsetCy = cy - height * 0.22 - parallaxY * 0.5;
+      offsetRadii.forEach((r, idx) => {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-        ctx.fill();
-      }
+        ctx.arc(cx, offsetCy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = idx % 2 === 0 ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.025)';
+        ctx.setLineDash(idx === 2 ? [3, 10] : []);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+      ctx.restore();
+
+      // 6. Subtle Rotating Telemetry Compass Ring
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rotAngle);
+      ctx.beginPath();
+      ctx.arc(0, 0, 480, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+      ctx.setLineDash([2, 18]);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
     };
 
     gsap.ticker.add(render);
@@ -219,14 +161,6 @@ export default function GsapSecurityBackground() {
       aria-hidden="true"
     >
       <canvas ref={canvasRef} className="block w-full h-full" />
-      {/* Subtle hairline grid overlay for high-end structure */}
-      <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-          backgroundImage: `linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)`,
-          backgroundSize: '48px 48px',
-        }}
-      />
     </div>
   );
 }

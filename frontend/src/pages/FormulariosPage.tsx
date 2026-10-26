@@ -374,9 +374,10 @@ export default function FormulariosPage() {
   }
 
   function copyLink(f: FormItem) {
-    const url = `${window.location.origin}/f/${f.slug}`;
+    const hasNative = f.questions && f.questions.length > 0;
+    const url = !hasNative && f.link ? f.link : `${window.location.origin}/f/${f.slug}`;
     navigator.clipboard.writeText(url).then(
-      () => alert(`Link interno do formulário copiado!\n${url}`),
+      () => alert(`Link do formulário copiado!\n${url}`),
       () => prompt('Copie o link do formulário:', url)
     );
   }
@@ -776,11 +777,11 @@ export default function FormulariosPage() {
                 </p>
                 <div className="grid grid-cols-3 gap-2 mt-auto pt-3 border-t border-white/5">
                   <a
-                    href={`/f/${f.slug}`}
+                    href={(f.questions && f.questions.length > 0) || !f.link ? `/f/${f.slug}` : f.link}
                     target="_blank"
                     rel="noreferrer"
                     className="h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
-                    title="Abrir e responder formulário no Gestão"
+                    title={(f.questions && f.questions.length > 0) || !f.link ? "Abrir e responder formulário no Gestão" : "Abrir formulário no Google Forms"}
                   >
                     <ExternalLink className="w-3.5 h-3.5 text-blue-400" /> Abrir
                   </a>

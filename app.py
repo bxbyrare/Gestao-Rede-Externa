@@ -1530,6 +1530,25 @@ def init_db():
             print("Error seeding/updating Inspeção Visual form:", e_seed)
             conn.rollback()
 
+        # Seed Google Form (Vistoria e Campo)
+        try:
+            google_form_url = 'https://docs.google.com/forms/d/e/1FAIpQLSe1tMB7qoB17WhasNSPS8m-B_5Aigi-xuvKp2gvgrOfPO_ifA/viewform?usp=header'
+            cur.execute("SELECT id FROM forms WHERE link ILIKE %s OR slug = 'formulario-vistoria-google';", (f"%1FAIpQLSe1tMB7qoB17WhasNSPS8m-B_5Aigi-xuvKp2gvgrOfPO_ifA%",))
+            if not cur.fetchone():
+                cur.execute("""
+                    INSERT INTO forms (title, slug, category, description, link)
+                    VALUES (%s, %s, %s, %s, %s);
+                """, (
+                    'Formulário de Vistoria Externa (Google Forms)',
+                    'formulario-vistoria-google',
+                    'Vistoria',
+                    'Formulário oficial via Google Forms para vistorias, registros de campo e auditorias de rede externa.',
+                    google_form_url
+                ))
+        except Exception as e_gf:
+            print("Error seeding Google Form:", e_gf)
+            conn.rollback()
+
         # 14. Password Reset Tokens Table (Link Criptografado por E-mail Brevo)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -4498,9 +4517,14 @@ def api_forms():
             questions = data.get('questions')
             if not questions and link and ('forms.gle' in link or 'docs.google.com/forms' in link):
                 parsed, parse_err = parse_google_form(link)
-                if parse_err:
-                    return jsonify({"error": parse_err}), 400
                 if parsed:
+                    if not title:
+                        title = parsed.get('title')
+                    if not description:
+                        description = parsed.get('description')
+                    questions = parsed.get('questions')
+                elif not title:
+                    return jsonify({"error": parse_err}), 400
                     if not title:
                         title = parsed['title']
                     if not description:
