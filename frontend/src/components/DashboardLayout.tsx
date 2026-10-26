@@ -7,7 +7,7 @@ import {
   UserCheck, AlertTriangle, ArrowRight, CalendarCheck,
 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
-import LiquidEther from './LiquidEther';
+import GsapSecurityBackground from './GsapSecurityBackground';
 import GlassIcon from './GlassIcon';
 import MandatoryEmailModal from './MandatoryEmailModal';
 import AuthenticatorModal from './AuthenticatorModal';
@@ -19,9 +19,6 @@ const COMPANY_LOGOS: Record<string, string> = {
   procisa: '/procisa-icon.png',
 };
 
-// Claro's icon already has a transparent background — a white backing
-// behind it just shows up as an ugly ring. FFA/Procisa are flat white-bg
-// exports, so they need the white circle to avoid a hard square corner.
 const COMPANY_LOGO_NEEDS_WHITE_BG: Record<string, boolean> = {
   claro: false,
   ffa: true,
@@ -78,7 +75,8 @@ export default function DashboardLayout() {
   // If user is not TOTP verified yet, block full layout and render exclusive security prompt
   if (user && !user.totp_verified) {
     return (
-      <div className="anti-print-protected min-h-screen flex items-center justify-center relative overflow-hidden bg-[#06080D]">
+      <div className="anti-print-protected min-h-screen flex items-center justify-center relative overflow-hidden bg-[#030305] text-white">
+        <GsapSecurityBackground />
         <AntiPrintGuard />
         <AuthenticatorModal />
       </div>
@@ -86,9 +84,10 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="app-shell-bg anti-print-protected min-h-screen flex relative">
+    <div className="anti-print-protected min-h-screen flex relative bg-[#030305] text-white overflow-x-hidden">
+      {/* Precision Lagos Digital Architecture Blueprint Background */}
+      <GsapSecurityBackground />
       <AntiPrintGuard />
-      <LiquidEther />
 
       {/* Mandatory Blocking Modal if user has no email registered */}
       <AuthenticatorModal />
@@ -97,27 +96,30 @@ export default function DashboardLayout() {
       {/* Mobile overlay */}
       {mobileNavOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-40 lg:hidden"
           onClick={() => setMobileNavOpen(false)}
         />
       )}
 
+      {/* Primary Sidebar */}
       <aside
-        className={`glass fixed lg:sticky top-0 left-0 h-screen w-72 shrink-0 z-50 flex flex-col transition-transform duration-300 ease-out ${
+        className={`glass fixed lg:sticky top-0 left-0 h-screen w-72 shrink-0 z-50 flex flex-col transition-transform duration-300 ease-out bg-[#090C13]/90 backdrop-blur-2xl border-r border-white/[0.08] ${
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        <div className="flex items-center justify-between px-5 h-20 border-b border-white/5">
+        <div className="flex items-center justify-between px-5 h-20 border-b border-white/[0.06]">
           <div className="flex items-center gap-3 min-w-0">
-            <img src="/claro-icon.png" alt="Claro" className="w-10 h-10 rounded-full shrink-0 object-cover" />
+            <img src="/claro-icon.png" alt="Claro" className="w-9 h-9 object-contain shrink-0 drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)]" />
             <div className="min-w-0">
-              <div className="font-extrabold text-sm truncate">Gestão <span className="text-[var(--color-primary)]">REDE EXTERNA</span></div>
-              <div className="text-[10px] text-[var(--color-text-faint)] uppercase tracking-wider">Claro Brasil</div>
+              <div className="font-extrabold text-sm truncate text-white">
+                Gestão <span className="bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent font-extrabold">REDE EXTERNA</span>
+              </div>
+              <div className="text-[10px] text-neutral-500 font-mono tracking-wider uppercase">Claro Brasil</div>
             </div>
           </div>
           <button
             onClick={() => setMobileNavOpen(false)}
-            className="lg:hidden p-2 -mr-2 text-[var(--color-text-muted)]"
+            className="lg:hidden p-2 -mr-2 text-neutral-400 hover:text-white transition-colors cursor-pointer"
             aria-label="Fechar menu"
           >
             <X className="w-5 h-5" />
@@ -139,16 +141,16 @@ export default function DashboardLayout() {
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) => {
                   if (isInDev) {
-                    return `group flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                    return `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                       isActive
                         ? 'bg-sky-500/20 text-sky-300 shadow-[0_0_20px_rgba(14,165,233,0.3)] border border-sky-400/40'
-                        : 'text-sky-400 bg-sky-500/[0.08] hover:bg-sky-500/[0.16] hover:text-sky-200 border border-sky-500/30'
+                        : 'text-sky-400 bg-sky-500/[0.06] hover:bg-sky-500/[0.14] hover:text-sky-200 border border-sky-500/20'
                     }`;
                   }
-                  return `group flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  return `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                     isActive
-                      ? 'bg-white/[0.08] text-[var(--color-primary)] shadow-[0_0_20px_rgba(238,44,36,0.15)] border border-white/10'
-                      : 'text-[var(--color-text-muted)] hover:bg-white/[0.04] hover:text-white border border-transparent'
+                      ? 'bg-white/[0.08] text-white shadow-[0_0_20px_rgba(255,255,255,0.06)] border border-white/15'
+                      : 'text-neutral-400 hover:bg-white/[0.04] hover:text-white border border-transparent'
                   }`;
                 }}
               >
@@ -174,12 +176,12 @@ export default function DashboardLayout() {
           })}
         </nav>
 
-        <div className="p-3 border-t border-white/5 space-y-2">
+        <div className="p-3 border-t border-white/[0.06] space-y-2">
           {/* User profile card link */}
           <NavLink
             to="/perfil"
             onClick={() => setMobileNavOpen(false)}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.05] transition-all group border border-transparent hover:border-white/5"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] transition-all group border border-white/[0.06] hover:border-white/15"
             title="Acessar Meu Perfil"
           >
             {companyLogoUrl(user?.company) ? (
@@ -189,15 +191,15 @@ export default function DashboardLayout() {
                 <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover shrink-0" />
               )
             ) : (
-              <div className="w-9 h-9 rounded-full bg-[var(--color-accent-dim)] flex items-center justify-center text-[var(--color-accent)] font-bold text-sm shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-white font-bold text-sm shrink-0">
                 {(user?.username || '?').charAt(0).toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold truncate text-white group-hover:text-rose-400 transition-colors">
+              <div className="text-sm font-semibold truncate text-white group-hover:text-white transition-colors">
                 {user?.name || user?.username}
               </div>
-              <div className="text-[11px] text-[var(--color-text-faint)] uppercase tracking-wide flex items-center gap-1.5">
+              <div className="text-[11px] text-neutral-400 font-mono uppercase tracking-wide flex items-center gap-1.5">
                 <span>{user?.role}</span>
                 {user?.profile_complete === false && (
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Perfil com dados pendentes" />
@@ -208,7 +210,7 @@ export default function DashboardLayout() {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-xs font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-xs font-semibold text-neutral-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all cursor-pointer"
           >
             <LogOut className="w-4 h-4" /> Sair do Sistema
           </button>
@@ -216,11 +218,13 @@ export default function DashboardLayout() {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col relative z-10">
-        <header className="lg:hidden sticky top-0 z-30 glass flex items-center justify-between px-4 h-16 border-b border-white/5">
-          <button onClick={() => setMobileNavOpen(true)} aria-label="Abrir menu" className="p-2 -ml-2">
+        <header className="lg:hidden sticky top-0 z-30 glass flex items-center justify-between px-4 h-16 border-b border-white/[0.06] bg-[#090C13]/90 backdrop-blur-2xl">
+          <button onClick={() => setMobileNavOpen(true)} aria-label="Abrir menu" className="p-2 -ml-2 text-white">
             <Menu className="w-6 h-6" />
           </button>
-          <div className="font-bold text-sm">Gestão <span className="text-[var(--color-primary)]">REDE EXTERNA</span></div>
+          <div className="font-extrabold text-sm text-white">
+            Gestão <span className="bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent font-extrabold">REDE EXTERNA</span>
+          </div>
           {companyLogoUrl(user?.company) ? (
             companyLogoNeedsWhiteBg(user?.company) ? (
               <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
@@ -228,7 +232,7 @@ export default function DashboardLayout() {
               <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover" />
             )
           ) : (
-            <div className="w-9 h-9 rounded-full bg-[var(--color-accent-dim)] flex items-center justify-center text-[var(--color-accent)] font-bold text-sm">
+            <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-white font-bold text-sm">
               {(user?.username || '?').charAt(0).toUpperCase()}
             </div>
           )}
@@ -237,7 +241,7 @@ export default function DashboardLayout() {
         <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
           {/* Missing Profile Notification Banner */}
           {hasMissingProfile && (
-            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[#1E1710] to-[#141824] border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm animate-fade-in shadow-xl">
+            <div className="mb-6 p-4 rounded-2xl bg-[#090C13]/90 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm animate-fade-in shadow-xl backdrop-blur-xl">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
                   <AlertTriangle className="w-4 h-4" />
@@ -252,7 +256,7 @@ export default function DashboardLayout() {
               <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                 <NavLink
                   to="/perfil"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-amber-500 text-black hover:bg-amber-400 transition-colors shadow-sm"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-white text-black hover:bg-neutral-100 transition-colors shadow-sm"
                 >
                   <span>Completar Perfil</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -260,7 +264,7 @@ export default function DashboardLayout() {
                 <button
                   type="button"
                   onClick={() => setDismissBanner(true)}
-                  className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                  className="p-1.5 text-neutral-400 hover:text-white transition-colors cursor-pointer"
                   title="Fechar aviso temporariamente"
                 >
                   <X className="w-4 h-4" />

@@ -7,11 +7,11 @@ import Modal from '../components/Modal';
 import { hasPermission, useAuth } from '../state/AuthContext';
 
 const COLORS = [
-  { value: 'Vermelho', dot: '#ef4444', chipBg: 'rgba(239,68,68,0.10)', chipText: '#fca5a5', border: 'rgba(239,68,68,0.25)' },
+  { value: 'Vermelho', dot: '#EE2C24', chipBg: 'rgba(238,44,36,0.12)', chipText: '#ff8a84', border: 'rgba(238,44,36,0.30)' },
   { value: 'Amarelo', dot: '#f59e0b', chipBg: 'rgba(245,158,11,0.10)', chipText: '#fde68a', border: 'rgba(245,158,11,0.25)' },
   { value: 'Verde', dot: '#10b981', chipBg: 'rgba(16,185,129,0.10)', chipText: '#a7f3d0', border: 'rgba(16,185,129,0.25)' },
   { value: 'Roxo', dot: '#8b5cf6', chipBg: 'rgba(139,92,246,0.10)', chipText: '#ddd6fe', border: 'rgba(139,92,246,0.25)' },
-  { value: 'Azul', dot: '#3b82f6', chipBg: 'rgba(59,130,246,0.10)', chipText: '#bfdbfe', border: 'rgba(59,130,246,0.25)' },
+  { value: 'Azul', dot: '#38bdf8', chipBg: 'rgba(56,189,248,0.10)', chipText: '#bae6fd', border: 'rgba(56,189,248,0.25)' },
 ];
 
 function colorMeta(value: string) {
@@ -96,7 +96,7 @@ export default function FavoritesPage() {
         subtitle="Links e ferramentas de uso frequente da operação"
         actions={
           canCreate ? (
-            <Button onClick={openCreate} className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white shadow-sm font-semibold rounded-xl">
+            <Button onClick={openCreate} className="bg-white hover:bg-neutral-100 text-black shadow-sm font-semibold rounded-xl">
               <Plus className="w-4 h-4" /> Cadastrar Favorito
             </Button>
           ) : undefined
@@ -104,14 +104,19 @@ export default function FavoritesPage() {
       />
 
       <div className="relative mb-6 max-w-md">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou link..." className="pl-11 rounded-xl bg-white/[0.03] border-white/10" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nome ou link..."
+          className="pl-11 rounded-xl bg-white/[0.03] border-white/10 text-white placeholder:text-neutral-500"
+        />
       </div>
 
       {favorites === null ? (
-        <p className="text-sm text-[var(--color-text-muted)]">Carregando...</p>
+        <p className="text-sm text-neutral-400">Carregando...</p>
       ) : filtered.length === 0 ? (
-        <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">Nenhum favorito encontrado.</Card>
+        <Card className="p-10 text-center text-sm text-neutral-400">Nenhum favorito encontrado.</Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map((fav) => {
@@ -119,7 +124,7 @@ export default function FavoritesPage() {
             return (
               <div
                 key={fav.id}
-                className="group relative flex flex-col justify-between rounded-2xl p-5 bg-[#111116]/90 border border-white/[0.08] hover:border-white/20 transition-all duration-200 shadow-sm hover:shadow-lg backdrop-blur-sm"
+                className="group relative flex flex-col justify-between rounded-2xl p-5 bg-[#090C13]/85 border border-white/[0.08] hover:border-white/20 hover:bg-[#0E131F]/90 transition-all duration-300 shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl"
               >
                 <div>
                   {/* Top Bar with Status Tag & Counter */}
@@ -131,13 +136,13 @@ export default function FavoritesPage() {
                       <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
                       {fav.color}
                     </span>
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-zinc-500">
-                      <Eye className="w-3 h-3 text-zinc-500" /> {fav.access_count}x
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-neutral-400 font-mono">
+                      <Eye className="w-3 h-3 text-neutral-400" /> {fav.access_count}x
                     </span>
                   </div>
 
                   {/* Title */}
-                  <h3 className="font-semibold text-[15px] leading-snug text-zinc-100 group-hover:text-white transition-colors mb-4 line-clamp-2">
+                  <h3 className="font-bold text-[15px] leading-snug text-white group-hover:text-white transition-colors mb-4 line-clamp-2">
                     {fav.title}
                   </h3>
                 </div>
@@ -146,15 +151,15 @@ export default function FavoritesPage() {
                 <div className="flex items-center gap-2 pt-3 border-t border-white/[0.06]">
                   <button
                     onClick={() => handleAccess(fav)}
-                    className="flex-1 h-9 px-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.12] text-zinc-200 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                    className="flex-1 h-9 px-3 rounded-xl bg-white/[0.05] hover:bg-white text-neutral-200 hover:text-black border border-white/10 hover:border-transparent text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
                   >
-                    <ExternalLink className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200" /> Acessar Link
+                    <ExternalLink className="w-3.5 h-3.5 text-neutral-400 group-hover:text-black transition-colors" /> Acessar Link
                   </button>
                   {canEdit && (
                     <button
                       onClick={() => openEdit(fav)}
                       aria-label="Editar favorito"
-                      className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+                      className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/[0.08] hover:border-white/15 transition-all cursor-pointer"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -163,7 +168,7 @@ export default function FavoritesPage() {
                     <button
                       onClick={() => handleDelete(fav)}
                       aria-label="Excluir favorito"
-                      className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-colors"
+                      className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center text-neutral-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -186,7 +191,7 @@ export default function FavoritesPage() {
           </>
         }
       >
-        {error && <div className="mb-4 rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger-dim)] px-4 py-3 text-sm text-[var(--color-danger)]">{error}</div>}
+        {error && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-300">{error}</div>}
         <Field label="Nome">
           <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Ex: Sistema Claro / Documentação" />
         </Field>

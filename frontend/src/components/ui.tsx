@@ -3,17 +3,17 @@ import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNod
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
     <div className="mb-4">
-      <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
+      <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
         {label}
       </label>
       {children}
-      {hint && <p className="text-[11px] text-[var(--color-text-faint)] mt-1">{hint}</p>}
+      {hint && <p className="text-[11px] text-neutral-500 mt-1">{hint}</p>}
     </div>
   );
 }
 
 const inputClass =
-  'w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm placeholder:text-[var(--color-text-faint)] focus:border-[var(--color-accent)]/50 focus:bg-[var(--color-accent)]/5 transition-colors outline-none';
+  'w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-500 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none';
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputClass} ${props.className || ''}`} />;
@@ -35,29 +35,37 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   const variants: Record<ButtonVariant, string> = {
-    primary: 'bg-[var(--color-primary-dim)] border border-[var(--color-primary)]/30 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25 hover:border-[var(--color-primary)]/60',
-    outline: 'bg-white/[0.03] border border-white/10 text-[var(--color-text)] hover:bg-white/[0.07]',
-    ghost: 'bg-transparent text-[var(--color-text-muted)] hover:bg-white/5 hover:text-[var(--color-text)]',
-    danger: 'bg-[var(--color-danger-dim)] border border-[var(--color-danger)]/30 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/25',
+    primary: 'bg-white hover:bg-neutral-100 text-black font-semibold shadow-[0_4px_16px_rgba(255,255,255,0.12)] border border-transparent',
+    outline: 'bg-white/[0.03] border border-white/10 text-white hover:bg-white/[0.08] hover:border-white/20',
+    ghost: 'bg-transparent text-neutral-400 hover:text-white hover:bg-white/[0.04]',
+    danger: 'bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-500/25',
   };
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 h-11 px-5 rounded-full text-sm font-semibold transition-all active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100 ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl text-sm font-semibold transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${variants[variant]} ${className}`}
     />
   );
 }
 
 export function Card({ children, className = '', style, onClick }: { children: ReactNode; className?: string; style?: CSSProperties; onClick?: () => void }) {
-  return <div className={`glass rounded-2xl ${className}`} style={style} onClick={onClick}>{children}</div>;
+  return (
+    <div
+      className={`rounded-2xl p-5 bg-[#090C13]/85 border border-white/[0.08] hover:border-white/15 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-all ${className}`}
+      style={style}
+      onClick={onClick}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
-        {subtitle && <p className="text-sm text-[var(--color-text-muted)] mt-1">{subtitle}</p>}
+        <h1 className="text-2xl font-black tracking-tight text-white">{title}</h1>
+        {subtitle && <p className="text-sm text-neutral-400 mt-1">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
     </div>

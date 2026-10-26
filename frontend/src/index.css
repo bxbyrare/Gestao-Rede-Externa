@@ -5,18 +5,18 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-  --color-bg: #08080a;
-  --color-surface: #111114;
-  --color-surface-2: #17171b;
+  --color-bg: #030305;
+  --color-surface: #090C13;
+  --color-surface-2: #0E121D;
   --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
 
-  --color-primary: #ee2c24;
-  --color-primary-hover: #ff4238;
-  --color-primary-dim: rgba(238, 44, 36, 0.16);
+  --color-primary: #EE2C24;
+  --color-primary-hover: #FF382E;
+  --color-primary-dim: rgba(238, 44, 36, 0.14);
 
-  --color-accent: #22d3ee;
-  --color-accent-dim: rgba(34, 211, 238, 0.14);
+  --color-accent: #38bdf8;
+  --color-accent-dim: rgba(56, 189, 248, 0.14);
 
   --color-success: #34d399;
   --color-success-dim: rgba(52, 211, 153, 0.14);
@@ -35,25 +35,23 @@ html {
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: #030305;
+  color: #f4f4f6;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
 }
 
-/* Plain corporate backdrop: a faint top-down gradient, no grid/glow gimmicks */
+/* Lagos Digital backdrop */
 .app-shell-bg {
-  background-color: var(--color-bg);
-  background-image: linear-gradient(180deg, var(--color-surface) 0%, var(--color-bg) 420px);
-  background-repeat: no-repeat;
+  background-color: transparent;
 }
 
 .glass {
-  background: rgba(15, 15, 18, 0.96);
-  backdrop-filter: blur(12px) saturate(120%);
-  -webkit-backdrop-filter: blur(12px) saturate(120%);
-  border: 1px solid var(--color-border);
+  background: rgba(9, 12, 19, 0.88);
+  backdrop-filter: blur(24px) saturate(130%);
+  -webkit-backdrop-filter: blur(24px) saturate(130%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .mono {
@@ -61,9 +59,7 @@ body {
   font-feature-settings: 'tnum';
 }
 
-/* Native <select> dropdowns render with the OS/browser's own popup, which
-   ignores our Tailwind classes on <option> — force dark bg + light text
-   explicitly or the open dropdown shows illegible white-on-white rows. */
+/* Native <select> dropdowns render with the OS/browser's own popup */
 select {
   color-scheme: dark;
 }
@@ -79,7 +75,7 @@ select option {
   border-radius: 4px;
 }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
