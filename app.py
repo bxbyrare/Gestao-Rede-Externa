@@ -1140,9 +1140,9 @@ def format_person_name(raw_name):
     cleaned = " ".join(raw_name.strip().split())
     if not cleaned:
         return ""
-    # Skip formatting if it looks like a login username (e.g. alexandre.candido)
+    # Converte logins com ponto (ex: alexandre.candido) para o nome real com espacos e acentos corretos
     if "." in cleaned and " " not in cleaned:
-        return cleaned
+        cleaned = cleaned.replace(".", " ")
 
     tokens = cleaned.split(" ")
     result = []
@@ -1193,6 +1193,32 @@ def normalize_all_database_names(cur=None):
             own_conn = get_db()
             cur = own_conn.cursor()
 
+        # Sincroniza users.name com a tabela de técnicos e formata nomes reais
+        try:
+            cur.execute("""
+                UPDATE users u
+                SET name = t.name
+                FROM technicians t
+                WHERE u.tech_id = t.id 
+                  AND (u.name IS NULL OR TRIM(u.name) = '' OR LOWER(TRIM(u.name)) = LOWER(TRIM(u.username)))
+                  AND t.name IS NOT NULL AND TRIM(t.name) != '';
+            """)
+        except Exception:
+            if own_conn: own_conn.rollback()
+
+        for tbl in ['auditorias', 'aceitacoes', 'pos_eventos']:
+            try:
+                cur.execute(f"""
+                    UPDATE {tbl} x
+                    SET created_by = COALESCE(NULLIF(TRIM(u.name), ''), NULLIF(TRIM(t.name), ''), x.created_by)
+                    FROM users u
+                    LEFT JOIN technicians t ON u.tech_id = t.id
+                    WHERE (x.created_by_id = u.id OR LOWER(TRIM(x.created_by)) = LOWER(TRIM(u.username)))
+                      AND COALESCE(NULLIF(TRIM(u.name), ''), NULLIF(TRIM(t.name), '')) IS NOT NULL;
+                """)
+            except Exception:
+                if own_conn: own_conn.rollback()
+
         tables_and_cols = [
             ("technicians", "id", "name"),
             ("users", "id", "name"),
@@ -1203,6 +1229,8 @@ def normalize_all_database_names(cur=None):
             ("auditorias", "id", "responsible"),
             ("aceitacoes", "id", "created_by"),
             ("aceitacoes", "id", "responsible"),
+            ("pos_eventos", "id", "created_by"),
+            ("pos_eventos", "id", "responsible"),
         ]
         for table, pk, col in tables_and_cols:
             try:
@@ -2928,7 +2956,12 @@ def api_totp_enable():
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT id, username, role, totp_secret FROM users WHERE id = %s;', (user_id,))
+    cur.execute("""
+        SELECT u.id, u.username, u.name, u.role, u.totp_secret, t.name AS tech_name
+        FROM users u
+        LEFT JOIN technicians t ON u.tech_id = t.id
+        WHERE u.id = %s;
+    """, (user_id,))
     u = cur.fetchone()
     if not u or not u.get('totp_secret'):
         cur.close()
@@ -2964,8 +2997,13 @@ def api_totp_enable():
     session.pop('pending_mfa_time', None)
     _TOTP_FAILURES.pop(user_id, None)
 
+    real_name = (u.get('name') or u.get('tech_name') or '').strip()
+    real_name = format_person_name(real_name or u['username'])
+
     session['user_id'] = user_id
     session['username'] = u['username']
+    session['name'] = real_name
+    session['user_name'] = real_name
     session['role'] = u['role']
     session['totp_verified'] = True
     session['totp_expires_at'] = time.time() + (12 * 3600)
@@ -2998,7 +3036,12 @@ def api_totp_verify():
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT id, username, role, totp_secret, totp_enabled FROM users WHERE id = %s;', (user_id,))
+    cur.execute("""
+        SELECT u.id, u.username, u.name, u.role, u.totp_secret, u.totp_enabled, t.name AS tech_name
+        FROM users u
+        LEFT JOIN technicians t ON u.tech_id = t.id
+        WHERE u.id = %s;
+    """, (user_id,))
     u = cur.fetchone()
     cur.close()
     conn.close()
@@ -3025,8 +3068,13 @@ def api_totp_verify():
     session.pop('pending_mfa_time', None)
     _TOTP_FAILURES.pop(user_id, None)
 
+    real_name = (u.get('name') or u.get('tech_name') or '').strip()
+    real_name = format_person_name(real_name or u['username'])
+
     session['user_id'] = user_id
     session['username'] = u['username']
+    session['name'] = real_name
+    session['user_name'] = real_name
     session['role'] = u['role']
     session['totp_verified'] = True
     session['totp_expires_at'] = time.time() + (12 * 3600)
@@ -3214,7 +3262,8 @@ def get_user_info_dict(user_id):
         # Prefer users record, fallback to technicians record
         email = (row.get('u_email') or row.get('tech_email') or '').strip()
         phone = (row.get('u_phone') or row.get('tech_phone') or '').strip()
-        name = (row.get('u_name') or row.get('tech_name') or row['username']).strip()
+        raw_name = (row.get('u_name') or row.get('tech_name') or '').strip()
+        name = format_person_name(raw_name or row['username'])
         company = (row.get('company') or '').strip() or None
 
         is_valid_email = bool(email and '@' in email and '.' in email and len(email) >= 5)
@@ -3225,7 +3274,7 @@ def get_user_info_dict(user_id):
             missing_fields.append("E-mail corporativo / pessoal")
         if not phone:
             missing_fields.append("Telefone de contato / WhatsApp")
-        if not name or name.lower() == row['username'].lower():
+        if not raw_name or raw_name.lower() == row['username'].lower():
             missing_fields.append("Nome completo")
         if not company:
             missing_fields.append("Empresa / Parceira vinculada")
@@ -7286,8 +7335,8 @@ def api_create_user():
             perms_db = json.dumps(cleaned_perms)
 
         cur.execute(
-            "INSERT INTO users (username, password_hash, role, tech_id, permissions) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
-            (username, hashed, role, int(tech_id), perms_db)
+            "INSERT INTO users (username, password_hash, role, tech_id, permissions, name) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
+            (username, hashed, role, int(tech_id), perms_db, tech['name'])
         )
         new_id = cur.fetchone()['id']
         conn.commit()
@@ -9879,7 +9928,12 @@ def api_auditorias_users_list():
         
         crm_users = []
         try:
-            cur.execute("SELECT id, username, role FROM users ORDER BY username ASC;")
+            cur.execute("""
+                SELECT u.id, u.username, u.name, u.role, t.name AS tech_name
+                FROM users u
+                LEFT JOIN technicians t ON u.tech_id = t.id
+                ORDER BY u.username ASC;
+            """)
             crm_users = cur.fetchall() or []
         except Exception as e_u:
             print("Warning fetching users for auditoria:", e_u)
@@ -9895,13 +9949,24 @@ def api_auditorias_users_list():
         conn.close()
         conn = None
         
+        formatted_users = []
+        for u in crm_users:
+            if not u or not u.get('username'):
+                continue
+            disp = (u.get('name') or u.get('tech_name') or '').strip()
+            disp = format_person_name(disp or u['username'])
+            formatted_users.append({
+                "id": u['id'],
+                "name": disp,
+                "username": u['username'],
+                "role": u.get('role') or 'Usuário',
+                "type": "user"
+            })
+
         return jsonify({
-            "users": [
-                {"id": u['id'], "name": u['username'], "username": u['username'], "role": u['role'] or 'Usuário', "type": "user"}
-                for u in crm_users if u and u.get('username')
-            ],
+            "users": formatted_users,
             "technicians": [
-                {"id": t['id'], "name": t['name'], "role": t['role'] or 'Técnico', "company": t.get('company') or '', "type": "tech"}
+                {"id": t['id'], "name": format_person_name(t['name']), "role": t['role'] or 'Técnico', "company": t.get('company') or '', "type": "tech"}
                 for t in techs if t and t.get('name')
             ]
         }), 200
@@ -9940,8 +10005,16 @@ def api_auditorias():
                     a.observations,
                     COALESCE(a.photos, '[]'::jsonb) AS photos,
                     a.created_at,
-                    a.updated_at
+                    a.updated_at,
+                    u.name AS u_creator_name,
+                    tu.name AS tu_creator_name,
+                    ru.name AS u_resp_name,
+                    rt.name AS t_resp_name
                 FROM auditorias a
+                LEFT JOIN users u ON (a.created_by_id = u.id OR (a.created_by_id IS NULL AND LOWER(TRIM(a.created_by)) = LOWER(TRIM(u.username))))
+                LEFT JOIN technicians tu ON u.tech_id = tu.id
+                LEFT JOIN users ru ON (a.responsible_id = ru.id OR (a.responsible_id IS NULL AND LOWER(TRIM(a.responsible)) = LOWER(TRIM(ru.username))))
+                LEFT JOIN technicians rt ON (ru.tech_id = rt.id OR a.responsible_id = rt.id)
                 ORDER BY a.id DESC;
             """)
             rows = cur.fetchall()
@@ -9970,13 +10043,27 @@ def api_auditorias():
                     except Exception:
                         photos_list = []
 
+                clean_creator = (r.get('u_creator_name') or r.get('tu_creator_name') or '').strip()
+                if not clean_creator or ('.' in clean_creator and ' ' not in clean_creator):
+                    cb_raw = (r.get('created_by') or '').strip()
+                    clean_creator = format_person_name(cb_raw) or 'Usuário'
+                else:
+                    clean_creator = format_person_name(clean_creator)
+
+                clean_resp = (r.get('u_resp_name') or r.get('t_resp_name') or '').strip()
+                if not clean_resp or ('.' in clean_resp and ' ' not in clean_resp):
+                    resp_raw = (r.get('responsible') or '').strip()
+                    clean_resp = format_person_name(resp_raw) or resp_raw
+                else:
+                    clean_resp = format_person_name(clean_resp)
+
                 results.append({
                     "id": r['id'],
                     "os": r['os'],
                     "created_date": c_date,
-                    "created_by": r['created_by'],
+                    "created_by": clean_creator,
                     "created_by_id": r['created_by_id'],
-                    "responsible": r['responsible'],
+                    "responsible": clean_resp,
                     "responsible_id": r['responsible_id'],
                     "status": r['status'],
                     "audit_date": a_date,
@@ -10002,7 +10089,7 @@ def api_auditorias():
         try:
             data = request.get_json(silent=True) or request.form.to_dict() or {}
             os_name = (data.get('os') or '').strip()
-            responsible = (data.get('responsible') or '').strip()
+            responsible = format_person_name((data.get('responsible') or '').strip())
             responsible_id = data.get('responsible_id')
             created_date_str = (data.get('created_date') or '').strip()
 
@@ -10011,7 +10098,9 @@ def api_auditorias():
             if not responsible:
                 return jsonify({"error": "O campo Responsável é obrigatório."}), 400
 
-            created_by = session.get('user_name') or session.get('username') or 'Usuário'
+            user_info = get_user_info_dict(session.get('user_id'))
+            created_by = (user_info.get('name') if user_info else None) or session.get('user_name') or session.get('name') or session.get('username') or 'Usuário'
+            created_by = format_person_name(created_by)
             raw_creator_id = session.get('user_id')
             clean_creator_id = None
             if raw_creator_id:
@@ -10107,8 +10196,8 @@ def api_auditoria_detail(auditoria_id):
                 "id": row['id'],
                 "os": row['os'],
                 "created_date": row['created_date'].strftime('%Y-%m-%d') if row.get('created_date') else '',
-                "created_by": row['created_by'],
-                "responsible": row['responsible'],
+                "created_by": format_person_name(row.get('created_by')) or 'Usuário',
+                "responsible": format_person_name(row.get('responsible')) or '',
                 "status": row['status'],
                 "audit_date": row['audit_date'].strftime('%Y-%m-%d') if row.get('audit_date') else '',
                 "observations": row['observations'] or '',
@@ -10279,8 +10368,8 @@ def api_auditorias_export():
             writer.writerow([
                 r['os'] or '',
                 c_date_str,
-                r['created_by'] or '',
-                r['responsible'] or '',
+                format_person_name(r['created_by']) or '',
+                format_person_name(r['responsible']) or '',
                 r['status'] or '',
                 a_date_str,
                 (r['observations'] or '').replace('\n', ' ').strip(),
@@ -10317,7 +10406,12 @@ def api_aceitacoes_users_list():
         
         crm_users = []
         try:
-            cur.execute("SELECT id, username, role FROM users ORDER BY username ASC;")
+            cur.execute("""
+                SELECT u.id, u.username, u.name, u.role, t.name AS tech_name
+                FROM users u
+                LEFT JOIN technicians t ON u.tech_id = t.id
+                ORDER BY u.username ASC;
+            """)
             crm_users = cur.fetchall() or []
         except Exception as e_u:
             print("Warning fetching users for aceitacao:", e_u)
@@ -10333,13 +10427,24 @@ def api_aceitacoes_users_list():
         conn.close()
         conn = None
         
+        formatted_users = []
+        for u in crm_users:
+            if not u or not u.get('username'):
+                continue
+            disp = (u.get('name') or u.get('tech_name') or '').strip()
+            disp = format_person_name(disp or u['username'])
+            formatted_users.append({
+                "id": u['id'],
+                "name": disp,
+                "username": u['username'],
+                "role": u.get('role') or 'Usuário',
+                "type": "user"
+            })
+
         return jsonify({
-            "users": [
-                {"id": u['id'], "name": u['username'], "username": u['username'], "role": u['role'] or 'Usuário', "type": "user"}
-                for u in crm_users if u and u.get('username')
-            ],
+            "users": formatted_users,
             "technicians": [
-                {"id": t['id'], "name": t['name'], "role": t['role'] or 'Técnico', "company": t.get('company') or '', "type": "tech"}
+                {"id": t['id'], "name": format_person_name(t['name']), "role": t['role'] or 'Técnico', "company": t.get('company') or '', "type": "tech"}
                 for t in techs if t and t.get('name')
             ]
         }), 200
@@ -10378,8 +10483,16 @@ def api_aceitacoes():
                     a.observations,
                     COALESCE(a.photos, '[]'::jsonb) AS photos,
                     a.created_at,
-                    a.updated_at
+                    a.updated_at,
+                    u.name AS u_creator_name,
+                    tu.name AS tu_creator_name,
+                    ru.name AS u_resp_name,
+                    rt.name AS t_resp_name
                 FROM aceitacoes a
+                LEFT JOIN users u ON (a.created_by_id = u.id OR (a.created_by_id IS NULL AND LOWER(TRIM(a.created_by)) = LOWER(TRIM(u.username))))
+                LEFT JOIN technicians tu ON u.tech_id = tu.id
+                LEFT JOIN users ru ON (a.responsible_id = ru.id OR (a.responsible_id IS NULL AND LOWER(TRIM(a.responsible)) = LOWER(TRIM(ru.username))))
+                LEFT JOIN technicians rt ON (ru.tech_id = rt.id OR a.responsible_id = rt.id)
                 ORDER BY a.id DESC;
             """)
             rows = cur.fetchall()
@@ -10408,13 +10521,27 @@ def api_aceitacoes():
                     except Exception:
                         photos_list = []
 
+                clean_creator = (r.get('u_creator_name') or r.get('tu_creator_name') or '').strip()
+                if not clean_creator or ('.' in clean_creator and ' ' not in clean_creator):
+                    cb_raw = (r.get('created_by') or '').strip()
+                    clean_creator = format_person_name(cb_raw) or 'Sistema'
+                else:
+                    clean_creator = format_person_name(clean_creator)
+
+                clean_resp = (r.get('u_resp_name') or r.get('t_resp_name') or '').strip()
+                if not clean_resp or ('.' in clean_resp and ' ' not in clean_resp):
+                    resp_raw = (r.get('responsible') or '').strip()
+                    clean_resp = format_person_name(resp_raw) or resp_raw
+                else:
+                    clean_resp = format_person_name(clean_resp)
+
                 results.append({
                     "id": r['id'],
                     "os": r['os'],
                     "created_date": c_date,
-                    "created_by": r['created_by'],
+                    "created_by": clean_creator,
                     "created_by_id": r['created_by_id'],
-                    "responsible": r['responsible'],
+                    "responsible": clean_resp,
                     "responsible_id": r['responsible_id'],
                     "status": r['status'],
                     "acceptance_date": acc_date,
@@ -10440,7 +10567,7 @@ def api_aceitacoes():
         try:
             data = request.get_json(silent=True) or request.form.to_dict() or {}
             os_name = (data.get('os') or '').strip()
-            responsible = (data.get('responsible') or '').strip()
+            responsible = format_person_name((data.get('responsible') or '').strip())
             responsible_id = data.get('responsible_id')
             created_date_str = (data.get('created_date') or '').strip()
             custom_obs = data.get('observations')
@@ -10451,7 +10578,9 @@ def api_aceitacoes():
             if not responsible:
                 return jsonify({"error": "O campo Responsável é obrigatório."}), 400
 
-            created_by = session.get('user_name') or session.get('username') or 'Usuário'
+            user_info = get_user_info_dict(session.get('user_id'))
+            created_by = (user_info.get('name') if user_info else None) or session.get('user_name') or session.get('name') or session.get('username') or 'Usuário'
+            created_by = format_person_name(created_by)
             raw_creator_id = session.get('user_id')
             clean_creator_id = None
             if raw_creator_id:
@@ -10581,9 +10710,9 @@ def api_aceitacao_detail(aceitacao_id):
                 "id": row['id'],
                 "os": row['os'],
                 "created_date": row['created_date'].strftime('%Y-%m-%d') if row.get('created_date') else '',
-                "created_by": row['created_by'],
+                "created_by": format_person_name(row.get('created_by')) or 'Sistema',
                 "created_by_id": row['created_by_id'],
-                "responsible": row['responsible'],
+                "responsible": format_person_name(row.get('responsible')) or '',
                 "responsible_id": row['responsible_id'],
                 "status": row['status'],
                 "acceptance_date": row['acceptance_date'].strftime('%Y-%m-%d') if row.get('acceptance_date') else '',
@@ -10767,8 +10896,8 @@ def api_aceitacoes_export():
             writer.writerow([
                 r['os'] or '',
                 c_date_str,
-                r['created_by'] or '',
-                r['responsible'] or '',
+                format_person_name(r['created_by']) or '',
+                format_person_name(r['responsible']) or '',
                 r['status'] or '',
                 acc_date_str,
                 (r['observations'] or '').replace('\n', ' ').strip(),
@@ -10879,9 +11008,9 @@ def format_pos_evento_row(r):
         "trash_on_ground": r['trash_on_ground'] or 'Não',
         "cable_ends": r['cable_ends'] or 'Não',
         "adequate_network": r['adequate_network'] or 'Sim',
-        "responsible": r['responsible'] or '',
+        "responsible": format_person_name(r.get('responsible')) or '',
         "status": r['status'] or 'Não concluido',
-        "created_by": r.get('created_by') or '',
+        "created_by": format_person_name(r.get('created_by')) or '',
         "created_at": r['created_at'].isoformat() if r.get('created_at') and hasattr(r['created_at'], 'isoformat') else str(r.get('created_at') or '')
     }
 
@@ -10989,7 +11118,11 @@ def api_pos_eventos():
             except Exception:
                 f_date = datetime.date.today()
 
-            created_by = session.get('user_name') or session.get('username') or 'Coordenador'
+            responsible = format_person_name(responsible)
+
+            user_info = get_user_info_dict(session.get('user_id'))
+            created_by = (user_info.get('name') if user_info else None) or session.get('user_name') or session.get('name') or session.get('username') or 'Coordenador'
+            created_by = format_person_name(created_by)
             raw_creator_id = session.get('user_id')
             clean_creator_id = None
             if raw_creator_id:

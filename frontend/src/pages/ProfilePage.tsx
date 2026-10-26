@@ -4,6 +4,7 @@ import { useAuth } from '../state/AuthContext';
 import { api, ApiError } from '../api/client';
 import type { User } from '../api/types';
 import { Button, Card, Field, Input, PageHeader } from '../components/ui';
+import { formatPersonName } from '../utils/formatName';
 
 export default function ProfilePage() {
   const { user, updateUserState, refreshUser } = useAuth();
@@ -100,13 +101,13 @@ export default function ProfilePage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-white text-lg font-bold shrink-0">
-              {(user?.name || user?.username || 'U').charAt(0).toUpperCase()}
+              {(formatPersonName(user?.name || user?.username) || 'U').charAt(0).toUpperCase()}
             </div>
 
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h2 className="text-base font-bold text-white">
-                  {user?.name || user?.username}
+                  {formatPersonName(user?.name || user?.username) || 'Usuário'}
                 </h2>
                 <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[var(--color-text-muted)]">
                   {user?.role || 'Colaborador'}

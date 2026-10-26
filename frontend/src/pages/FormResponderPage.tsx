@@ -14,6 +14,7 @@ import {
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import GsapSecurityBackground from '../components/GsapSecurityBackground';
+import { formatPersonName } from '../utils/formatName';
 
 interface Question {
   title: string;
@@ -55,8 +56,8 @@ export default function FormResponderPage() {
   // Auto-fill logged in user info
   useEffect(() => {
     if (user) {
-      if (user.name) setTechnicianName(user.name);
-      else if (user.username) setTechnicianName(user.username);
+      if (user.name) setTechnicianName(formatPersonName(user.name));
+      else if (user.username) setTechnicianName(formatPersonName(user.username));
       if (user.phone) setTechnicianPhone(user.phone);
     }
   }, [user]);

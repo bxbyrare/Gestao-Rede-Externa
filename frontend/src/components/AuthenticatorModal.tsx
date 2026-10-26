@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../state/AuthContext';
 import { api, ApiError } from '../api/client';
 import GsapSecurityBackground from './GsapSecurityBackground';
+import { formatPersonName } from '../utils/formatName';
 
 export default function AuthenticatorModal() {
   const { user, updateUserState, logout } = useAuth();
@@ -453,7 +454,7 @@ export default function AuthenticatorModal() {
                     Validação do Autenticador
                   </h2>
                   <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                    Olá, <strong className="text-white font-medium">{user.name || user.username}</strong>. Seu período
+                    Olá, <strong className="text-white font-medium">{formatPersonName(user.name || user.username)}</strong>. Seu período
                     de 12 horas encerrou. Digite o código do seu aplicativo autenticador para renovar seu acesso.
                   </p>
                 </div>

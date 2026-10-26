@@ -12,6 +12,7 @@ import GlassIcon from './GlassIcon';
 import MandatoryEmailModal from './MandatoryEmailModal';
 import AuthenticatorModal from './AuthenticatorModal';
 import AntiPrintGuard from './AntiPrintGuard';
+import { formatPersonName } from '../utils/formatName';
 
 const COMPANY_LOGOS: Record<string, string> = {
   claro: '/claro-icon.png',
@@ -192,12 +193,12 @@ export default function DashboardLayout() {
               )
             ) : (
               <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                {(user?.username || '?').charAt(0).toUpperCase()}
+                {(formatPersonName(user?.name || user?.username) || '?').charAt(0).toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold truncate text-white group-hover:text-white transition-colors">
-                {user?.name || user?.username}
+                {formatPersonName(user?.name || user?.username) || 'Usuário'}
               </div>
               <div className="text-[11px] text-neutral-400 font-mono uppercase tracking-wide flex items-center gap-1.5">
                 <span>{user?.role}</span>
@@ -233,7 +234,7 @@ export default function DashboardLayout() {
             )
           ) : (
             <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-white font-bold text-sm">
-              {(user?.username || '?').charAt(0).toUpperCase()}
+              {(formatPersonName(user?.name || user?.username) || '?').charAt(0).toUpperCase()}
             </div>
           )}
         </header>

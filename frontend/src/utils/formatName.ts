@@ -156,10 +156,12 @@ function capWord(w: string): string {
 
 export function formatPersonName(rawName?: string | null): string {
   if (!rawName || typeof rawName !== 'string') return '';
-  const cleaned = rawName.trim().replace(/\s+/g, ' ');
+  let cleaned = rawName.trim().replace(/\s+/g, ' ');
   if (!cleaned) return '';
+  
+  // Se for um login (ex: alexandre.candido ou davi.rezende), converte os pontos em espaços para exibir o nome real formatado
   if (cleaned.includes('.') && !cleaned.includes(' ')) {
-    return cleaned;
+    cleaned = cleaned.replace(/\./g, ' ');
   }
 
   const tokens = cleaned.split(' ');

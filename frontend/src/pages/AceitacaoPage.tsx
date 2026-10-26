@@ -10,6 +10,7 @@ import { hasPermission, useAuth } from '../state/AuthContext';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
 import AccordionGallery from '../components/AccordionGallery';
+import { formatPersonName } from '../utils/formatName';
 
 function getTodayFormatted(): string {
   const now = new Date();
@@ -503,13 +504,13 @@ export default function AceitacaoPage() {
                       <td className="py-3.5 px-4 text-white font-medium">
                         <div className="flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5 text-[var(--color-text-faint)]" />
-                          <span>{item.created_by || 'Sistema'}</span>
+                          <span>{formatPersonName(item.created_by) || 'Sistema'}</span>
                         </div>
                       </td>
 
                       {/* Responsável Técnico */}
                       <td className="py-3.5 px-4 text-white font-semibold">
-                        {item.responsible}
+                        {formatPersonName(item.responsible)}
                       </td>
 
                       {/* Status Badge */}
@@ -630,7 +631,7 @@ export default function AceitacaoPage() {
 
             <Field label="Criado por">
               <Input
-                value={user?.username || 'Administrador'}
+                value={user?.name || (user?.username ? formatPersonName(user.username) : 'Administrador')}
                 disabled
                 className="opacity-70 bg-white/[0.02] cursor-not-allowed"
               />
@@ -742,11 +743,11 @@ export default function AceitacaoPage() {
             </div>
             <div>
               <span className="text-[var(--color-text-faint)] block">Criado Por:</span>
-              <span className="text-white font-medium">{selectedAceitacao?.created_by}</span>
+              <span className="text-white font-medium">{formatPersonName(selectedAceitacao?.created_by)}</span>
             </div>
             <div>
               <span className="text-[var(--color-text-faint)] block">Responsável:</span>
-              <span className="text-white font-medium">{selectedAceitacao?.responsible}</span>
+              <span className="text-white font-medium">{formatPersonName(selectedAceitacao?.responsible)}</span>
             </div>
           </div>
 
