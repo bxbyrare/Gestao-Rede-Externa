@@ -659,7 +659,9 @@ PROBED_EXPLOIT_PATHS = (
     '/install.php', '/setup.php', '/web.config', '/.htaccess',
     '/modules.php', '/members.asp', '/megabook', '/mailman/', '/ldap/',
     '/jigsaw/', '/isapi/', '/gallery/', '/guestbook/', '/admin.cgi',
-    '/cactid/', '/awstats/', '/cgi-sys/', '/scripts/', '/msadc/'
+    '/cactid/', '/awstats/', '/cgi-sys/', '/scripts/', '/msadc/',
+    '/hostingcontroller', '/cpanel', '/whm', '/webhost', '/plesk',
+    '/solusvm', '/webmin', '/virtualmin', '/directadmin', '/kloxo'
 )
 
 DANGEROUS_SCANNER_EXTS = (
@@ -701,6 +703,13 @@ def enforce_security_policies():
         if now < _SECURITY_BAN_LIST[client_ip]:
             # TARPIT: Sleep 2.5 seconds to throttle and stall automated scanners (Nikto, Burp, Ffuf)
             time.sleep(2.5)
+            # If accessed via a web browser (not an API request), serve the visual Honeypot trap screen
+            if not request.path.startswith('/api/') and not request.is_json and 'text/html' in (request.headers.get('Accept') or ''):
+                try:
+                    loc = get_ip_location(client_ip)
+                    return render_template('honeypot_warning.html', client_ip=client_ip, location=loc), 403
+                except Exception:
+                    pass
             resp = jsonify({
                 "error": "Acesso bloqueado por varredura/tentativa de ataque detectada. Conexão interrompida.",
                 "status": 429
@@ -732,6 +741,13 @@ def enforce_security_policies():
         _SECURITY_BAN_LIST[client_ip] = now + 7200 # Ban for 2 hours
         # Tarpit defense: slow down scanner to a dead halt
         time.sleep(2.5)
+        # If requested via web browser, render the Honeypot Decoy screen immediately
+        if not request.path.startswith('/api/') and not request.is_json and 'text/html' in (request.headers.get('Accept') or ''):
+            try:
+                loc = get_ip_location(client_ip)
+                return render_template('honeypot_warning.html', client_ip=client_ip, location=loc), 403
+            except Exception:
+                pass
         resp = jsonify({
             "error": "Tentativa de ataque cibernético detectada. Conexão interrompida.",
             "status": 429
@@ -2765,6 +2781,7 @@ def api_login():
 
         if user and check_password_hash(user['password_hash'], password):
             _ACCOUNT_LOGIN_FAILURES.pop(username, None)
+            _SECURITY_BAN_LIST.pop(client_ip, None) # Clear any scanner bans upon valid primary authentication
             session.clear() # Clear all prior session tokens (Session Fixation Prevention)
             session.permanent = True
 
