@@ -194,18 +194,20 @@ def get_totp_token(secret, time_step=30, t=None):
     return f"{code:06d}"
 
 def verify_totp_token(secret, token, time_step=30, window=1):
-    """Validates 6-digit TOTP token allowing a +/- 1 step window for clock drift"""
+    """Validates 6-digit TOTP token using constant-time comparison to prevent timing attacks and returns bucket index"""
     if not secret or not token:
-        return False
-    token_str = str(token).strip().replace(' ', '')
+        return False, None
+    token_str = str(token).strip().replace(' ', '').replace('-', '')
     if len(token_str) != 6 or not token_str.isdigit():
-        return False
+        return False, None
     current_t = int(time.time())
     for offset in range(-window, window + 1):
-        step_token = get_totp_token(secret, time_step=time_step, t=current_t + (offset * time_step))
-        if step_token and step_token == token_str:
-            return True
-    return False
+        step_t = current_t + (offset * time_step)
+        step_token = get_totp_token(secret, time_step=time_step, t=step_t)
+        if step_token and hmac.compare_digest(step_token, token_str):
+            bucket_idx = step_t // time_step
+            return True, bucket_idx
+    return False, None
 
 def get_totp_uri(secret, username, issuer="Claro Gestão Rede Externa"):
     """Builds otpauth:// URI for scanning with Google Authenticator or Microsoft Authenticator"""
@@ -639,20 +641,69 @@ GLOBAL_RATE_LIMIT_MAX = 600  # Max 600 requests per 60s per IP (evita falsos pos
 AUTH_RATE_LIMIT_MAX = 30     # Max 30 attempts per 60s per IP for login/resets
 
 BLOCKED_USER_AGENTS = [
-    'sqlmap', 'nikto', 'nmap', 'burpcollaborator', 'dirbuster',
-    'wpscan', 'acunetix', 'havij', 'masscan', 'zgrab', 'gobuster', 'hydra'
+    'sqlmap', 'nikto', 'nmap', 'burp', 'burpcollaborator', 'dirbuster',
+    'wpscan', 'acunetix', 'havij', 'masscan', 'zgrab', 'gobuster', 'hydra',
+    'metasploit', 'nessus', 'arachni', 'qualys', 'openvas', 'w3af', 'commix',
+    'sublist3r', 'wfuzz', 'ffuf', 'zap', 'paros', 'sqlman', 'nuclei'
 ]
+
+# Security Autoban and Exploit Pattern Detection
+_SECURITY_BAN_LIST = {} # ip -> ban_expiry_timestamp
+_USED_TOTP_BUCKETS = defaultdict(dict) # user_id -> {bucket_idx: expiry_ts}
+_TOTP_FAILURES = defaultdict(list)     # user_id -> [failure_timestamps]
+
+PROBED_EXPLOIT_PATHS = (
+    '/.env', '/.git', '/wp-admin', '/wp-login.php', '/phpmyadmin', '/pma',
+    '/xmlrpc.php', '/.aws', '/etc/passwd', '/win.ini', '/boot.ini',
+    '/cgi-bin/', '/swagger', '/actuator', '/console', '/shell',
+    '/install.php', '/setup.php', '/web.config', '/.htaccess'
+)
 
 @app.before_request
 def enforce_security_policies():
     client_ip = get_client_ip()
     now = time.time()
-    
-    # 1. Anti-Scanner / Anti-Automated Tool Detection (Burp Suite Automated Scanners, Sqlmap, Nikto, etc.)
+
+    # 0. Active IP Security Ban Check (Temporary ban against penetration tools & scanners)
+    if client_ip in _SECURITY_BAN_LIST:
+        if now < _SECURITY_BAN_LIST[client_ip]:
+            return jsonify({
+                "error": "Acesso temporariamente bloqueado por atividades suspeitas detectadas.",
+                "status": 403
+            }), 403
+        else:
+            del _SECURITY_BAN_LIST[client_ip]
+
+    # 1. Anti-Scanner / Exploit Probing Detection (Burp Suite, Metasploit, Sqlmap, Nuclei, Nikto)
+    path_lower = request.path.lower()
+    for probe_path in PROBED_EXPLOIT_PATHS:
+        if probe_path in path_lower:
+            _SECURITY_BAN_LIST[client_ip] = now + 900 # Ban for 15 minutes
+            print(f"[SECURITY ALERT] [EXPLOIT PROBE DETECTED & BANNED] IP: {client_ip} probed {request.path}")
+            return jsonify({"error": "Tentativa de ataque bloqueada. IP banido temporariamente.", "status": 403}), 403
+
     user_agent = (request.headers.get('User-Agent') or '').lower()
     for bad_ua in BLOCKED_USER_AGENTS:
         if bad_ua in user_agent:
+            _SECURITY_BAN_LIST[client_ip] = now + 900
+            print(f"[SECURITY ALERT] [PEN-TEST TOOL DETECTED & BANNED] IP: {client_ip} tool: {bad_ua}")
             return jsonify({"error": "Acesso negado por políticas de segurança do servidor.", "status": 403}), 403
+
+    # 1.1 Strict Origin / Referer Validation against Cross-Site Request Forgery (CSRF)
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        is_public_form = request.path.startswith('/f/') and request.path.endswith('/submit')
+        if not is_public_form and not request.path.startswith('/static/'):
+            origin = request.headers.get('Origin')
+            referer = request.headers.get('Referer')
+            host = request.host.split(':')[0].lower()
+            if origin:
+                origin_clean = origin.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0].lower()
+                if origin_clean != host and origin_clean not in ('localhost', '127.0.0.1', 'gestaoredeexterna.shardatabases.app'):
+                    return jsonify({"error": "Origem de requisição não autorizada (Cross-Origin bloqueado).", "status": 403}), 403
+            elif referer:
+                ref_clean = referer.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0].lower()
+                if ref_clean != host and ref_clean not in ('localhost', '127.0.0.1', 'gestaoredeexterna.shardatabases.app'):
+                    return jsonify({"error": "Referer de requisição não autorizado.", "status": 403}), 403
 
     # 2. Global Sliding Window Rate Limiting (All Requests)
     RATE_LIMIT_STORE[client_ip] = [t for t in RATE_LIMIT_STORE[client_ip] if now - t < 60]
@@ -1958,21 +2009,30 @@ def log_action(user_id, username, action):
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Strict Zero-Trust Check: user_id is ONLY populated after MFA is fully verified
         if 'user_id' not in session:
             if request.path.startswith('/api/'):
-                return jsonify({"error": "Sessão expirada. Redirecionando para login...", "redirect": "/login"}), 401
+                return jsonify({"error": "Sessão não autorizada ou pendente de validação MFA.", "redirect": "/login"}), 401
             r = redirect(url_for('login'))
             r.data = b''
             return r
 
-        # 12-hour TOTP Enforcement
+        # 12-hour TOTP Enforcement & Immediate Demotion on Expiry
         totp_exp = session.get('totp_expires_at') or 0
         if not session.get('totp_verified') or time.time() >= totp_exp:
-            if not request.path.startswith('/api/auth/') and not request.path.startswith('/static/'):
+            # Demote active session back to pending MFA state
+            uid = session.pop('user_id', None)
+            if uid:
+                session['pending_mfa_user_id'] = uid
+            session['totp_verified'] = False
+            if request.path.startswith('/api/'):
                 return jsonify({
                     "error": "Acesso ao portal restrito: validação de 12 horas do aplicativo autenticador expirada ou pendente.",
                     "requires_totp": True
                 }), 403
+            r = redirect(url_for('login'))
+            r.data = b''
+            return r
 
         return f(*args, **kwargs)
     return decorated_function
@@ -2652,13 +2712,21 @@ def api_login():
 
         if user and check_password_hash(user['password_hash'], password):
             _ACCOUNT_LOGIN_FAILURES.pop(username, None)
+            session.clear() # Clear all prior session tokens (Session Fixation Prevention)
             session.permanent = True
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['role'] = user['role']
+
+            # ZERO-TRUST ARCHITECTURE:
+            # Store credentials in temporary stage-1 MFA hold.
+            # 'user_id' is deliberately NOT created until the 6-digit TOTP code is verified.
+            # This makes 2FA impossible to bypass via Burp Suite, tampering, or direct API calls.
+            session['pending_mfa_user_id'] = user['id']
+            session['pending_mfa_username'] = user['username']
+            session['pending_mfa_role'] = user['role']
+            session['pending_mfa_time'] = time.time()
             session['totp_verified'] = False
             session['totp_expires_at'] = 0
-            log_action(user['id'], user['username'], "Efetuou login no sistema Claro Gestão Rede Externa.")
+
+            log_action(user['id'], user['username'], "Efetuou validação de senha (credenciais primárias aceitas).")
 
             # Security IP Check & Alert
             try:
@@ -2736,10 +2804,10 @@ def api_logout():
 
 @app.route('/api/auth/totp/setup', methods=['GET'])
 def api_totp_setup():
-    if 'user_id' not in session:
+    user_id = session.get('user_id') or session.get('pending_mfa_user_id')
+    if not user_id:
         return jsonify({'error': 'Não autenticado.'}), 401
-    user_id = session['user_id']
-    username = session.get('username', 'usuario')
+    username = session.get('username') or session.get('pending_mfa_username') or 'usuario'
 
     conn = get_db()
     cur = conn.cursor()
@@ -2770,9 +2838,16 @@ def api_totp_setup():
 
 @app.route('/api/auth/totp/enable', methods=['POST'])
 def api_totp_enable():
-    if 'user_id' not in session:
+    user_id = session.get('user_id') or session.get('pending_mfa_user_id')
+    if not user_id:
         return jsonify({'error': 'Não autenticado.'}), 401
-    user_id = session['user_id']
+
+    # Brute Force Protection against Automated Scanners / Burp Intruder
+    now_ts = time.time()
+    _TOTP_FAILURES[user_id] = [t for t in _TOTP_FAILURES[user_id] if now_ts - t < 900]
+    if len(_TOTP_FAILURES[user_id]) >= 5:
+        return jsonify({'error': 'Muitas tentativas incorretas. Conta bloqueada temporariamente para validação 2FA por 15 minutos.'}), 429
+
     data = request.get_json(silent=True) or {}
     code = str(data.get('code') or '').strip().replace(' ', '').replace('-', '')
 
@@ -2781,7 +2856,7 @@ def api_totp_enable():
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT id, username, totp_secret FROM users WHERE id = %s;', (user_id,))
+    cur.execute('SELECT id, username, role, totp_secret FROM users WHERE id = %s;', (user_id,))
     u = cur.fetchone()
     if not u or not u.get('totp_secret'):
         cur.close()
@@ -2789,10 +2864,20 @@ def api_totp_enable():
         return jsonify({'error': 'Segredo de autenticação não encontrado. Inicie a configuração novamente.'}), 400
 
     secret = u['totp_secret']
-    if not verify_totp_token(secret, code, window=1):
+    is_valid, bucket_idx = verify_totp_token(secret, code, window=1)
+    if not is_valid:
+        _TOTP_FAILURES[user_id].append(now_ts)
         cur.close()
         conn.close()
         return jsonify({'error': 'Código de autenticação incorreto. Verifique a hora do seu celular e tente novamente.'}), 400
+
+    # RFC 6238 Anti-Replay: Prevent Burp Repeater / Token Replay
+    _USED_TOTP_BUCKETS[user_id] = {b: exp for b, exp in _USED_TOTP_BUCKETS[user_id].items() if exp > now_ts}
+    if bucket_idx in _USED_TOTP_BUCKETS[user_id]:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Código de autenticação já utilizado. Aguarde o próximo código de 30 segundos no seu aplicativo.'}), 400
+    _USED_TOTP_BUCKETS[user_id][bucket_idx] = now_ts + 180
 
     now = datetime.datetime.now()
     cur.execute('UPDATE users SET totp_enabled = TRUE, totp_verified_at = %s WHERE id = %s;', (now, user_id))
@@ -2800,11 +2885,20 @@ def api_totp_enable():
     cur.close()
     conn.close()
 
-    # Authorize session for 12 hours
+    # Clear pending MFA hold and elevate to FULL AUTHENTICATED SESSION
+    session.pop('pending_mfa_user_id', None)
+    session.pop('pending_mfa_username', None)
+    session.pop('pending_mfa_role', None)
+    session.pop('pending_mfa_time', None)
+    _TOTP_FAILURES.pop(user_id, None)
+
+    session['user_id'] = user_id
+    session['username'] = u['username']
+    session['role'] = u['role']
     session['totp_verified'] = True
     session['totp_expires_at'] = time.time() + (12 * 3600)
 
-    log_action(user_id, session.get('username', 'usuario'), 'Ativou e validou o aplicativo autenticador (2FA) com sucesso.')
+    log_action(user_id, u['username'], 'Ativou e validou o aplicativo autenticador (2FA) com sucesso.')
     return jsonify({
         'success': True,
         'message': 'Aplicativo autenticador ativado com sucesso! Sessão autorizada por 12 horas.',
@@ -2814,9 +2908,16 @@ def api_totp_enable():
 
 @app.route('/api/auth/totp/verify', methods=['POST'])
 def api_totp_verify():
-    if 'user_id' not in session:
+    user_id = session.get('user_id') or session.get('pending_mfa_user_id')
+    if not user_id:
         return jsonify({'error': 'Não autenticado.'}), 401
-    user_id = session['user_id']
+
+    # Brute Force Protection against Automated Scanners / Burp Intruder
+    now_ts = time.time()
+    _TOTP_FAILURES[user_id] = [t for t in _TOTP_FAILURES[user_id] if now_ts - t < 900]
+    if len(_TOTP_FAILURES[user_id]) >= 5:
+        return jsonify({'error': 'Muitas tentativas incorretas. Conta bloqueada temporariamente para validação 2FA por 15 minutos.'}), 429
+
     data = request.get_json(silent=True) or {}
     code = str(data.get('code') or '').strip().replace(' ', '').replace('-', '')
 
@@ -2825,7 +2926,7 @@ def api_totp_verify():
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT id, username, totp_secret, totp_enabled FROM users WHERE id = %s;', (user_id,))
+    cur.execute('SELECT id, username, role, totp_secret, totp_enabled FROM users WHERE id = %s;', (user_id,))
     u = cur.fetchone()
     cur.close()
     conn.close()
@@ -2834,14 +2935,31 @@ def api_totp_verify():
         return jsonify({'error': 'Usuário ainda não concluiu o cadastro do autenticador.'}), 400
 
     secret = u['totp_secret']
-    if not verify_totp_token(secret, code, window=1):
+    is_valid, bucket_idx = verify_totp_token(secret, code, window=1)
+    if not is_valid:
+        _TOTP_FAILURES[user_id].append(now_ts)
         return jsonify({'error': 'Código de autenticação incorreto ou expirado. Tente novamente.'}), 400
 
-    # Authorize session for 12 hours
+    # RFC 6238 Anti-Replay: Prevent Burp Repeater / Token Replay
+    _USED_TOTP_BUCKETS[user_id] = {b: exp for b, exp in _USED_TOTP_BUCKETS[user_id].items() if exp > now_ts}
+    if bucket_idx in _USED_TOTP_BUCKETS[user_id]:
+        return jsonify({'error': 'Código de autenticação já utilizado. Aguarde o próximo código de 30 segundos no seu aplicativo.'}), 400
+    _USED_TOTP_BUCKETS[user_id][bucket_idx] = now_ts + 180
+
+    # Clear pending MFA hold and elevate to FULL AUTHENTICATED SESSION
+    session.pop('pending_mfa_user_id', None)
+    session.pop('pending_mfa_username', None)
+    session.pop('pending_mfa_role', None)
+    session.pop('pending_mfa_time', None)
+    _TOTP_FAILURES.pop(user_id, None)
+
+    session['user_id'] = user_id
+    session['username'] = u['username']
+    session['role'] = u['role']
     session['totp_verified'] = True
     session['totp_expires_at'] = time.time() + (12 * 3600)
 
-    log_action(user_id, session.get('username', 'usuario'), 'Validou sessão de 12 horas via aplicativo autenticador (TOTP).')
+    log_action(user_id, u['username'], 'Validou sessão de 12 horas via aplicativo autenticador (TOTP).')
     return jsonify({
         'success': True,
         'message': 'Código confirmado! Acesso autorizado por 12 horas.',
@@ -2849,32 +2967,44 @@ def api_totp_verify():
         'totp_expires_at': session['totp_expires_at']
     })
 
-
 @app.route('/api/auth/totp/reconfigure', methods=['POST'])
 def api_totp_reconfigure():
+    # Only fully authenticated sessions with active 2FA or the Master Coordinator can reconfigure 2FA
     if 'user_id' not in session:
-        return jsonify({'error': 'Não autenticado.'}), 401
+        return jsonify({'error': 'Acesso negado: apenas sessões ativas e autenticadas podem reconfigurar o 2FA. Contate seu coordenador.'}), 403
+
     user_id = session['user_id']
     data = request.get_json(silent=True) or {}
-    password = data.get('password') or ''
-    
+    password = (data.get('password') or '').strip()
+
+    # Password is now STRICTLY MANDATORY (Prevents Burp Suite empty payload bypass)
+    if not password:
+        return jsonify({'error': 'Por favor, informe sua senha atual para confirmar a redefinição de segurança do autenticador.'}), 400
+
     conn = get_db()
     cur = conn.cursor()
-    if password:
-        cur.execute("SELECT password_hash FROM users WHERE id = %s;", (user_id,))
-        u_row = cur.fetchone()
-        if not u_row or not check_password_hash(u_row['password_hash'], password):
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'Senha incorreta para confirmar a reconfiguração do autenticador.'}), 400
+    cur.execute("SELECT password_hash, username, role FROM users WHERE id = %s;", (user_id,))
+    u_row = cur.fetchone()
+    if not u_row or not check_password_hash(u_row['password_hash'], password):
+        cur.close()
+        conn.close()
+        time.sleep(0.5) # Timing attack mitigation
+        return jsonify({'error': 'Senha incorreta para confirmar a reconfiguração do autenticador.'}), 400
 
     cur.execute("UPDATE users SET totp_secret = NULL, totp_enabled = FALSE, totp_verified_at = NULL WHERE id = %s;", (user_id,))
     conn.commit()
     cur.close()
     conn.close()
+
+    # Demote session to pending setup
+    session['pending_mfa_user_id'] = user_id
+    session['pending_mfa_username'] = u_row['username']
+    session['pending_mfa_role'] = u_row['role']
+    session.pop('user_id', None)
     session['totp_verified'] = False
     session['totp_expires_at'] = 0
-    log_action(user_id, session.get('username', 'usuario'), "Solicitou reconfiguração do aplicativo autenticador (2FA).")
+
+    log_action(user_id, u_row['username'], "Solicitou reconfiguração do aplicativo autenticador (2FA) mediante verificação de senha.")
     return jsonify({"success": True, "message": "Autenticador redefinido com sucesso! Vincule seu novo aplicativo."})
 
 @app.route('/api/auth/forgot-password', methods=['POST'])
@@ -2936,11 +3066,20 @@ def api_reset_password():
     user_id = user['id']
     secret = user['totp_secret']
 
-    if not verify_totp_token(secret, code, window=1):
+    is_valid, bucket_idx = verify_totp_token(secret, code, window=1)
+    if not is_valid:
         cur.close()
         conn.close()
         time.sleep(1)
         return jsonify({'error': 'Código do aplicativo autenticador incorreto ou expirado. Tente novamente.'}), 400
+
+    now_ts = time.time()
+    _USED_TOTP_BUCKETS[user_id] = {b: exp for b, exp in _USED_TOTP_BUCKETS[user_id].items() if exp > now_ts}
+    if bucket_idx in _USED_TOTP_BUCKETS[user_id]:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Código de autenticação já utilizado. Aguarde o próximo código no seu aplicativo.'}), 400
+    _USED_TOTP_BUCKETS[user_id][bucket_idx] = now_ts + 180
 
     # Password update
     hashed_pw = generate_password_hash(new_password)
@@ -3065,9 +3204,15 @@ def get_user_company(user_id):
 
 @app.route('/api/auth/me', methods=['GET'])
 def api_auth_me():
-    if 'user_id' not in session:
+    user_id = session.get('user_id')
+    if not user_id:
+        pending_id = session.get('pending_mfa_user_id')
+        if pending_id:
+            user_payload = get_user_info_dict(pending_id)
+            if user_payload:
+                return jsonify({"user": user_payload})
         return jsonify({"error": "Não autenticado."}), 401
-    user_payload = get_user_info_dict(session['user_id'])
+    user_payload = get_user_info_dict(user_id)
     if not user_payload:
         return jsonify({"error": "Usuário não encontrado."}), 404
     return jsonify({"user": user_payload})
@@ -11087,6 +11232,7 @@ def api_test_email_template():
     })
 
 @app.route('/api/admin/notify-outdated-profile', methods=['POST'])
+@login_required
 def api_notify_outdated_profile():
     if 'user_id' not in session or session.get('role') not in ['admin', 'supervisor']:
         return jsonify({"error": "Acesso restrito à coordenação e supervisão."}), 403
