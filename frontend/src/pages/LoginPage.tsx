@@ -47,17 +47,18 @@ export default function LoginPage() {
 
             {/* Header */}
             <div className="flex flex-col items-center text-center mb-6">
-              {/* Preserved Claro 3D Icon */}
-              <div className="relative w-20 h-20 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-[0_0_35px_rgba(238,44,36,0.35)] mb-3 flex items-center justify-center">
+              {/* Pristine Claro 3D Orb */}
+              <div className="relative mb-4 flex items-center justify-center">
+                <div className="absolute w-20 h-20 rounded-full bg-[#EE2C24]/20 blur-xl pointer-events-none" />
                 <img
                   src="/claro-icon.png"
                   alt="Claro"
-                  className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
+                  className="relative z-10 w-20 h-20 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)] select-none"
                 />
               </div>
 
               <h1 className="text-xl font-black tracking-tight text-white flex items-center justify-center gap-1.5">
-                Gestão <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-red-400">REDE EXTERNA</span>
+                Gestão <span className="bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent">REDE EXTERNA</span>
               </h1>
             </div>
 
