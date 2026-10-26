@@ -1,5 +1,16 @@
-import { useState, type FormEvent } from 'react';
-import { Eye, EyeOff, CheckCircle2, Loader2, X, Smartphone, ShieldAlert } from 'lucide-react';
+import { useState, useRef, type FormEvent } from 'react';
+import {
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  Loader2,
+  X,
+  ShieldAlert,
+  ShieldCheck,
+  Clipboard,
+  Check,
+  ArrowRight,
+} from 'lucide-react';
 import { api, ApiError } from '../api/client';
 
 interface ForgotPasswordModalProps {
@@ -19,6 +30,11 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [requiresCoordinator, setRequiresCoordinator] = useState(false);
+  const [copiedPaste, setCopiedPaste] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const digits = code.split('');
 
   if (!isOpen) return null;
 
@@ -32,11 +48,32 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
     setInfoMessage(null);
     setRequiresCoordinator(false);
     setIsLoading(false);
+    setCopiedPaste(false);
+    setIsFocused(false);
   }
 
   function handleClose() {
     resetState();
     onClose();
+  }
+
+  function handlePasteText(pasted: string) {
+    const clean = pasted.trim().replace(/\D/g, '').slice(0, 6);
+    if (clean) {
+      setCode(clean);
+      setError(null);
+    }
+  }
+
+  async function handleClipboardPaste() {
+    try {
+      const text = await navigator.clipboard.readText();
+      handlePasteText(text);
+      setCopiedPaste(true);
+      setTimeout(() => setCopiedPaste(false), 2000);
+    } catch {
+      inputRef.current?.focus();
+    }
   }
 
   async function handleRequestCode(e: FormEvent) {
@@ -62,7 +99,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
 
       setInfoMessage(
         res.message ||
-          'Autenticador detectado. Digite o código de 6 dígitos gerado no app autenticador do seu celular.'
+          'Se a conta informada estiver cadastrada, digite o código de 6 dígitos do seu aplicativo autenticador para prosseguir.'
       );
       setStep('verify');
     } catch (err: any) {
@@ -138,7 +175,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
               <div className="w-14 h-14 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
                 <CheckCircle2 className="w-7 h-7" />
               </div>
-              <h2 className="text-lg font-bold text-white">Senha Redefinida!</h2>
+              <h2 className="text-xl font-bold text-white tracking-tight">Senha Redefinida!</h2>
               <p className="text-xs text-neutral-400">
                 Sua senha foi atualizada com sucesso através do aplicativo autenticador. Você já pode fazer login.
               </p>
@@ -153,12 +190,13 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
           ) : step === 'request' ? (
             <div>
               <div className="mb-5 pb-4 border-b border-white/10 pr-8">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 font-semibold px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/10">
                     Recuperação Segura
                   </span>
                 </div>
-                <h2 className="text-lg font-bold text-white tracking-tight">
+                <h2 className="text-xl font-bold text-white tracking-tight">
                   Redefinir Senha
                 </h2>
                 <p className="text-xs text-neutral-400 mt-1">
@@ -186,7 +224,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                 <div>
                   <label
                     htmlFor="recovery-identifier"
-                    className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5"
+                    className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-medium mb-1.5"
                   >
                     Usuário ou Identificador
                   </label>
@@ -205,32 +243,33 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                 <button
                   type="submit"
                   disabled={isLoading || !identifier.trim()}
-                  className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                  className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                     error
                       ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
                       : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]'
                   }`}
                 >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Verificando...
-                    </>
-                  ) : (
-                    <span>Avançar com Autenticador</span>
-                  )}
+                  <span>{isLoading ? 'Verificando...' : 'Avançar com Autenticador'}</span>
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                      error ? 'bg-white/20 text-white' : 'bg-black/5 text-black'
+                    }`}
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                  </div>
                 </button>
               </form>
             </div>
           ) : (
             <div>
               <div className="mb-5 pb-4 border-b border-white/10 pr-8">
-                <div className="flex items-center gap-2 mb-1">
-                  <Smartphone className="w-4 h-4 text-red-400" />
-                  <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                     Autenticador Conectado
                   </span>
                 </div>
-                <h2 className="text-lg font-bold text-white tracking-tight">
+                <h2 className="text-xl font-bold text-white tracking-tight">
                   Validar Código e Nova Senha
                 </h2>
                 <p className="text-xs text-neutral-400 mt-1">
@@ -239,8 +278,9 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
               </div>
 
               {infoMessage && (
-                <div className="mb-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-2.5 text-xs text-emerald-300">
-                  {infoMessage}
+                <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-xs text-neutral-300 flex items-start gap-2.5">
+                  <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                  <span>{infoMessage}</span>
                 </div>
               )}
 
@@ -251,32 +291,103 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                 </div>
               )}
 
-              <form onSubmit={handleResetPassword} className="space-y-3.5">
-                <div>
-                  <label
-                    htmlFor="recovery-code"
-                    className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5"
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                {/* 6-digit pin block matching AuthenticatorModal */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-medium">
+                        Código de 6 Dígitos
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleClipboardPaste}
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.06] hover:bg-white/[0.12] text-neutral-300 hover:text-white text-[11px] font-medium transition-colors border border-white/10 cursor-pointer"
+                        title="Colar código da área de transferência"
+                      >
+                        {copiedPaste ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-300">Colado</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clipboard className="w-3 h-3 text-neutral-400" />
+                            <span>Colar</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <span className="text-[11px] text-neutral-400 font-mono">Gerado no App</span>
+                  </div>
+
+                  <div
+                    onClick={() => inputRef.current?.focus()}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      handlePasteText(e.clipboardData.getData('text'));
+                    }}
+                    className="relative flex items-center justify-center gap-2 sm:gap-2.5 cursor-text py-2"
                   >
-                    Código de 6 Dígitos do Aplicativo
-                  </label>
-                  <input
-                    id="recovery-code"
-                    type="text"
-                    inputMode="numeric"
-                    required
-                    autoFocus
-                    maxLength={6}
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="000000"
-                    className="w-full h-12 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-center text-xl font-mono font-bold tracking-[8px] text-white placeholder:text-neutral-600 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none"
-                  />
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      required
+                      autoFocus
+                      value={code}
+                      onFocus={() => setIsFocused(true)}
+                      onBlur={() => setIsFocused(false)}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        handlePasteText(e.clipboardData.getData('text'));
+                      }}
+                      onChange={(e) => {
+                        setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        setError(null);
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 pointer-events-auto cursor-text z-20"
+                    />
+
+                    {[0, 1, 2, 3, 4, 5].map((index) => {
+                      const digit = digits[index];
+                      const isCurrentSlot = isFocused && index === digits.length;
+                      const isFilled = digit !== undefined;
+
+                      return (
+                        <div
+                          key={index}
+                          className={`w-11 h-14 sm:w-12 sm:h-14 rounded-2xl flex items-center justify-center font-mono text-2xl font-bold transition-all relative ${
+                            error
+                              ? 'bg-red-950/20 border border-red-500/60 text-red-200'
+                              : isCurrentSlot
+                              ? 'bg-white/[0.08] border border-white/50 ring-1 ring-white/20 scale-[1.02]'
+                              : isFilled
+                              ? 'bg-white/[0.06] border border-white/25 text-white'
+                              : 'bg-white/[0.03] border border-white/10 text-neutral-500'
+                          }`}
+                        >
+                          {digit ? (
+                            <span className={error ? 'text-red-200' : 'text-white'}>{digit}</span>
+                          ) : (
+                            <span className="text-neutral-600 text-lg">&bull;</span>
+                          )}
+                          {isCurrentSlot && !error && (
+                            <span className="absolute inset-x-3 bottom-2.5 h-[2px] bg-white rounded-full animate-pulse" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div>
                   <label
                     htmlFor="new-pw"
-                    className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5"
+                    className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-medium mb-1.5"
                   >
                     Nova Senha
                   </label>
@@ -304,7 +415,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                 <div>
                   <label
                     htmlFor="confirm-pw"
-                    className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5"
+                    className="block text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-medium mb-1.5"
                   >
                     Confirmar Nova Senha
                   </label>
@@ -320,36 +431,41 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                   />
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between pt-0.5">
                   <button
                     type="button"
                     onClick={() => {
                       setStep('request');
                       setError(null);
                     }}
-                    className="text-xs text-neutral-400 hover:text-white transition-colors"
+                    className="text-xs text-neutral-400 hover:text-white transition-colors cursor-pointer"
                   >
-                    &larr; Trocar usu&aacute;rio
+                    &larr; Trocar usuário
                   </button>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isLoading || code.length !== 6}
-                  className={`w-full h-12 mt-1 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                  disabled={isLoading || code.length !== 6 || !newPassword || !confirmPassword}
+                  className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                     error
                       ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
                       : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]'
                   }`}
                 >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Salvando Nova Senha...
-                    </>
-                  ) : (
-                    <span>Redefinir Senha</span>
-                  )}
+                  <span>{isLoading ? 'Salvando Nova Senha...' : 'Redefinir Senha'}</span>
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                      error ? 'bg-white/20 text-white' : 'bg-black/5 text-black'
+                    }`}
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                  </div>
                 </button>
+
+                <p className="text-[11px] text-center text-neutral-500 pt-1">
+                  Perdeu acesso ao autenticador? Contate algum coordenador.
+                </p>
               </form>
             </div>
           )}
