@@ -410,16 +410,10 @@ export default function AuthenticatorModal() {
                     <button
                       type="submit"
                       disabled={isLoading || code.length !== 6}
-                      className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                        error
-                          ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
-                          : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]'
-                      }`}
+                      className="w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:shadow-[0_4px_28px_rgba(255,255,255,0.22)]"
                     >
                       <span>{isLoading ? 'Validando...' : 'Confirmar e Ativar Autenticador'}</span>
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                        error ? 'bg-black/20 text-white' : 'bg-black/10 text-black'
-                      }`}>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors bg-black/10 text-black">
                         {isLoading ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
@@ -570,18 +564,10 @@ export default function AuthenticatorModal() {
                   <button
                     type="submit"
                     disabled={isLoading || code.length !== 6}
-                    className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                      error
-                        ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
-                        : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:shadow-[0_4px_28px_rgba(255,255,255,0.22)]'
-                    }`}
+                    className="w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:shadow-[0_4px_28px_rgba(255,255,255,0.22)]"
                   >
                     <span>{isLoading ? 'Validando Código...' : 'Renovar Acesso por 12 Horas'}</span>
-                    <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                        error ? 'bg-black/20 text-white' : 'bg-black/10 text-black'
-                      }`}
-                    >
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors bg-black/10 text-black">
                       {isLoading ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (

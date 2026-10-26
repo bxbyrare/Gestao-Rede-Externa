@@ -2766,6 +2766,8 @@ def api_login():
     if not username or not password:
         return jsonify({"error": "Por favor, informe seu usuário e senha."}), 400
 
+    client_ip = get_client_ip()
+
     now_ts = time.time()
     _ACCOUNT_LOGIN_FAILURES[username] = [t for t in _ACCOUNT_LOGIN_FAILURES[username] if now_ts - t < 900]
     if len(_ACCOUNT_LOGIN_FAILURES[username]) >= 8:
@@ -2831,7 +2833,7 @@ def api_login():
                             user_agent=client_ua,
                             login_time=now_str
                         )
-                        print(f"🚨 [SECURITY ALERT DISPATCHED] Novo IP ({client_ip}) detectado para {user['username']}. Alerta enviado para {sec_email}.")
+                        print(f"[SECURITY ALERT DISPATCHED] Novo IP ({client_ip}) detectado para {user['username']}. Alerta enviado para {sec_email}.")
 
                 # Register / update IP
                 cur_ip.execute("""

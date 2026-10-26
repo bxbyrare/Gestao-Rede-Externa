@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useRef, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, User as UserIcon, ArrowRight, Loader2, ShieldAlert } from 'lucide-react';
+import gsap from 'gsap';
 import { useAuth } from '../state/AuthContext';
 import { ApiError } from '../api/client';
 import GsapSecurityBackground from '../components/GsapSecurityBackground';
@@ -16,6 +17,20 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isForgotOpen, setIsForgotOpen] = useState(false);
 
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  function triggerErrorShake() {
+    if (cardRef.current) {
+      gsap
+        .timeline()
+        .to(cardRef.current, { x: -8, duration: 0.05 })
+        .to(cardRef.current, { x: 8, duration: 0.05 })
+        .to(cardRef.current, { x: -5, duration: 0.05 })
+        .to(cardRef.current, { x: 5, duration: 0.05 })
+        .to(cardRef.current, { x: 0, duration: 0.05 });
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -24,6 +39,7 @@ export default function LoginPage() {
       await login(username, password);
       navigate('/');
     } catch (err) {
+      triggerErrorShake();
       setError(err instanceof ApiError ? err.message : 'Usuário ou senha incorretos.');
     } finally {
       setIsSubmitting(false);
@@ -39,7 +55,7 @@ export default function LoginPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-red-600/[0.07] blur-[150px] pointer-events-none" />
 
       {/* Double Bezel Precision Card Container */}
-      <div className="relative w-full max-w-[420px] z-10 transition-all duration-500 ease-out">
+      <div ref={cardRef} className="relative w-full max-w-[420px] z-10 transition-all duration-500 ease-out">
         <div className="rounded-[28px] p-[1px] bg-gradient-to-b from-white/[0.14] via-white/[0.04] to-white/[0.02] border border-white/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.85)] backdrop-blur-3xl overflow-hidden">
           <div className="rounded-[27px] p-8 sm:p-9 bg-[#090C13]/95 border border-white/[0.05] relative">
             {/* Top Card Hairline Highlight */}
@@ -139,23 +155,15 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Action Button: White Lagos Digital by default; Red only if error/refused */}
+              {/* Action Button: Consistent White Lagos Digital (never turns red) */}
               <div className="pt-2">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                    error
-                      ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
-                      : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:shadow-[0_4px_28px_rgba(255,255,255,0.22)]'
-                  }`}
+                  className="w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:shadow-[0_4px_28px_rgba(255,255,255,0.22)]"
                 >
                   <span>{isSubmitting ? 'Autenticando...' : 'Entrar no Sistema'}</span>
-                  <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                      error ? 'bg-black/20 text-white' : 'bg-black/10 text-black'
-                    }`}
-                  >
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors bg-black/10 text-black">
                     {isSubmitting ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (

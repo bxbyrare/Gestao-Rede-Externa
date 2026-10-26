@@ -11,7 +11,9 @@ import {
   Check,
   ArrowRight,
 } from 'lucide-react';
+import gsap from 'gsap';
 import { api, ApiError } from '../api/client';
+import GsapSecurityBackground from './GsapSecurityBackground';
 
 interface ForgotPasswordModalProps {
   isOpen: boolean;
@@ -34,9 +36,22 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
   const [isFocused, setIsFocused] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const digits = code.split('');
 
   if (!isOpen) return null;
+
+  function triggerErrorShake() {
+    if (cardRef.current) {
+      gsap
+        .timeline()
+        .to(cardRef.current, { x: -8, duration: 0.05 })
+        .to(cardRef.current, { x: 8, duration: 0.05 })
+        .to(cardRef.current, { x: -5, duration: 0.05 })
+        .to(cardRef.current, { x: 5, duration: 0.05 })
+        .to(cardRef.current, { x: 0, duration: 0.05 });
+    }
+  }
 
   function resetState() {
     setStep('request');
@@ -83,6 +98,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
     const cleanId = identifier.trim().toLowerCase();
     if (!cleanId) {
       setError('Informe seu usuário ou e-mail cadastrado.');
+      triggerErrorShake();
       return;
     }
 
@@ -103,6 +119,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
       );
       setStep('verify');
     } catch (err: any) {
+      triggerErrorShake();
       if (err instanceof ApiError) {
         setError(err.message);
         if (err.status === 400 && err.message?.toLowerCase().includes('coordenador')) {
@@ -123,16 +140,19 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
     const cleanCode = code.trim().replace(/\D/g, '');
     if (!cleanCode || cleanCode.length !== 6) {
       setError('Informe o código de 6 dígitos do seu aplicativo autenticador.');
+      triggerErrorShake();
       return;
     }
 
     if (!newPassword || newPassword.length < 6) {
       setError('A nova senha deve ter no mínimo 6 caracteres.');
+      triggerErrorShake();
       return;
     }
 
     if (newPassword !== confirmPassword) {
       setError('A confirmação de senha não confere.');
+      triggerErrorShake();
       return;
     }
 
@@ -148,6 +168,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
         onSuccess(identifier.trim());
       }
     } catch (err) {
+      triggerErrorShake();
       setError(
         err instanceof ApiError
           ? err.message
@@ -159,13 +180,24 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="relative w-full max-w-md p-[1px] bg-gradient-to-b from-white/[0.14] via-white/[0.04] to-white/[0.02] border border-white/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.85)] backdrop-blur-3xl rounded-[28px]">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6 overflow-y-auto select-none bg-[#030305] text-white">
+      {/* Precision Lagos Digital Blueprint Background matching Login Page */}
+      <GsapSecurityBackground />
+
+      {/* Atmospheric Ambient Lighting Glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] rounded-full bg-red-600/[0.05] blur-[140px] pointer-events-none" />
+
+      {/* Double-Bezel Precision Card */}
+      <div
+        ref={cardRef}
+        className="relative z-10 w-full max-w-md p-[1px] bg-gradient-to-b from-white/[0.14] via-white/[0.04] to-white/[0.02] border border-white/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.85)] backdrop-blur-3xl rounded-[28px] my-auto transition-transform duration-300"
+      >
         <div className="p-6 sm:p-7 rounded-[27px] bg-[#090C13]/95 border border-white/[0.05]">
           <button
             type="button"
             onClick={handleClose}
             className="absolute right-5 top-5 p-2 text-neutral-400 hover:text-white transition-colors rounded-lg hover:bg-white/5 cursor-pointer z-10"
+            aria-label="Fechar modal"
           >
             <X className="w-4 h-4" />
           </button>
@@ -243,18 +275,10 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                 <button
                   type="submit"
                   disabled={isLoading || !identifier.trim()}
-                  className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                    error
-                      ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
-                      : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]'
-                  }`}
+                  className="w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]"
                 >
                   <span>{isLoading ? 'Verificando...' : 'Avançar com Autenticador'}</span>
-                  <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                      error ? 'bg-white/20 text-white' : 'bg-black/5 text-black'
-                    }`}
-                  >
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors bg-black/5 text-black">
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                   </div>
                 </button>
@@ -406,6 +430,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-neutral-400 hover:text-white transition-colors"
+                      aria-label={showPassword ? 'Ocultar nova senha' : 'Ver nova senha'}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -447,18 +472,10 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
                 <button
                   type="submit"
                   disabled={isLoading || code.length !== 6 || !newPassword || !confirmPassword}
-                  className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                    error
-                      ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
-                      : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]'
-                  }`}
+                  className="w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.12)]"
                 >
                   <span>{isLoading ? 'Salvando Nova Senha...' : 'Redefinir Senha'}</span>
-                  <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                      error ? 'bg-white/20 text-white' : 'bg-black/5 text-black'
-                    }`}
-                  >
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors bg-black/5 text-black">
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                   </div>
                 </button>
