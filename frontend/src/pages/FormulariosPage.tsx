@@ -28,7 +28,7 @@ import { api, ApiError } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
 import AccordionGallery from '../components/AccordionGallery';
-import { hasPermission, isCoordenador, isMasterCoordenador, useAuth } from '../state/AuthContext';
+import { hasPermission, useAuth } from '../state/AuthContext';
 
 interface FormItem {
   id: number;
@@ -123,8 +123,9 @@ function extractPhotoUrls(value: unknown): string[] {
 
 export default function FormulariosPage() {
   const { user } = useAuth();
-  const canEdit = true;
-  const canDelete = isCoordenador(user) || isMasterCoordenador(user) || hasPermission(user, 'formularios.delete');
+  const canCreate = hasPermission(user, 'formularios.create');
+  const canEdit = hasPermission(user, 'formularios.edit');
+  const canDelete = hasPermission(user, 'formularios.delete');
   const [forms, setForms] = useState<FormItem[] | null>(null);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -588,19 +589,22 @@ export default function FormulariosPage() {
         title="Formulários"
         subtitle="Formulários de campo, links externos e respostas com evidências fotográficas"
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={openCreate}
-              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-[var(--color-primary-dim)] transition-all hover:scale-[1.02]"
-            >
-              <Plus className="w-4 h-4" /> Novo Formulário
-            </Button>
-          </div>
+          canCreate ? (
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={openCreate}
+                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-[var(--color-primary-dim)] transition-all hover:scale-[1.02]"
+              >
+                <Plus className="w-4 h-4" /> Novo Formulário
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
-      {/* BARRA DE CONVERSÃO RÁPIDA DE GOOGLE FORMS */}
-      <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-950/25 via-white/[0.02] to-white/[0.01] border border-white/10 relative overflow-hidden backdrop-blur-sm">
+      {/* BARRA DE CONVERSÃO RÁPIDA DE GOOGLE FORMS (Exclusiva para quem tem permissão explícita no Gerenciamento) */}
+      {canCreate && (
+        <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-950/25 via-white/[0.02] to-white/[0.01] border border-white/10 relative overflow-hidden backdrop-blur-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-[var(--color-primary-dim)] border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0">
@@ -691,6 +695,7 @@ export default function FormulariosPage() {
           </div>
         )}
       </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1 max-w-md">
