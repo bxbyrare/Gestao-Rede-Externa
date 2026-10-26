@@ -1,10 +1,2 @@
 User-agent: *
-Allow: /
-Allow: /login
-Allow: /f/
-Allow: /p/
-Disallow: /api/
-Disallow: /uploads/
-Disallow: /assets/
-
-Sitemap: /sitemap.xml
+Disallow: /

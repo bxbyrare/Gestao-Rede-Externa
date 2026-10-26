@@ -737,6 +737,7 @@ def set_security_headers(response):
     response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=(), payment=()'
     response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
     response.headers['Server'] = 'Secure-Gateway'
+    response.headers['X-Robots-Tag'] = 'noindex, nofollow, noarchive, nosnippet'
 
     # Strict Cache-Control directives based on route sensitivity
     if request.path.startswith('/api/') or 'user_id' in session or request.path == '/login':
@@ -2515,7 +2516,7 @@ def parse_google_form(url):
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     from werkzeug.utils import safe_join
-    if not filename.startswith('formularios/') and 'user_id' not in session:
+    if 'user_id' not in session or not session.get('totp_verified'):
         return jsonify({"error": "Não autenticado."}), 401
     safe_path = safe_join(UPLOAD_FOLDER, filename)
     if not safe_path or not os.path.exists(safe_path):
@@ -2598,15 +2599,15 @@ def login():
 
 @app.route('/robots.txt')
 def serve_robots_txt():
-    robots_path = os.path.join(REACT_DIST, 'robots.txt')
-    if os.path.isfile(robots_path):
-        return send_from_directory(REACT_DIST, 'robots.txt', mimetype='text/plain')
-    host = request.host_url.rstrip('/')
-    content = f"User-agent: *\nAllow: /\nAllow: /login\nAllow: /f/\nAllow: /p/\nDisallow: /api/\nDisallow: /uploads/\n\nSitemap: {host}/sitemap.xml\n"
-    return Response(content, mimetype='text/plain')
+    # Strict Enterprise robots.txt: Disallow all indexing & never expose sitemaps or internal routes
+    return Response("User-agent: *\nDisallow: /\n", mimetype='text/plain')
 
 @app.route('/sitemap.xml')
 def serve_sitemap_xml():
+    # Strict Enterprise Security: Private systems must NEVER expose sitemaps of internal forms/routes
+    return Response("Not Found", mimetype='text/plain', status=404)
+
+def _disabled_sitemap_xml_legacy():
     try:
         host = request.host_url.rstrip('/')
         today = datetime.date.today().isoformat()
@@ -4791,13 +4792,15 @@ def api_form_detail(form_id):
             print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
-# --- PUBLIC FORM RESPONDER ROUTES (NO LOGIN REQUIRED) ---
+# --- SECURED INTERNAL FORM RESPONDER ROUTES (LOGIN & MFA REQUIRED) ---
 @app.route('/f/<slug>', methods=['GET'], strict_slashes=False)
+@login_required
 def public_form_view(slug):
     # Route into React SPA so the form is rendered natively inside Claro Gestão
     return serve_react_app()
 
 @app.route('/api/public/forms/<slug>', methods=['GET'], strict_slashes=False)
+@login_required
 def api_public_form_get(slug):
     try:
         conn = get_db()
@@ -4834,6 +4837,7 @@ def api_public_form_get(slug):
         return jsonify({"error": "Erro ao buscar dados do formulário."}), 500
 
 @app.route('/f/<slug>/submit', methods=['POST'], strict_slashes=False)
+@login_required
 def public_form_submit(slug):
     try:
         conn = get_db()
