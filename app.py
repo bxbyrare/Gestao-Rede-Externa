@@ -1856,12 +1856,15 @@ def init_db():
         print("Database initialization failed with traceback:")
         traceback.print_exc()
 
-# Run DB initialization on import if database URL is configured
+# Run DB schema check in background thread so server starts in milliseconds
 if DATABASE_URL:
-    try:
-        init_db()
-    except Exception as e_init:
-        print("[WARNING] init_db falhou na inicialização:", e_init)
+    def _async_init_db():
+        try:
+            init_db()
+            print("[DB] Esquema e tabelas verificados com sucesso em segundo plano.", flush=True)
+        except Exception as e_init:
+            print("[WARNING] init_db falhou na inicializacao assincrona:", e_init, flush=True)
+    threading.Thread(target=_async_init_db, daemon=True, name="DB-Init-Worker").start()
 
 # --------------------------------------------------------------------------
 # HELPER FUNCTIONS & DECORATORS
@@ -11085,4 +11088,5 @@ def handle_uncaught_exception(e):
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    print(f"[BOOT] Servidor Claro Gestao iniciado na porta {port} em tempo recorde!", flush=True)
+    app.run(host='0.0.0.0', port=port, threaded=True)
