@@ -3092,7 +3092,7 @@ def get_ip_location(ip):
 @app.route('/wp-admin')
 @app.route('/admin.php')
 def honeypot_trap():
-    client_ip = request.remote_addr or request.headers.get('X-Forwarded-For', '127.0.0.1').split(',')[0].strip()
+    client_ip = get_client_ip()
     location = get_ip_location(client_ip)
     
     log_action(None, f"HONEYPOT_TRIGGERED_{client_ip}", f"Tentativa de acesso à rota chamariz de admin: {request.path} | Localização: {location}")
