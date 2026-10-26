@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestão de Rede Externa — Indisponibilidade Temporária</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+      --color-bg: #08080a;
+      --color-surface: #111114;
+      --color-surface-2: #17171b;
+      --color-card: rgba(15, 15, 18, 0.96);
+      --color-border: rgba(255, 255, 255, 0.08);
+      --color-border-strong: rgba(255, 255, 255, 0.14);
+
+      --color-primary: #ee2c24;
+      --color-primary-hover: #d9251d;
+
+      --color-text: #f4f4f6;
+      --color-text-muted: #9498a3;
+      --color-text-faint: #5c606b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      color-scheme: dark;
+    }
+
+    body {
+      min-height: 100vh;
+      background-color: var(--color-bg);
+      background-image: linear-gradient(180deg, var(--color-surface) 0%, var(--color-bg) 420px);
+      background-repeat: no-repeat;
+      color: var(--color-text);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      height: 60px;
+      border-bottom: 1px solid var(--color-border);
+      background: rgba(15, 15, 18, 0.96);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--color-text);
+      letter-spacing: -0.01em;
+    }
+
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--color-text-faint);
+      margin-left: 6px;
+      padding-left: 8px;
+      border-left: 1px solid var(--color-border);
+    }
+
+    .status-text {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-muted);
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 480px;
+      background: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+
+    .code-label {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--color-border);
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--color-text);
+      margin-bottom: 10px;
+    }
+
+    p.description {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--color-text-muted);
+      margin-bottom: 24px;
+    }
+
+    .info-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      margin-bottom: 24px;
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+
+    .info-row span.timer {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      height: 42px;
+      padding: 0 18px;
+      border-radius: 10px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-primary {
+      flex: 1;
+      background: var(--color-primary);
+      color: #ffffff;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-primary-hover);
+    }
+
+    .btn-outline {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: var(--color-border-strong);
+    }
+
+    .footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--color-text-faint);
+    }
+
+    @media (max-width: 520px) {
+      .brand-subtitle {
+        display: none;
+      }
+      .card {
+        padding: 24px 20px;
+      }
+      .actions {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      <span class="brand-title">Gestão de Rede Externa</span>
+      <span class="brand-subtitle">Operações de Campo</span>
+    </div>
+    <span class="status-text" id="top-status">Manutenção / Reinicialização</span>
+  </header>
+
+  <main class="main">
+    <section class="card" aria-labelledby="err-title">
+      <div class="code-label">HTTP 502 / 503</div>
+      <h1 id="err-title">Sistema temporariamente indisponível</h1>
+      <p class="description">
+        O servidor está passando por uma atualização ou reinicialização rápida. A página será recarregada automaticamente assim que o serviço responder.
+      </p>
+
+      <div class="info-row">
+        <span id="retry-label">Nova tentativa automática em</span>
+        <span class="timer" id="countdown">15s</span>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btn-retry" onclick="tryReconnect()">
+          Tentar novamente agora
+        </button>
+        <a href="/" class="btn btn-outline">
+          Página inicial
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Gestão de Rede Externa</span>
+    <span id="clock">--:--</span>
+  </footer>
+
+  <script>
+    (function () {
+      var remaining = 15;
+      var checking = false;
+      var countdownEl = document.getElementById('countdown');
+      var retryLabelEl = document.getElementById('retry-label');
+      var btnRetry = document.getElementById('btn-retry');
+      var clockEl = document.getElementById('clock');
+
+      function updateClock() {
+        var now = new Date();
+        clockEl.textContent = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      }
+      updateClock();
+      setInterval(updateClock, 10000);
+
+      window.tryReconnect = function () {
+        if (checking) return;
+        checking = true;
+        btnRetry.textContent = 'Verificando...';
+        retryLabelEl.textContent = 'Consultando servidor...';
+        countdownEl.textContent = '...';
+
+        fetch('/login', { method: 'HEAD', cache: 'no-store' })
+          .then(function (res) {
+            if (res.ok || res.status === 401 || res.status === 302) {
+              btnRetry.textContent = 'Reconectando...';
+              window.location.reload();
+              return;
+            }
+            resetTimer();
+          })
+          .catch(function () {
+            resetTimer();
+          });
+      };
+
+      function resetTimer() {
+        checking = false;
+        remaining = 15;
+        btnRetry.textContent = 'Tentar novamente agora';
+        retryLabelEl.textContent = 'Nova tentativa automática em';
+        countdownEl.textContent = remaining + 's';
+      }
+
+      setInterval(function () {
+        if (checking) return;
+        remaining -= 1;
+        if (remaining <= 0) {
+          window.tryReconnect();
+        } else {
+          countdownEl.textContent = remaining + 's';
+        }
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>

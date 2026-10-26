@@ -15,7 +15,7 @@ env/
 venv/
 ENV/
 build/
-dist/
+# dist/
 *.egg-info/
 
 # Database dumps and local storage

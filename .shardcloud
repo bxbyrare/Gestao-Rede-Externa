@@ -3,4 +3,4 @@ SUBDOMAIN=gestaoredeexterna
 LANGUAGE=python
 MEMORY=1024
 VERSION=recommended
-CUSTOM_COMMAND=python -c "import certifi, requests" 2>/dev/null || pip install --force-reinstall --no-cache-dir --target ./.lib certifi==2026.10.23 requests==2.34.2 urllib3==2.8.0 idna==3.20 charset-normalizer==3.5.2 && cd frontend && npm install && npm run build && cd .. && python app.py
+CUSTOM_COMMAND=python -c "import certifi, requests" 2>/dev/null || pip install --force-reinstall --no-cache-dir --target ./.lib certifi==2026.10.23 requests==2.34.2 urllib3==2.8.0 idna==3.20 charset-normalizer==3.5.2 && python app.py

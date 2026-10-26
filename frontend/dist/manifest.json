@@ -1,0 +1,23 @@
+{
+  "name": "Claro Gestão Rede Externa",
+  "short_name": "Gestão Externa",
+  "description": "Sistema integrado de gestão operacional de rede externa, vistorias, técnicos e frota Claro.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08080a",
+  "theme_color": "#ee2c24",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/claro-icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

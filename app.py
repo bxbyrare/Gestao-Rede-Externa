@@ -1,3 +1,4 @@
+import gzip
 import os
 import time
 import csv
@@ -657,6 +658,25 @@ def set_security_headers(response):
         "upgrade-insecure-requests"
     ]
     response.headers['Content-Security-Policy'] = "; ".join(csp_directives) + ";"
+
+    # Dynamic Gzip Compression for JSON, JS, CSS and text payloads (> 500 bytes)
+    accept_encoding = request.headers.get('Accept-Encoding', '')
+    if ('gzip' in accept_encoding.lower() and
+        200 <= response.status_code < 300 and
+        'Content-Encoding' not in response.headers and
+        not response.direct_passthrough):
+        c_type = response.headers.get('Content-Type', '')
+        if any(t in c_type for t in ('text/', 'json', 'javascript', 'css', 'xml')):
+            try:
+                data = response.get_data()
+                if len(data) >= 500:
+                    compressed = gzip.compress(data, compresslevel=5)
+                    response.set_data(compressed)
+                    response.headers['Content-Encoding'] = 'gzip'
+                    response.headers['Content-Length'] = len(compressed)
+            except Exception:
+                pass
+
     return response
 
 # Configuration for Database and Upload Directories
@@ -700,30 +720,37 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'aceitacoes'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'documentos_pessoas'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'workspace_anexos'), exist_ok=True)
 
-# Leak-proof PostgreSQL connection manager with automatic request teardown & DNS failover
-_KNOWN_DB_IPS = ['38.92.41.65', '38.18.229.30', '38.92.41.2', '154.30.4.133', '154.29.76.130']
-_CACHED_DB_IP = None
+# Leak-proof PostgreSQL connection manager with connection reuse & ultra-fast failover
+_KNOWN_DB_IPS = ['38.18.229.30', '38.92.41.2', '38.92.41.65', '154.30.4.133']
+_CACHED_DB_IP = '38.18.229.30'
 
 def get_db():
     global _CACHED_DB_IP
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL não configurada no ambiente do servidor.")
 
+    # 1. Fast path: reuse open connection for the current request context (0ms handshake!)
+    if has_request_context():
+        current_conn = getattr(g, '_current_db_conn', None)
+        if current_conn and hasattr(current_conn, 'closed') and not current_conn.closed:
+            return current_conn
+
+    # 2. Connection sequence: pre-warmed working IP first, then alternate IPs, then DNS
     attempts = []
     if _CACHED_DB_IP:
         attempts.append(_CACHED_DB_IP)
-    attempts.append(None)  # Standard DNS
     if 'postgres.shardatabases.app' in DATABASE_URL:
         for ip in _KNOWN_DB_IPS:
             if ip != _CACHED_DB_IP:
                 attempts.append(ip)
+    attempts.append(None)  # Standard DNS as fallback
 
     last_error = None
     for h_addr in attempts:
         try:
             kwargs = {
                 'cursor_factory': RealDictCursor,
-                'connect_timeout': 5,
+                'connect_timeout': 3,
             }
             if h_addr:
                 kwargs['hostaddr'] = h_addr
@@ -734,6 +761,7 @@ def get_db():
                 if not hasattr(g, '_active_db_conns'):
                     g._active_db_conns = []
                 g._active_db_conns.append(conn)
+                g._current_db_conn = conn
             return conn
         except psycopg2.OperationalError as e:
             last_error = e
