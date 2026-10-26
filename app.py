@@ -700,16 +700,53 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'aceitacoes'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'documentos_pessoas'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'workspace_anexos'), exist_ok=True)
 
-# Leak-proof PostgreSQL connection manager with automatic request teardown
+# Leak-proof PostgreSQL connection manager with automatic request teardown & DNS failover
+_KNOWN_DB_IPS = ['38.92.41.65', '38.18.229.30', '38.92.41.2', '154.30.4.133', '154.29.76.130']
+_CACHED_DB_IP = None
+
 def get_db():
+    global _CACHED_DB_IP
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL não configurada no ambiente do servidor.")
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    if has_request_context():
-        if not hasattr(g, '_active_db_conns'):
-            g._active_db_conns = []
-        g._active_db_conns.append(conn)
-    return conn
+
+    attempts = []
+    if _CACHED_DB_IP:
+        attempts.append(_CACHED_DB_IP)
+    attempts.append(None)  # Standard DNS
+    if 'postgres.shardatabases.app' in DATABASE_URL:
+        for ip in _KNOWN_DB_IPS:
+            if ip != _CACHED_DB_IP:
+                attempts.append(ip)
+
+    last_error = None
+    for h_addr in attempts:
+        try:
+            kwargs = {
+                'cursor_factory': RealDictCursor,
+                'connect_timeout': 5,
+            }
+            if h_addr:
+                kwargs['hostaddr'] = h_addr
+            conn = psycopg2.connect(DATABASE_URL, **kwargs)
+            if h_addr:
+                _CACHED_DB_IP = h_addr
+            if has_request_context():
+                if not hasattr(g, '_active_db_conns'):
+                    g._active_db_conns = []
+                g._active_db_conns.append(conn)
+            return conn
+        except psycopg2.OperationalError as e:
+            last_error = e
+            err_msg = str(e).lower()
+            if 'password authentication failed' in err_msg or 'database "' in err_msg:
+                raise e
+            continue
+        except Exception as e:
+            last_error = e
+            continue
+
+    print(f"🚨 [FATAL DB CONNECTION ERROR] Falha em todas as tentativas de conexão ao PostgreSQL: {last_error}")
+    raise last_error
 
 @app.teardown_appcontext
 def close_db_connections(exception=None):
