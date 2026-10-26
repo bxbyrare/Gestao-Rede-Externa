@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, User as UserIcon, ArrowRight, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Lock, User as UserIcon, ArrowRight, Loader2, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import { ApiError } from '../api/client';
-import LiquidEther from '../components/LiquidEther';
+import GsapSecurityBackground from '../components/GsapSecurityBackground';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 export default function LoginPage() {
@@ -31,134 +31,158 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#121214]">
-      <LiquidEther />
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#030305] text-white">
+      {/* Precision Lagos Digital Blueprint Background */}
+      <GsapSecurityBackground />
 
       {/* Atmospheric Ambient Lighting Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-red-600/10 blur-[140px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-red-600/[0.07] blur-[150px] pointer-events-none" />
 
-      {/* Main Login Card Container */}
-      <div className="relative w-full max-w-[420px] z-10 transition-all duration-700 ease-out transform">
-        <div className="relative rounded-3xl p-8 sm:p-9 bg-[#18181c] border border-[#2c2c35] shadow-[0_20px_50px_rgba(0,0,0,0.75)] overflow-hidden">
-          {/* Subtle Top Card Border Highlight */}
-          <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-red-500/50 to-transparent" />
+      {/* Double Bezel Precision Card Container */}
+      <div className="relative w-full max-w-[420px] z-10 transition-all duration-500 ease-out">
+        <div className="rounded-[28px] p-[1px] bg-gradient-to-b from-white/[0.14] via-white/[0.04] to-white/[0.02] border border-white/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.85)] backdrop-blur-3xl overflow-hidden">
+          <div className="rounded-[27px] p-8 sm:p-9 bg-[#090C13]/95 border border-white/[0.05] relative">
+            {/* Top Card Hairline Highlight */}
+            <div className="absolute top-0 left-8 right-8 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
-          {/* Corporate Header */}
-          <div className="flex flex-col items-center text-center mb-7">
-            <div className="relative w-20 h-20 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-[0_0_30px_rgba(238,44,36,0.35)] mb-4 flex items-center justify-center">
-              <img
-                src="/claro-icon.png"
-                alt="Claro"
-                className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
-              />
-            </div>
-
-            <h1 className="text-xl font-black tracking-tight text-white flex items-center justify-center gap-1.5">
-              Gestão <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-red-400 to-rose-500">REDE EXTERNA</span>
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Operações de Campo &amp; Infraestrutura
-            </p>
-          </div>
-
-          {/* Error Alert */}
-          {error && (
-            <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400 flex items-center gap-2 animate-in">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="username"
-                className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2"
-              >
-                Usuário de Acesso
-              </label>
-              <div className="relative group">
-                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-red-400 transition-colors" />
-                <input
-                  id="username"
-                  type="text"
-                  required
-                  autoComplete="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Seu usuário corporativo..."
-                  className="w-full h-12 pl-11 pr-4 rounded-xl bg-[#121214] border border-[#2c2c35] text-sm text-slate-100 placeholder:text-slate-500 focus:border-red-500 focus:bg-[#151518] focus:ring-2 focus:ring-red-500/20 transition-all outline-none font-medium"
+            {/* Corporate Header */}
+            <div className="flex flex-col items-center text-center mb-6">
+              {/* Preserved Claro 3D Icon */}
+              <div className="relative w-20 h-20 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-[0_0_35px_rgba(238,44,36,0.35)] mb-3.5 flex items-center justify-center">
+                <img
+                  src="/claro-icon.png"
+                  alt="Claro"
+                  className="w-full h-full object-contain filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
                 />
               </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/[0.04] border border-white/10 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-300 mb-2">
+                <span>Acesso Corporativo Seguro</span>
+              </div>
+
+              <h1 className="text-xl font-black tracking-tight text-white flex items-center justify-center gap-1.5">
+                Gestão <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-red-400">REDE EXTERNA</span>
+              </h1>
+              <p className="text-xs text-neutral-400 mt-1">
+                Operações de Campo &amp; Infraestrutura
+              </p>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
+            {/* Error Alert matching Authenticator Modal */}
+            {error && (
+              <div className="mb-4 p-3.5 rounded-xl bg-red-950/40 border border-red-800/40 text-red-300 text-xs flex items-center gap-2.5 animate-in fade-in">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
                 <label
-                  htmlFor="password"
-                  className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider"
+                  htmlFor="username"
+                  className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-2"
                 >
-                  Senha de Acesso
+                  Usuário de Acesso
                 </label>
+                <div className="relative group">
+                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 group-focus-within:text-white transition-colors" />
+                  <input
+                    id="username"
+                    type="text"
+                    required
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      if (error) setError(null);
+                    }}
+                    placeholder="Seu usuário corporativo..."
+                    className="w-full h-12 pl-11 pr-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-500 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label
+                    htmlFor="password"
+                    className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider"
+                  >
+                    Senha de Acesso
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotOpen(true)}
+                    className="text-[11px] font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
+                <div className="relative group">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 group-focus-within:text-white transition-colors" />
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (error) setError(null);
+                    }}
+                    placeholder="••••••••••••"
+                    className="w-full h-12 pl-11 pr-11 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-500 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Button: White Lagos Digital by default; Red only if error/refused */}
+              <div className="pt-2">
                 <button
-                  type="button"
-                  onClick={() => setIsForgotOpen(true)}
-                  className="text-[11px] font-medium text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`w-full h-12 rounded-xl font-semibold text-xs tracking-wider uppercase transition-all active:scale-[0.98] flex items-center justify-between px-5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    error
+                      ? 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border border-red-500/50 shadow-[0_4px_24px_rgba(220,38,38,0.35)]'
+                      : 'bg-white hover:bg-neutral-100 text-black shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:shadow-[0_4px_28px_rgba(255,255,255,0.22)]'
+                  }`}
                 >
-                  Esqueci minha senha
+                  <span>{isSubmitting ? 'Autenticando...' : 'Entrar no Sistema'}</span>
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                      error ? 'bg-black/20 text-white' : 'bg-black/10 text-black'
+                    }`}
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    )}
+                  </div>
                 </button>
               </div>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-red-400 transition-colors" />
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full h-12 pl-11 pr-11 rounded-xl bg-[#121214] border border-[#2c2c35] text-sm text-slate-100 placeholder:text-slate-500 focus:border-red-500 focus:bg-[#151518] focus:ring-2 focus:ring-red-500/20 transition-all outline-none font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-200 transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+            </form>
+
+            {/* Clean Corporate Footer */}
+            <div className="mt-6 pt-3 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-neutral-400 font-mono uppercase tracking-[0.15em]">
+              <span>Claro Brasil</span>
+              <span className="text-neutral-500">Operações Claro</span>
             </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full h-12 mt-3 rounded-xl bg-gradient-to-r from-red-600 via-red-500 to-rose-600 hover:from-red-500 hover:to-red-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 hover:shadow-red-600/50 active:scale-[0.98] transition-all disabled:opacity-60 cursor-pointer group"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Autenticando...
-                </>
-              ) : (
-                <>
-                  Entrar no Sistema{' '}
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Clean Corporate Footer */}
-          <div className="mt-7 pt-4 border-t border-[#2c2c35]/80 flex items-center justify-center text-[11px] text-slate-400 font-semibold tracking-wider uppercase">
-            Claro Brasil
           </div>
         </div>
       </div>
 
       {/* Corporate Copyright Footer */}
-      <div className="absolute bottom-5 text-center text-[11px] text-slate-500 font-medium">
+      <div className="absolute bottom-5 text-center text-[10px] text-neutral-500 font-mono tracking-wider">
         &copy; 2026 Claro Brasil. Todos os direitos reservados.
       </div>
 
