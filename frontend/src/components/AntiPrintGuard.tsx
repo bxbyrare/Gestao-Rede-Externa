@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
-import { useAuth } from '../state/AuthContext';
 
 export default function AntiPrintGuard() {
-  const { user } = useAuth();
   const [shieldActive, setShieldActive] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,53 +141,28 @@ export default function AntiPrintGuard() {
     };
   }, []);
 
-  const watermarkLabel = user
-    ? `${user.username} • ${new Date().toLocaleDateString('pt-BR')}`
-    : 'ACESSO RESTRITO';
+  if (!shieldActive) return null;
 
   return (
-    <>
-      {/* Subtle dynamic watermark across the screen to deter external camera photos */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-[85] overflow-hidden select-none"
-        style={{ opacity: 0.028 }}
-      >
-        <div className="w-[150vw] h-[150vh] -translate-x-[15vw] -translate-y-[15vh] -rotate-12 flex flex-wrap content-start gap-x-16 gap-y-14">
-          {Array.from({ length: 48 }).map((_, idx) => (
-            <span
-              key={idx}
-              className="text-xs font-mono font-bold uppercase tracking-widest text-white whitespace-nowrap"
-            >
-              {watermarkLabel}
-            </span>
-          ))}
-        </div>
+    <div
+      role="alert"
+      aria-live="assertive"
+      onClick={() => {
+        if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+        setShieldActive(false);
+        setAlertMessage(null);
+      }}
+      className="fixed inset-0 z-[99999] bg-[#030305] flex flex-col items-center justify-center p-6 text-center select-none cursor-pointer"
+    >
+      <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-neutral-300 mb-4">
+        <Lock className="w-5 h-5" />
       </div>
-
-      {/* Blackout curtain triggered strictly on screenshot keys, print, or 3-finger capture */}
-      {shieldActive && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          onClick={() => {
-            if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
-            setShieldActive(false);
-            setAlertMessage(null);
-          }}
-          className="fixed inset-0 z-[99999] bg-[#08080a] flex flex-col items-center justify-center p-6 text-center select-none cursor-pointer"
-        >
-          <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-neutral-300 mb-4">
-            <Lock className="w-5 h-5" />
-          </div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-white mb-1">
-            Conteúdo Protegido
-          </h2>
-          <p className="text-xs text-[var(--color-text-muted)] max-w-xs">
-            {alertMessage || 'Captura de tela bloqueada.'}
-          </p>
-        </div>
-      )}
-    </>
+      <h2 className="text-sm font-bold uppercase tracking-wider text-white mb-1">
+        Conteúdo Protegido
+      </h2>
+      <p className="text-xs text-neutral-400 max-w-xs">
+        {alertMessage || 'Captura de tela bloqueada.'}
+      </p>
+    </div>
   );
 }
