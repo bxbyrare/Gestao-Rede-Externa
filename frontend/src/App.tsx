@@ -42,7 +42,7 @@ export default function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <FullScreenCinematicIntro key={introRunId} durationMs={4100} />
+        {location.pathname === '/login' && <FullScreenCinematicIntro key={introRunId} durationMs={3600} />}
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/f/:slug" element={<FormResponderPage />} />

@@ -1,5 +1,58 @@
 import gzip
 import os
+import socket
+
+# Bulletproof DNS resolution fallback for postgres.shardatabases.app in Docker containers
+_ORIG_GETADDRINFO = socket.getaddrinfo
+_KNOWN_DB_IPS = ['38.18.229.30', '38.92.41.2', '38.92.41.65', '154.30.4.133']
+
+def _resolv_db_direct_dns():
+    try:
+        import struct
+        query = b'\xaa\xbb\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00'
+        for part in 'postgres.shardatabases.app'.split('.'):
+            query += bytes([len(part)]) + part.encode()
+        query += b'\x00\x00\x01\x00\x01'
+        for dns_srv in ('1.1.1.1', '8.8.8.8'):
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.settimeout(1.5)
+                s.sendto(query, (dns_srv, 53))
+                data, _ = s.recvfrom(512)
+                s.close()
+                idx = 12
+                while data[idx] != 0: idx += 1 + data[idx]
+                idx += 5
+                ips = []
+                while idx < len(data):
+                    if data[idx] >= 192: idx += 2
+                    else:
+                        while data[idx] != 0: idx += 1 + data[idx]
+                        idx += 1
+                    atype, aclass, ttl, rdlen = struct.unpack('>HHIH', data[idx:idx+10])
+                    idx += 10
+                    if atype == 1 and rdlen == 4:
+                        ips.append(socket.inet_ntoa(data[idx:idx+4]))
+                    idx += rdlen
+                if ips:
+                    return ips[0]
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return '38.18.229.30'
+
+def _custom_getaddrinfo(host, port, *args, **kwargs):
+    if host == 'postgres.shardatabases.app':
+        try:
+            return _ORIG_GETADDRINFO(host, port, *args, **kwargs)
+        except Exception:
+            ip = _resolv_db_direct_dns()
+            p = port or 5432
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', (ip, p))]
+    return _ORIG_GETADDRINFO(host, port, *args, **kwargs)
+
+socket.getaddrinfo = _custom_getaddrinfo
 import time
 import csv
 import json
