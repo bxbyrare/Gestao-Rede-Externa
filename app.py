@@ -649,6 +649,7 @@ BLOCKED_USER_AGENTS = [
 
 # Security Autoban and Exploit Pattern Detection
 _SECURITY_BAN_LIST = {} # ip -> ban_expiry_timestamp
+_PROBE_TRACKER = defaultdict(list) # ip -> [probe_timestamps] (NAT-friendly progressive strike system)
 _USED_TOTP_BUCKETS = defaultdict(dict) # user_id -> {bucket_idx: expiry_ts}
 _TOTP_FAILURES = defaultdict(list)     # user_id -> [failure_timestamps]
 
@@ -738,10 +739,18 @@ def enforce_security_policies():
     is_bad_ua = any(bad_ua in user_agent for bad_ua in BLOCKED_USER_AGENTS)
 
     if is_dangerous_ext or is_known_probe or is_malicious_payload or is_bad_ua:
-        _SECURITY_BAN_LIST[client_ip] = now + 7200 # Ban for 2 hours
-        # Tarpit defense: slow down scanner to a dead halt
-        time.sleep(2.5)
-        # If requested via web browser, render the Honeypot Decoy screen immediately
+        # NAT-friendly Progressive Defense:
+        # Limpa probes com mais de 5 minutos
+        _PROBE_TRACKER[client_ip] = [t for t in _PROBE_TRACKER[client_ip] if now - t < 300]
+        _PROBE_TRACKER[client_ip].append(now)
+
+        # Se acumular 3 ou mais tentativas de exploração em 5 minutos, ativa o ban temporário do IP
+        if len(_PROBE_TRACKER[client_ip]) >= 3:
+            _SECURITY_BAN_LIST[client_ip] = now + 900 # Ban temporário por 15 minutos
+
+        # Tarpit defense: desacelera a requisição do scanner
+        time.sleep(1.5)
+        # Se for navegador, renderiza tela visual de alerta Honeypot
         if not request.path.startswith('/api/') and not request.is_json and 'text/html' in (request.headers.get('Accept') or ''):
             try:
                 loc = get_ip_location(client_ip)
@@ -749,11 +758,10 @@ def enforce_security_policies():
             except Exception:
                 pass
         resp = jsonify({
-            "error": "Tentativa de ataque cibernético detectada. Conexão interrompida.",
-            "status": 429
+            "error": "Tentativa de ataque ou varredura não autorizada detectada. Conexão interrompida.",
+            "status": 403
         })
-        resp.status_code = 429
-        resp.headers['Retry-After'] = '7200'
+        resp.status_code = 403
         resp.headers['Connection'] = 'close'
         return resp
 
@@ -2287,6 +2295,7 @@ ALL_PERMISSIONS = [
     'financeiro.create', 'financeiro.edit', 'financeiro.delete',
     'notificacoes.create', 'notificacoes.delete',
     'gerenciamento.create', 'gerenciamento.edit', 'gerenciamento.delete',
+    'pos_eventos.create', 'pos_eventos.edit', 'pos_eventos.delete',
 ]
 
 def is_coordenador_role(username, role):
@@ -2360,6 +2369,9 @@ def user_has_permission(perm_key):
     if not auth:
         return False
     if auth['is_master']:
+        return True
+    # Operações de campo: criação de vistoria pós-evento é liberada para técnicos e operadores autenticados
+    if perm_key == 'pos_eventos.create':
         return True
     return perm_key in auth['permissions']
 
@@ -2505,6 +2517,14 @@ def _resolve_required_permission(path, method):
         return 'aceitacao.edit'
     if p.startswith('/api/aceitacoes/') and method == 'DELETE':
         return 'aceitacao.delete'
+
+    # Pós-Eventos (Vistorias em Campo)
+    if p in ('/api/pos-eventos', '/api/pos-eventos/') and method == 'POST':
+        return 'pos_eventos.create'
+    if p.startswith('/api/pos-eventos/') and method == 'PUT':
+        return 'pos_eventos.edit'
+    if p.startswith('/api/pos-eventos/') and method == 'DELETE':
+        return 'pos_eventos.delete'
 
     return None
 
@@ -3039,6 +3059,16 @@ def _disabled_sitemap_xml_legacy():
 def spa_catch_all(path):
     if path.startswith('api/') or path.startswith('uploads/') or path.startswith('static/'):
         return jsonify({"error": "Não encontrado."}), 404
+
+    # Bloqueia rotas de scan e sondagem para não retornar 200 no SPA catch-all
+    path_first = path.strip('/').split('/')[0].lower() if path.strip('/') else ''
+    BLOCKED_SPA_PROBES = {
+        'admin', 'env', 'setup', 'config', 'shell', 'actuator', 'console',
+        'pma', 'phpmyadmin', 'wp-admin', 'wp-login', 'cgi-bin', 'webmin'
+    }
+    if path_first in BLOCKED_SPA_PROBES:
+        return jsonify({"error": "Página não encontrada."}), 404
+
     if '.' in path.rsplit('/', 1)[-1]:
         # Root-level built assets (favicon.png, claro-icon.png, icons.svg, ...)
         if os.path.isfile(os.path.join(REACT_DIST, path)):
