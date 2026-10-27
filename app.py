@@ -1672,7 +1672,7 @@ def init_db():
                     slug = 'vistoria-externa',
                     link = '/f/vistoria-externa',
                     questions = %s
-                WHERE slug IN ('formulario-vistoria-google', 'vistoria-externa') OR title ILIKE '%vistoria externa%';
+                WHERE slug IN ('formulario-vistoria-google', 'vistoria-externa') OR title ILIKE '%%vistoria externa%%';
             """, (json.dumps(vistoria_default_questions, ensure_ascii=False),))
             if cur.rowcount == 0:
                 cur.execute("""
@@ -1700,7 +1700,7 @@ def init_db():
                     description = 'Inventário do Maquinário e Ferramental.',
                     link = '/f/inventario-maquinario',
                     questions = COALESCE(NULLIF(questions, '[]'::jsonb), %s::jsonb)
-                WHERE slug = 'inventario-maquinario' OR title ILIKE '%inventário - maquinário%' OR title ILIKE '%inventario - maquinario%';
+                WHERE slug = 'inventario-maquinario' OR title ILIKE '%%inventário - maquinário%%' OR title ILIKE '%%inventario - maquinario%%';
             """, (json.dumps(inventario_default_questions, ensure_ascii=False),))
             if cur.rowcount == 0:
                 cur.execute("""
@@ -1728,7 +1728,7 @@ def init_db():
                     description = 'Formulário oficial para cadastro de colaboradores e técnicos de campo.',
                     link = '/f/cadastro-equipe',
                     questions = COALESCE(NULLIF(questions, '[]'::jsonb), %s::jsonb)
-                WHERE slug = 'cadastro-equipe' OR title ILIKE '%cadastro equipe%' OR title ILIKE '%cadastro de equipe%';
+                WHERE slug = 'cadastro-equipe' OR title ILIKE '%%cadastro equipe%%' OR title ILIKE '%%cadastro de equipe%%';
             """, (json.dumps(cadastro_equipe_default_questions, ensure_ascii=False),))
             if cur.rowcount == 0:
                 cur.execute("""
