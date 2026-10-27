@@ -5351,6 +5351,12 @@ def public_form_submit(slug):
 @app.route('/api/forms/<int:form_id>/responses', methods=['GET'], strict_slashes=False)
 @login_required
 def api_form_responses(form_id):
+    auth = get_current_user_auth()
+    role_lower = (auth.get('role') or '').lower() if auth else ''
+    has_form_perm = any(k.startswith('formularios.') for k in (auth.get('permissions') or []))
+    if not auth or (not auth['is_master'] and not auth['is_coordenador'] and role_lower not in ['supervisor', 'coordenador'] and not has_form_perm):
+        return jsonify({"error": "Acesso restrito à coordenação, supervisão ou usuários com permissão de formulários."}), 403
+
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -5580,6 +5586,12 @@ def api_direct_form_response_detail(response_id):
 @app.route('/api/forms/<int:form_id>/responses/export', methods=['GET'], strict_slashes=False)
 @login_required
 def api_form_responses_export(form_id):
+    auth = get_current_user_auth()
+    role_lower = (auth.get('role') or '').lower() if auth else ''
+    has_form_perm = any(k.startswith('formularios.') for k in (auth.get('permissions') or []))
+    if not auth or (not auth['is_master'] and not auth['is_coordenador'] and role_lower not in ['supervisor', 'coordenador'] and not has_form_perm):
+        return jsonify({"error": "Acesso restrito à coordenação, supervisão ou usuários com permissão de formulários."}), 403
+
     try:
         import io, csv, json
         conn = get_db()
@@ -6864,6 +6876,7 @@ def api_bulk_vehicles():
             existing = cur.fetchone()
 
             try:
+                cur.execute("SAVEPOINT vehicle_savepoint;")
                 if existing:
                     cur.execute(
                         """
@@ -6897,10 +6910,12 @@ def api_bulk_vehicles():
                          condutor_dia, condutor_tarde, condutor_madrugada, ticket_car, session['user_id'])
                     )
                     inserted_count += 1
+                cur.execute("RELEASE SAVEPOINT vehicle_savepoint;")
                 success_count += 1
             except Exception as err:
-                conn.rollback()
-                errors.append(f"Linha {index+1} (Placa: {plate}): erro ao salvar - {err}")
+                cur.execute("ROLLBACK TO SAVEPOINT vehicle_savepoint;")
+                print(f"[VEHICLES BULK] Erro ao salvar linha {index+1} (Placa: {plate}):", err)
+                errors.append(f"Linha {index+1} (Placa: {plate}): falha ao salvar veículo. Verifique os dados fornecidos.")
 
         conn.commit()
         cur.close()
