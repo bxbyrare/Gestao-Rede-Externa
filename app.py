@@ -3068,11 +3068,12 @@ def api_login():
         return jsonify({"error": "Por favor, informe seu usuário e senha."}), 400
 
     client_ip = get_client_ip()
+    lockout_key = f"{client_ip}:{username}"
 
     now_ts = time.time()
-    _ACCOUNT_LOGIN_FAILURES[username] = [t for t in _ACCOUNT_LOGIN_FAILURES[username] if now_ts - t < 900]
-    if len(_ACCOUNT_LOGIN_FAILURES[username]) >= 8:
-        return jsonify({"error": "Conta temporariamente bloqueada por excesso de tentativas. Aguarde 15 minutos."}), 429
+    _ACCOUNT_LOGIN_FAILURES[lockout_key] = [t for t in _ACCOUNT_LOGIN_FAILURES[lockout_key] if now_ts - t < 900]
+    if len(_ACCOUNT_LOGIN_FAILURES[lockout_key]) >= 8:
+        return jsonify({"error": "Muitas tentativas incorretas a partir deste endereço. Aguarde 15 minutos."}), 429
 
     try:
         conn = get_db()
@@ -3083,7 +3084,7 @@ def api_login():
         conn.close()
 
         if user and check_password_hash(user['password_hash'], password):
-            _ACCOUNT_LOGIN_FAILURES.pop(username, None)
+            _ACCOUNT_LOGIN_FAILURES.pop(lockout_key, None)
             _SECURITY_BAN_LIST.pop(client_ip, None) # Clear any scanner bans upon valid primary authentication
             session.clear() # Clear all prior session tokens (Session Fixation Prevention)
             session.permanent = True
@@ -3161,7 +3162,7 @@ def api_login():
             }
             return jsonify({"user": user_payload})
 
-        _ACCOUNT_LOGIN_FAILURES[username].append(time.time())
+        _ACCOUNT_LOGIN_FAILURES[lockout_key].append(time.time())
         time.sleep(1.5)
         return jsonify({"error": "Usuário ou senha incorretos."}), 401
     except Exception as e:
@@ -6640,6 +6641,7 @@ def api_bulk_technicians():
                 continue
                 
             try:
+                cur.execute("SAVEPOINT tech_savepoint;")
                 cur.execute(
                     """
                     INSERT INTO technicians (
@@ -6650,10 +6652,12 @@ def api_bulk_technicians():
                     (name, cpf, phone, identity, dob, role, area, team_type, company, team,
                      registration_claro, registration_third, toa_login, phone_model, imei_1, imei_2, email, session['user_id'])
                 )
+                cur.execute("RELEASE SAVEPOINT tech_savepoint;")
                 success_count += 1
             except Exception as err:
-                conn.rollback()
-                errors.append(f"Linha {index+1} ({name}): erro ao salvar: {err}")
+                cur.execute("ROLLBACK TO SAVEPOINT tech_savepoint;")
+                print(f"[TECHNICIANS BULK] Erro ao salvar linha {index+1} ({name}):", err)
+                errors.append(f"Linha {index+1} ({name}): falha ao salvar registro. Verifique os dados fornecidos.")
                 
         if errors and success_count == 0:
             cur.close()
@@ -10088,6 +10092,12 @@ def api_upload_route_files(route_id):
         conn = get_db()
         cur = conn.cursor()
 
+        ALLOWED_ROUTE_EXTENSIONS = {
+            'kmz', 'kml', 'pdf', 'zip', 'rar', '7z', 'sor', 'xlsx', 'xls', 'csv',
+            'doc', 'docx', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'dwg', 'dxf'
+        }
+        MAX_ROUTE_FILE_SIZE = 50 * 1024 * 1024  # 50 MB por arquivo
+
         for f in uploaded_files:
             if not f or not f.filename:
                 continue
@@ -10098,6 +10108,10 @@ def api_upload_route_files(route_id):
                 clean_filename = f"arquivo_{int(time.time())}"
                 
             ext = raw_filename.rsplit('.', 1)[-1].lower() if '.' in raw_filename else ''
+            if ext not in ALLOWED_ROUTE_EXTENSIONS:
+                return jsonify({
+                    "error": f"Extensão '.{ext}' não permitida para anexos de rotas. Formatos aceitos: KMZ, KML, PDF, ZIP, RAR, SOR, planilhas, documentos e imagens."
+                }), 400
             
             unique_prefix = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '_' + str(os.urandom(3).hex())
             saved_filename = f"{unique_prefix}_{clean_filename}"
@@ -10106,6 +10120,12 @@ def api_upload_route_files(route_id):
             
             f.save(full_dest_path)
             filesize = os.path.getsize(full_dest_path)
+            if filesize > MAX_ROUTE_FILE_SIZE:
+                try:
+                    os.remove(full_dest_path)
+                except Exception:
+                    pass
+                return jsonify({"error": f"O arquivo '{raw_filename}' excede o tamanho máximo permitido de 50MB."}), 400
 
             cur.execute("""
                 INSERT INTO route_files (route_id, folder_id, filename, filepath, filesize, filetype, uploaded_by)
@@ -11747,7 +11767,9 @@ def api_test_email_template():
 @app.route('/api/admin/notify-outdated-profile', methods=['POST'])
 @login_required
 def api_notify_outdated_profile():
-    if 'user_id' not in session or session.get('role') not in ['admin', 'supervisor']:
+    auth = get_current_user_auth()
+    role_lower = (auth.get('role') or '').lower() if auth else ''
+    if not auth or (not auth['is_master'] and not auth['is_coordenador'] and role_lower not in ['supervisor', 'coordenador'] and not user_has_permission('notificacoes.create') and not user_has_permission('usuarios.edit')):
         return jsonify({"error": "Acesso restrito à coordenação e supervisão."}), 403
 
     data = request.get_json(silent=True) or {}
