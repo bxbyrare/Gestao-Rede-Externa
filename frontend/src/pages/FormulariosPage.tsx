@@ -468,6 +468,8 @@ export default function FormulariosPage() {
     });
 
     const priorityOrder = [
+      'número do wfc',
+      'numero do wfc',
       'número task toa',
       'numero task toa',
       'task toa',
@@ -1483,7 +1485,9 @@ export default function FormulariosPage() {
             </p>
             <Input
               value={String(
-                editAnswers['Controle de WFC ( Preenchimento interno )'] ||
+                editAnswers['Número do WFC'] ||
+                  editAnswers['Numero do WFC'] ||
+                  editAnswers['Controle de WFC ( Preenchimento interno )'] ||
                   editAnswers['Controle de WFC'] ||
                   editAnswers['WFC'] ||
                   ''
@@ -1491,6 +1495,7 @@ export default function FormulariosPage() {
               onChange={(e) =>
                 setEditAnswers((prev) => ({
                   ...prev,
+                  'Número do WFC': e.target.value,
                   'Controle de WFC ( Preenchimento interno )': e.target.value,
                 }))
               }

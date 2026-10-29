@@ -23,6 +23,7 @@ interface Question {
   type: 'text' | 'textarea' | 'radio' | 'select' | 'checkbox' | 'date' | 'time' | 'scale' | 'file';
   options?: string[];
   required?: boolean;
+  hint?: string;
 }
 
 interface FormDetail {
@@ -530,12 +531,22 @@ export default function FormResponderPage() {
                         </label>
                       </div>
 
+                      {q.hint && (
+                        <p className={`text-xs ${textMuted} -mt-1 font-medium`}>
+                          {q.hint}
+                        </p>
+                      )}
+
                       {/* Question Renderers */}
                       {q.type === 'text' && (
                         <input
                           type="text"
                           required={q.required}
-                          placeholder="Sua resposta..."
+                          placeholder={
+                            q.title.toLowerCase().includes('wfc')
+                              ? 'Ex: WFC-2026-9842 ou texto + números...'
+                              : 'Sua resposta...'
+                          }
                           value={answers[q.title] || ''}
                           onChange={(e) => handleAnswerChange(q.title, e.target.value)}
                           className={inputStyle}

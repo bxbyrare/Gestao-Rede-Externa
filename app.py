@@ -1767,14 +1767,16 @@ def init_db():
                 {"title": "Rede HFC ou Fibra", "type": "radio", "options": ["HFC", "Fibra"], "required": False},
                 {"title": "Nome do Node ou rota de fibra", "type": "text", "options": [], "required": False},
                 {"title": "Tipo de Ocorrência", "type": "select", "options": ["Vandalismo / Furto de Cabo", "Cabo Baixo / Rompimento", "Atenuação / Nível Baixo", "Curto Circuito / Caixa Danificada", "Inspeção Preventiva / Rotina", "Outro"], "required": False},
+                {"title": "Rede Externa Conforme Padrão Claro?", "type": "radio", "options": ["Sim", "Não"], "required": False},
                 {"title": "Fotos para evidência", "type": "file", "options": [], "required": False},
                 {"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False},
-                {"title": "Observações", "type": "textarea", "options": [], "required": False}
+                {"title": "Observações", "type": "textarea", "options": [], "required": False},
+                {"title": "Número do WFC", "type": "text", "options": [], "required": False, "hint": "Insira a combinação de textos e números do WFC"}
             ]
 
-            cur.execute("SELECT id, slug, questions FROM forms WHERE slug IN ('inspecao-visual', 'inspecao-visual-2026') OR title ILIKE '%inspeção visual%' OR title ILIKE '%inspecao visual%';")
-            inspecao_row = cur.fetchone()
-            if not inspecao_row:
+            cur.execute("SELECT id, slug, title, questions FROM forms WHERE slug IN ('inspecao-visual', 'inspecao-visual-2026') OR title ILIKE '%%inspeção visual%%' OR title ILIKE '%%inspecao visual%%';")
+            inspecao_rows = cur.fetchall()
+            if not inspecao_rows:
                 cur.execute("""
                     INSERT INTO forms (title, slug, category, description, link, questions)
                     VALUES (%s, %s, %s, %s, %s, %s);
@@ -1787,39 +1789,61 @@ def init_db():
                     json.dumps(inspecao_default_questions, ensure_ascii=False)
                 ))
             else:
-                q_raw = inspecao_row.get('questions')
-                q_list = json.loads(q_raw) if isinstance(q_raw, str) else (q_raw if isinstance(q_raw, list) else [])
-                target_slug = inspecao_row.get('slug') or 'inspecao-visual-2026'
-                if not q_list:
-                    cur.execute("UPDATE forms SET questions = %s, link = %s WHERE id = %s;", (json.dumps(inspecao_default_questions, ensure_ascii=False), f"/f/{target_slug}", inspecao_row['id']))
-                else:
-                    titles = [str(q.get('title', '')).strip().lower() for q in q_list if isinstance(q, dict)]
-                    has_hfc = any('hfc ou fibra' in t or 'rede hfc' in t for t in titles)
-                    has_node = any('nome do node' in t or 'rota de fibra' in t for t in titles)
-                    has_wfc = any('controle de wfc' in t or 'wfc' in t for t in titles)
+                for inspecao_row in inspecao_rows:
+                    q_raw = inspecao_row.get('questions')
+                    q_list = json.loads(q_raw) if isinstance(q_raw, str) else (q_raw if isinstance(q_raw, list) else [])
+                    target_slug = inspecao_row.get('slug') or 'inspecao-visual-2026'
+                    if not q_list:
+                        cur.execute("UPDATE forms SET questions = %s, link = %s WHERE id = %s;", (json.dumps(inspecao_default_questions, ensure_ascii=False), f"/f/{target_slug}", inspecao_row['id']))
+                    else:
+                        titles = [str(q.get('title', '')).strip().lower() for q in q_list if isinstance(q, dict)]
+                        has_hfc = any('hfc ou fibra' in t or 'rede hfc' in t for t in titles)
+                        has_node = any('nome do node' in t or 'rota de fibra' in t for t in titles)
+                        has_ctrl_wfc = any('controle de wfc' in t for t in titles)
+                        has_num_wfc = any('número do wfc' in t or 'numero do wfc' in t for t in titles)
 
-                    if not (has_hfc and has_node and has_wfc):
-                        new_q = []
-                        for q in q_list:
-                            new_q.append(q)
-                            t = str(q.get('title', '')).strip().lower() if isinstance(q, dict) else ''
-                            if ('task toa' in t or 'numero task' in t or 'número task' in t) and not has_hfc:
+                        if not (has_hfc and has_node and has_ctrl_wfc and has_num_wfc):
+                            new_q = []
+                            for q in q_list:
+                                new_q.append(q)
+                                t = str(q.get('title', '')).strip().lower() if isinstance(q, dict) else ''
+                                if ('task toa' in t or 'numero task' in t or 'número task' in t) and not has_hfc:
+                                    new_q.append({"title": "Rede HFC ou Fibra", "type": "radio", "options": ["HFC", "Fibra"], "required": False})
+                                    new_q.append({"title": "Nome do Node ou rota de fibra", "type": "text", "options": [], "required": False})
+                                    has_hfc = True
+                                    has_node = True
+                                if ('fotos para evid' in t or 'evidência' in t or 'evidencia' in t or 'foto' in t) and not has_ctrl_wfc:
+                                    new_q.append({"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False})
+                                    has_ctrl_wfc = True
+
+                            if not has_hfc:
                                 new_q.append({"title": "Rede HFC ou Fibra", "type": "radio", "options": ["HFC", "Fibra"], "required": False})
+                            if not has_node:
                                 new_q.append({"title": "Nome do Node ou rota de fibra", "type": "text", "options": [], "required": False})
-                                has_hfc = True
-                                has_node = True
-                            if ('fotos para evid' in t or 'evidência' in t or 'evidencia' in t or 'foto' in t) and not has_wfc:
+                            if not has_ctrl_wfc:
                                 new_q.append({"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False})
-                                has_wfc = True
 
-                        if not has_hfc:
-                            new_q.append({"title": "Rede HFC ou Fibra", "type": "radio", "options": ["HFC", "Fibra"], "required": False})
-                        if not has_node:
-                            new_q.append({"title": "Nome do Node ou rota de fibra", "type": "text", "options": [], "required": False})
-                        if not has_wfc:
-                            new_q.append({"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False})
+                            if not has_num_wfc:
+                                existing_ts = [str(q.get('title', '')).strip().lower() for q in new_q if isinstance(q, dict)]
+                                for default_q in inspecao_default_questions:
+                                    dt = default_q['title'].strip().lower()
+                                    if dt not in existing_ts and dt not in ('número do wfc', 'numero do wfc'):
+                                        new_q.append(default_q)
+                                        existing_ts.append(dt)
+                                    if len(new_q) == 14:
+                                        break
+                                new_q.append({"title": "Número do WFC", "type": "text", "options": [], "required": False, "hint": "Insira a combinação de textos e números do WFC"})
 
-                        cur.execute("UPDATE forms SET questions = %s, link = %s WHERE id = %s;", (json.dumps(new_q, ensure_ascii=False), f"/f/{target_slug}", inspecao_row['id']))
+                            cur.execute("UPDATE forms SET questions = %s, link = %s WHERE id = %s;", (json.dumps(new_q, ensure_ascii=False), f"/f/{target_slug}", inspecao_row['id']))
+                        else:
+                            changed = False
+                            for q in q_list:
+                                if isinstance(q, dict) and ('número do wfc' in str(q.get('title', '')).strip().lower() or 'numero do wfc' in str(q.get('title', '')).strip().lower()):
+                                    if q.get('type') != 'text':
+                                        q['type'] = 'text'
+                                        changed = True
+                            if changed:
+                                cur.execute("UPDATE forms SET questions = %s, link = %s WHERE id = %s;", (json.dumps(q_list, ensure_ascii=False), f"/f/{target_slug}", inspecao_row['id']))
         except Exception as e_seed:
             print("Error seeding/updating Inspeção Visual form:", e_seed)
             conn.rollback()
@@ -5326,6 +5350,33 @@ def api_public_form_get(slug):
                 questions = json.loads(questions)
             except Exception:
                 questions = []
+
+        # Garante que o formulário de inspeção visual tenha o 15º item "Número do WFC"
+        f_slug = (f.get('slug') or '').lower()
+        f_title = (f.get('title') or '').lower()
+        if 'inspecao' in f_slug or 'inspeção' in f_title or 'inspecao' in f_title:
+            has_num_wfc = any('número do wfc' in str(q.get('title', '')).strip().lower() or 'numero do wfc' in str(q.get('title', '')).strip().lower() for q in (questions or []) if isinstance(q, dict))
+            if not has_num_wfc and questions:
+                if len(questions) == 14:
+                    questions.append({"title": "Número do WFC", "type": "text", "options": [], "required": False, "hint": "Insira a combinação de textos e números do WFC"})
+                elif len(questions) < 14:
+                    pad_questions = [
+                        {"title": "Rede Externa Conforme Padrão Claro?", "type": "radio", "options": ["Sim", "Não"], "required": False},
+                        {"title": "Fotos para evidência", "type": "file", "options": [], "required": False},
+                        {"title": "Controle de WFC ( Preenchimento interno )", "type": "text", "options": [], "required": False},
+                        {"title": "Observações", "type": "textarea", "options": [], "required": False}
+                    ]
+                    existing_ts = [str(q.get('title', '')).strip().lower() for q in questions if isinstance(q, dict)]
+                    for pq in pad_questions:
+                        if pq['title'].strip().lower() not in existing_ts and len(questions) < 14:
+                            questions.append(pq)
+                    questions.append({"title": "Número do WFC", "type": "text", "options": [], "required": False, "hint": "Insira a combinação de textos e números do WFC"})
+                else:
+                    questions.insert(14, {"title": "Número do WFC", "type": "text", "options": [], "required": False, "hint": "Insira a combinação de textos e números do WFC"})
+            else:
+                for q in (questions or []):
+                    if isinstance(q, dict) and ('número do wfc' in str(q.get('title', '')).strip().lower() or 'numero do wfc' in str(q.get('title', '')).strip().lower()):
+                        q['type'] = 'text'
 
         return jsonify({
             "id": f['id'],
