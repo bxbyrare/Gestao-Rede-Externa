@@ -11367,9 +11367,9 @@ def format_pos_evento_row(r):
         month_label = ''
 
     return {
-        "id": r['id'],
-        "ticket_type": r['ticket_type'] or '',
-        "ticket_number": r['ticket_number'] or '',
+        "id": r.get('id'),
+        "ticket_type": r.get('ticket_type') or '',
+        "ticket_number": r.get('ticket_number') or '',
         "fault_date": f_date_iso,
         "fault_date_formatted": f_date_fmt,
         "month_key": month_key,
@@ -11704,6 +11704,7 @@ def api_pos_eventos_export():
         cur = conn.cursor()
         cur.execute("""
             SELECT 
+                id,
                 ticket_type, ticket_number, fault_date, area,
                 trash_on_ground, cable_ends, adequate_network,
                 responsible, status, created_by, created_at

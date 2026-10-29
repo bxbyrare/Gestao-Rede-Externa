@@ -9,6 +9,9 @@ import {
   User,
   AlertCircle,
   ArrowRight,
+  Sun,
+  Moon,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../state/AuthContext';
@@ -51,6 +54,26 @@ export default function FormResponderPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [protocol, setProtocol] = useState('');
+
+  // Fundo Branco (Modo Sol/Campo) vs Modo Escuro
+  // Formulários de inspeção visual e vistorias abrem por padrão em Fundo Branco para visibilidade sob luz solar
+  const isInspectionSlug = Boolean(
+    slug?.toLowerCase().includes('inspecao') ||
+    slug?.toLowerCase().includes('vistoria')
+  );
+  const [isLightMode, setIsLightMode] = useState<boolean>(() => isInspectionSlug);
+
+  useEffect(() => {
+    if (
+      slug?.toLowerCase().includes('inspecao') ||
+      slug?.toLowerCase().includes('vistoria') ||
+      form?.title?.toLowerCase().includes('inspeção') ||
+      form?.title?.toLowerCase().includes('inspecao') ||
+      form?.title?.toLowerCase().includes('vistoria')
+    ) {
+      setIsLightMode(true);
+    }
+  }, [slug, form?.title]);
 
   // Auto-fill logged in user info
   useEffect(() => {
@@ -285,50 +308,108 @@ export default function FormResponderPage() {
     );
   }
 
+  // Dynamic design tokens for Light (Modo Sol/Campo) vs Dark Mode
+  const bgMain = isLightMode ? 'bg-[#F4F6F9] text-slate-900' : 'bg-[#06080D] text-white';
+  const cardOuter = isLightMode
+    ? 'rounded-[26px] p-1.5 bg-slate-200/70 border border-slate-200 shadow-sm'
+    : 'rounded-[30px] p-2 bg-gradient-to-b from-white/[0.1] to-white/[0.02] border border-white/[0.08] backdrop-blur-2xl';
+  const cardInner = isLightMode
+    ? 'rounded-[22px] p-6 sm:p-8 bg-white border border-slate-200 shadow-md shadow-slate-200/50'
+    : 'rounded-[24px] p-6 sm:p-8 bg-[#090C13]/95 border border-white/[0.05]';
+  const subCardOuter = isLightMode
+    ? 'rounded-[24px] p-1.5 bg-slate-200/50 border border-slate-200/80 shadow-sm'
+    : 'rounded-[28px] p-2 bg-gradient-to-b from-white/[0.08] to-white/[0.02] border border-white/[0.06] backdrop-blur-xl';
+  const subCardInner = isLightMode
+    ? 'rounded-[20px] p-6 bg-white border border-slate-200 shadow-sm'
+    : 'rounded-[22px] p-6 bg-[#090C13]/90 border border-white/[0.04]';
+  const textHeading = isLightMode ? 'text-slate-900' : 'text-white';
+  const textMuted = isLightMode ? 'text-slate-500' : 'text-neutral-400';
+  const inputStyle = isLightMode
+    ? 'w-full h-11 px-4 rounded-xl bg-slate-50 border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-red-500 outline-none transition-all'
+    : 'w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:border-red-500 transition-colors outline-none';
+  const textareaStyle = isLightMode
+    ? 'w-full p-3.5 rounded-xl bg-slate-50 border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-red-500 outline-none resize-y transition-all'
+    : 'w-full p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:border-red-500 transition-colors outline-none resize-y';
+  const selectStyle = isLightMode
+    ? 'w-full h-11 px-4 rounded-xl bg-slate-50 border border-slate-300 text-sm text-slate-900 focus:bg-white focus:border-red-500 outline-none transition-all cursor-pointer'
+    : 'w-full h-11 px-4 rounded-xl bg-[#090C13] border border-white/10 text-sm text-white focus:border-red-500 transition-colors outline-none cursor-pointer';
+  const optionSelectClass = isLightMode ? 'bg-white text-slate-900' : 'bg-[#0D111A] text-white';
+
   return (
-    <div className="min-h-screen bg-[#06080D] text-white p-4 sm:p-8 relative selection:bg-red-500/30">
-      <GsapSecurityBackground />
+    <div className={`min-h-screen ${bgMain} p-4 sm:p-8 relative selection:bg-red-500/30 transition-colors duration-200`}>
+      {!isLightMode && <GsapSecurityBackground />}
 
       <main className="relative z-10 max-w-3xl mx-auto space-y-6 pt-4 pb-20">
         {/* Brand Header */}
-        <header className="flex items-center justify-between border-b border-white/[0.08] pb-5">
+        <header className={`flex flex-wrap items-center justify-between gap-3 border-b pb-5 transition-colors ${isLightMode ? 'border-slate-200' : 'border-white/[0.08]'}`}>
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-lg shadow-red-600/20 flex items-center justify-center">
+            <div className="w-11 h-11 rounded-full p-1 bg-gradient-to-br from-[#EE2C24] via-[#D11A12] to-[#800A05] border border-red-500/40 shadow-lg shadow-red-600/20 flex items-center justify-center shrink-0">
               <img src="/claro-icon.png" alt="Claro" className="w-full h-full object-contain" />
             </div>
             <div>
-              <div className="font-extrabold text-sm tracking-tight text-white">
-                Gestão <span className="text-red-500">REDE EXTERNA</span>
+              <div className={`font-extrabold text-sm tracking-tight ${textHeading}`}>
+                Gestão <span className="text-red-600">REDE EXTERNA</span>
               </div>
-              <div className="text-[10px] text-neutral-400 uppercase tracking-widest font-mono">
+              <div className={`text-[10px] uppercase tracking-widest font-mono ${textMuted}`}>
                 Formulário Oficial de Campo
               </div>
             </div>
           </div>
 
-          <span className="text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full bg-white/[0.05] border border-white/10 text-neutral-300">
-            {form?.category || 'Inspeção'}
-          </span>
+          <div className="flex items-center gap-2">
+            {/* Botão de Alternar Modo Sol / Campo (Fundo Branco) vs Modo Escuro */}
+            <button
+              type="button"
+              onClick={() => setIsLightMode(!isLightMode)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                isLightMode
+                  ? 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
+                  : 'bg-white/[0.08] hover:bg-white/[0.15] text-neutral-200 border border-white/10'
+              }`}
+              title="Alternar entre modo sol (fundo branco) e modo escuro"
+            >
+              {isLightMode ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  <span>Modo Sol (Fundo Branco)</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Modo Escuro</span>
+                </>
+              )}
+            </button>
+            <span className={`text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full border ${
+              isLightMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-white/[0.05] border-white/10 text-neutral-300'
+            }`}>
+              {form?.category || 'Inspeção'}
+            </span>
+          </div>
         </header>
 
         {submitSuccess ? (
           /* Confirmation Success Screen */
-          <div className="rounded-[32px] p-2 bg-gradient-to-b from-white/[0.12] via-white/[0.04] to-white/[0.02] border border-white/[0.08] shadow-2xl backdrop-blur-3xl animate-fade-in">
-            <div className="rounded-[26px] p-8 sm:p-12 bg-[#090C13]/95 border border-white/[0.05] text-center space-y-5">
-              <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/10">
+          <div className={cardOuter}>
+            <div className={`${cardInner} text-center space-y-5`}>
+              <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/10">
                 <CheckCircle2 className="w-10 h-10" />
               </div>
 
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-[0.2em] px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                <span className={`text-[10px] font-mono uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${
+                  isLightMode
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                }`}>
                   Protocolo: {protocol}
                 </span>
-                <h1 className="text-2xl font-black text-white tracking-tight mt-3">
+                <h1 className={`text-2xl font-black tracking-tight mt-3 ${textHeading}`}>
                   Resposta Registrada com Sucesso!
                 </h1>
-                <p className="text-xs text-neutral-400 mt-2 max-w-md mx-auto leading-relaxed">
+                <p className={`text-xs mt-2 max-w-md mx-auto leading-relaxed ${textMuted}`}>
                   As informações e evidências fotográficas foram salvas diretamente na base de dados do{' '}
-                  <strong className="text-white">Gestão Rede Externa Claro</strong>.
+                  <strong className={textHeading}>Gestão Rede Externa Claro</strong>.
                 </p>
               </div>
 
@@ -348,7 +429,11 @@ export default function FormResponderPage() {
                 <button
                   type="button"
                   onClick={() => navigate('/')}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-white font-semibold text-xs tracking-wide uppercase transition-colors border border-white/10 cursor-pointer"
+                  className={`w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-xs tracking-wide uppercase transition-colors border cursor-pointer ${
+                    isLightMode
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                      : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/10'
+                  }`}
                 >
                   Ir para o Portal
                 </button>
@@ -359,41 +444,49 @@ export default function FormResponderPage() {
           /* Form Content Card */
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Form Title & Instructions Card */}
-            <div className="rounded-[30px] p-2 bg-gradient-to-b from-white/[0.1] to-white/[0.02] border border-white/[0.08] backdrop-blur-2xl">
-              <div className="rounded-[24px] p-6 sm:p-8 bg-[#090C13]/95 border border-white/[0.05] space-y-3">
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+            <div className={cardOuter}>
+              <div className={`${cardInner} space-y-3`}>
+                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${textHeading}`}>
                   {form?.title}
                 </h1>
                 {form?.description && (
-                  <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed whitespace-pre-line border-t border-white/[0.06] pt-3">
+                  <p className={`text-xs sm:text-sm leading-relaxed whitespace-pre-line border-t pt-3 ${
+                    isLightMode ? 'text-slate-600 border-slate-200' : 'text-neutral-300 border-white/[0.06]'
+                  }`}>
                     {form.description}
                   </p>
                 )}
-                <div className="text-[11px] text-red-400 font-medium pt-1">
+                <div className="text-[11px] text-red-500 font-semibold pt-1">
                   * Indica campo de preenchimento obrigatório
                 </div>
               </div>
             </div>
 
             {error && (
-              <div className="p-4 rounded-2xl bg-red-950/40 border border-red-800/30 text-red-300 text-xs flex items-center gap-3">
+              <div className={`p-4 rounded-2xl border text-xs flex items-center gap-3 ${
+                isLightMode
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : 'bg-red-950/40 border-red-800/30 text-red-300'
+              }`}>
                 <AlertCircle className="w-5 h-5 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
             {/* Respondent Identification Card */}
-            <div className="rounded-[28px] p-2 bg-gradient-to-b from-white/[0.08] to-white/[0.02] border border-white/[0.06] backdrop-blur-xl">
-              <div className="rounded-[22px] p-6 bg-[#090C13]/90 border border-white/[0.04] space-y-4">
-                <div className="flex items-center gap-2.5 text-xs font-bold uppercase tracking-wider text-neutral-300 border-b border-white/[0.06] pb-3">
+            <div className={subCardOuter}>
+              <div className={`${subCardInner} space-y-4`}>
+                <div className={`flex items-center gap-2.5 text-xs font-bold uppercase tracking-wider border-b pb-3 ${
+                  isLightMode ? 'text-slate-700 border-slate-200' : 'text-neutral-300 border-white/[0.06]'
+                }`}>
                   <User className="w-4 h-4 text-red-500" />
                   <span>Identificação do Técnico / Colaborador</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
-                      Nome Completo do Técnico <span className="text-red-400">*</span>
+                    <label className={`block text-xs font-semibold mb-1.5 ${isLightMode ? 'text-slate-700' : 'text-neutral-300'}`}>
+                      Nome Completo do Técnico <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -401,12 +494,12 @@ export default function FormResponderPage() {
                       placeholder="Ex: João Silva da Silva"
                       value={technicianName}
                       onChange={(e) => setTechnicianName(e.target.value)}
-                      className="w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:border-red-500 transition-colors outline-none"
+                      className={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                    <label className={`block text-xs font-semibold mb-1.5 ${isLightMode ? 'text-slate-700' : 'text-neutral-300'}`}>
                       Telefone / WhatsApp / TOA (Opcional)
                     </label>
                     <input
@@ -414,7 +507,7 @@ export default function FormResponderPage() {
                       placeholder="Ex: (21) 98888-7777 ou Login TOA"
                       value={technicianPhone}
                       onChange={(e) => setTechnicianPhone(e.target.value)}
-                      className="w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:border-red-500 transition-colors outline-none"
+                      className={inputStyle}
                     />
                   </div>
                 </div>
@@ -425,14 +518,11 @@ export default function FormResponderPage() {
             {form?.questions && form.questions.length > 0 ? (
               <div className="space-y-4">
                 {form.questions.map((q, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-[28px] p-2 bg-gradient-to-b from-white/[0.08] to-white/[0.02] border border-white/[0.06] backdrop-blur-xl"
-                  >
-                    <div className="rounded-[22px] p-6 bg-[#090C13]/90 border border-white/[0.04] space-y-3">
+                  <div key={idx} className={subCardOuter}>
+                    <div className={`${subCardInner} space-y-3`}>
                       <div className="flex items-start justify-between gap-3">
-                        <label className="text-sm font-bold text-white leading-snug">
-                          <span className="text-neutral-400 font-mono text-xs mr-2">
+                        <label className={`text-sm font-bold leading-snug ${textHeading}`}>
+                          <span className={`font-mono text-xs mr-2 ${textMuted}`}>
                             {idx + 1}.
                           </span>
                           {q.title}
@@ -448,7 +538,7 @@ export default function FormResponderPage() {
                           placeholder="Sua resposta..."
                           value={answers[q.title] || ''}
                           onChange={(e) => handleAnswerChange(q.title, e.target.value)}
-                          className="w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:border-red-500 transition-colors outline-none"
+                          className={inputStyle}
                         />
                       )}
 
@@ -459,32 +549,39 @@ export default function FormResponderPage() {
                           placeholder="Digite detalhadamente..."
                           value={answers[q.title] || ''}
                           onChange={(e) => handleAnswerChange(q.title, e.target.value)}
-                          className="w-full p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:border-red-500 transition-colors outline-none resize-y"
+                          className={textareaStyle}
                         />
                       )}
 
                       {q.type === 'radio' && q.options && (
                         <div className="space-y-2 pt-1">
-                          {q.options.map((opt, oIdx) => (
-                            <label
-                              key={oIdx}
-                              className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                                answers[q.title] === opt
-                                  ? 'bg-red-950/20 border-red-500/40 text-white'
-                                  : 'bg-white/[0.02] border-white/[0.06] text-neutral-300 hover:bg-white/[0.04]'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name={`q_${idx}`}
-                                required={q.required}
-                                checked={answers[q.title] === opt}
-                                onChange={() => handleAnswerChange(q.title, opt)}
-                                className="w-4 h-4 accent-red-600"
-                              />
-                              <span className="text-xs font-medium">{opt}</span>
-                            </label>
-                          ))}
+                          {q.options.map((opt, oIdx) => {
+                            const isSelected = answers[q.title] === opt;
+                            return (
+                              <label
+                                key={oIdx}
+                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
+                                  isSelected
+                                    ? isLightMode
+                                      ? 'bg-red-50 border-red-500 text-red-950 font-bold shadow-sm'
+                                      : 'bg-red-950/20 border-red-500/40 text-white font-semibold'
+                                    : isLightMode
+                                      ? 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      : 'bg-white/[0.02] border-white/[0.06] text-neutral-300 hover:bg-white/[0.04]'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`q_${idx}`}
+                                  required={q.required}
+                                  checked={isSelected}
+                                  onChange={() => handleAnswerChange(q.title, opt)}
+                                  className="w-4 h-4 accent-red-600"
+                                />
+                                <span className="text-xs font-medium">{opt}</span>
+                              </label>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -498,8 +595,12 @@ export default function FormResponderPage() {
                                 key={oIdx}
                                 className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
                                   isChecked
-                                    ? 'bg-red-950/20 border-red-500/40 text-white'
-                                    : 'bg-white/[0.02] border-white/[0.06] text-neutral-300 hover:bg-white/[0.04]'
+                                    ? isLightMode
+                                      ? 'bg-red-50 border-red-500 text-red-950 font-bold shadow-sm'
+                                      : 'bg-red-950/20 border-red-500/40 text-white font-semibold'
+                                    : isLightMode
+                                      ? 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      : 'bg-white/[0.02] border-white/[0.06] text-neutral-300 hover:bg-white/[0.04]'
                                 }`}
                               >
                                 <input
@@ -520,13 +621,13 @@ export default function FormResponderPage() {
                           required={q.required}
                           value={answers[q.title] || ''}
                           onChange={(e) => handleAnswerChange(q.title, e.target.value)}
-                          className="w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white focus:border-red-500 transition-colors outline-none cursor-pointer"
+                          className={selectStyle}
                         >
-                          <option value="" className="bg-[#0D111A]">
+                          <option value="" className={optionSelectClass}>
                             Selecione uma opção...
                           </option>
                           {q.options.map((opt, oIdx) => (
-                            <option key={oIdx} value={opt} className="bg-[#0D111A]">
+                            <option key={oIdx} value={opt} className={optionSelectClass}>
                               {opt}
                             </option>
                           ))}
@@ -539,7 +640,7 @@ export default function FormResponderPage() {
                           required={q.required}
                           value={answers[q.title] || ''}
                           onChange={(e) => handleAnswerChange(q.title, e.target.value)}
-                          className="w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white focus:border-red-500 transition-colors outline-none"
+                          className={inputStyle}
                         />
                       )}
 
@@ -549,33 +650,40 @@ export default function FormResponderPage() {
                           required={q.required}
                           value={answers[q.title] || ''}
                           onChange={(e) => handleAnswerChange(q.title, e.target.value)}
-                          className="w-full h-11 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white focus:border-red-500 transition-colors outline-none"
+                          className={inputStyle}
                         />
                       )}
 
                       {q.type === 'scale' && (
                         <div className="flex items-center justify-between gap-1 sm:gap-2 pt-2 overflow-x-auto pb-1">
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                            <button
-                              key={num}
-                              type="button"
-                              onClick={() => handleAnswerChange(q.title, String(num))}
-                              className={`flex-1 min-w-[36px] h-11 rounded-xl text-xs font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${
-                                answers[q.title] === String(num)
-                                  ? 'bg-red-600 text-white shadow-lg shadow-red-600/30 scale-105 border border-red-500'
-                                  : 'bg-white/[0.03] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/[0.08]'
-                              }`}
-                            >
-                              {num}
-                            </button>
-                          ))}
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+                            const isSelected = answers[q.title] === String(num);
+                            return (
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => handleAnswerChange(q.title, String(num))}
+                                className={`flex-1 min-w-[36px] h-11 rounded-xl text-xs font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-red-600 text-white shadow-lg shadow-red-600/30 scale-105 border border-red-500'
+                                    : isLightMode
+                                      ? 'bg-slate-100 border border-slate-300 text-slate-700 hover:bg-slate-200'
+                                      : 'bg-white/[0.03] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/[0.08]'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
 
                       {q.type === 'file' && (
                         <div className="space-y-3 pt-1">
-                          {filePreviews[q.title] ? (
-                            <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/40 max-w-sm">
+                          {files[q.title] && filePreviews[q.title] ? (
+                            <div className={`relative rounded-2xl overflow-hidden border max-w-sm ${
+                              isLightMode ? 'border-slate-300 bg-slate-100' : 'border-white/15 bg-black/40'
+                            }`}>
                               <img
                                 src={filePreviews[q.title]}
                                 alt="Evidência"
@@ -585,35 +693,76 @@ export default function FormResponderPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveFile(q.title)}
-                                  className="p-1.5 rounded-lg bg-black/60 hover:bg-black text-white text-xs backdrop-blur-md transition-colors cursor-pointer"
+                                  className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white text-xs backdrop-blur-md transition-colors cursor-pointer shadow-md"
                                   title="Remover foto"
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
                               </div>
-                              <div className="p-2.5 text-[11px] text-neutral-300 truncate bg-black/70">
+                              <div className={`p-2.5 text-xs truncate font-medium ${
+                                isLightMode ? 'bg-white text-slate-800 border-t border-slate-200' : 'bg-black/70 text-neutral-300'
+                              }`}>
                                 {files[q.title]?.name}
                               </div>
                             </div>
                           ) : (
-                            <label className="flex flex-col items-center justify-center p-6 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] hover:bg-white/[0.04] transition-all cursor-pointer group">
-                              <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/10 text-neutral-300 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-                                <Camera className="w-6 h-6 text-red-500" />
+                            <div className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center text-center gap-3 transition-all ${
+                              isLightMode
+                                ? 'border-slate-300 bg-slate-50/70 hover:bg-slate-100/60'
+                                : 'border-white/15 bg-white/[0.02] hover:bg-white/[0.04]'
+                            }`}>
+                              <div className={`w-12 h-12 rounded-xl border flex items-center justify-center ${
+                                isLightMode
+                                  ? 'bg-white border-slate-200 text-red-600 shadow-sm'
+                                  : 'bg-white/[0.04] border-white/10 text-red-500'
+                              }`}>
+                                <Camera className="w-6 h-6" />
                               </div>
-                              <span className="text-xs font-semibold text-white">
-                                Tirar Foto ou Anexar Arquivo
-                              </span>
-                              <span className="text-[11px] text-neutral-400 mt-0.5">
-                                Clique para abrir a câmera ou galeria do celular
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={(e) => handleFileSelect(q.title, e)}
-                                className="hidden"
-                              />
-                            </label>
+
+                              <div>
+                                <span className={`text-xs font-bold block ${textHeading}`}>
+                                  Anexar Foto de Evidência
+                                </span>
+                                <span className={`text-[11px] block mt-0.5 ${textMuted}`}>
+                                  Tire uma foto na hora ou escolha uma foto já salva na sua galeria
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2 w-full max-w-sm">
+                                {/* Botão 1: Câmera Direta */}
+                                <label className={`w-full sm:flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border font-bold text-xs transition-all cursor-pointer shadow-sm active:scale-[0.98] ${
+                                  isLightMode
+                                    ? 'bg-red-50 hover:bg-red-100 border-red-200 text-red-700'
+                                    : 'bg-red-600/20 hover:bg-red-600/30 border-red-500/40 text-red-300'
+                                }`}>
+                                  <Camera className="w-4 h-4 shrink-0" />
+                                  <span>Tirar Foto</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={(e) => handleFileSelect(q.title, e)}
+                                    className="hidden"
+                                  />
+                                </label>
+
+                                {/* Botão 2: Galeria / Arquivos (Sem capture!) */}
+                                <label className={`w-full sm:flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border font-bold text-xs transition-all cursor-pointer shadow-sm active:scale-[0.98] ${
+                                  isLightMode
+                                    ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800'
+                                    : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/15 text-white'
+                                }`}>
+                                  <ImageIcon className="w-4 h-4 shrink-0" />
+                                  <span>Galeria / Arquivo</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => handleFileSelect(q.title, e)}
+                                    className="hidden"
+                                  />
+                                </label>
+                              </div>
+                            </div>
                           )}
                         </div>
                       )}
@@ -623,13 +772,13 @@ export default function FormResponderPage() {
               </div>
             ) : (
               /* Fallback if no questions are converted yet */
-              <div className="rounded-[28px] p-2 bg-gradient-to-b from-white/[0.08] to-white/[0.02] border border-white/[0.06] backdrop-blur-xl">
-                <div className="rounded-[22px] p-8 bg-[#090C13]/90 border border-white/[0.04] text-center space-y-3">
-                  <FileText className="w-10 h-10 text-neutral-400 mx-auto" />
-                  <p className="text-sm font-semibold text-white">
+              <div className={subCardOuter}>
+                <div className={`${subCardInner} text-center space-y-3`}>
+                  <FileText className={`w-10 h-10 mx-auto ${textMuted}`} />
+                  <p className={`text-sm font-semibold ${textHeading}`}>
                     Formulário sem perguntas configuradas.
                   </p>
-                  <p className="text-xs text-neutral-400">
+                  <p className={`text-xs ${textMuted}`}>
                     O coordenador ainda não adicionou ou converteu perguntas para este formulário.
                   </p>
                 </div>
