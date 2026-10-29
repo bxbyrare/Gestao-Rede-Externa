@@ -20,6 +20,7 @@ import BuscadorPage from './pages/BuscadorPage';
 import AuditoriaPage from './pages/AuditoriaPage';
 import AceitacaoPage from './pages/AceitacaoPage';
 import PosEventoPage from './pages/PosEventoPage';
+import RalQualidadePage from './pages/RalQualidadePage';
 import FormulariosPage from './pages/FormulariosPage';
 import EscalaPage from './pages/EscalaPage';
 import RotasPage from './pages/RotasPage';
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="auditoria" element={<AuditoriaPage />} />
             <Route path="aceitacao" element={<AceitacaoPage />} />
             <Route path="pos-evento" element={<PosEventoPage />} />
+            <Route path="ral-qualidade" element={<RalQualidadePage />} />
             <Route path="mapa-eventos" element={<MapaEventosPage />} />
             <Route path="financeiro" element={<FinancePage />} />
             <Route path="escala" element={<EscalaPage />} />

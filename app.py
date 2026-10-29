@@ -2157,6 +2157,58 @@ def init_db():
             except Exception:
                 conn.rollback()
 
+        # 21.6. RAL de Qualidade (Atividades de Qualidade de Rede Externa Claro)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ral_qualidade (
+                id SERIAL PRIMARY KEY,
+                ticket_number VARCHAR(150) NOT NULL,
+                opening_date TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                designation TEXT NOT NULL,
+                area VARCHAR(150),
+                status VARCHAR(50) NOT NULL DEFAULT 'Em Andamento',
+                summary TEXT,
+                created_by VARCHAR(150),
+                created_by_id INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        for col, coltype in [
+            ('ticket_number', 'VARCHAR(150)'),
+            ('opening_date', 'TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP'),
+            ('designation', 'TEXT'),
+            ('area', 'VARCHAR(150)'),
+            ('status', "VARCHAR(50) DEFAULT 'Em Andamento'"),
+            ('summary', 'TEXT'),
+            ('created_by', 'VARCHAR(150)'),
+            ('created_by_id', 'INT'),
+            ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+            ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE ral_qualidade ADD COLUMN IF NOT EXISTS {col} {coltype};")
+            except Exception:
+                conn.rollback()
+
+        # Seed initial sample record from Claro field operation if empty
+        try:
+            cur.execute("SELECT COUNT(*) AS c FROM ral_qualidade;")
+            if cur.fetchone()['c'] == 0:
+                cur.execute("""
+                    INSERT INTO ral_qualidade (ticket_number, opening_date, designation, area, status, summary, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                """, (
+                    '139796',
+                    '2026-03-07 21:06:00',
+                    'SWAP ALTAREDE PTS X XERE',
+                    'BX1-FO',
+                    'Concluido',
+                    'Atividade de qualidade executada com alinhamento e medição conforme.',
+                    'Davi Rezende'
+                ))
+        except Exception:
+            conn.rollback()
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS system_live_alerts (
                 id SERIAL PRIMARY KEY,
@@ -2296,6 +2348,7 @@ ALL_PERMISSIONS = [
     'notificacoes.create', 'notificacoes.delete',
     'gerenciamento.create', 'gerenciamento.edit', 'gerenciamento.delete',
     'pos_eventos.create', 'pos_eventos.edit', 'pos_eventos.delete',
+    'ral_qualidade.create', 'ral_qualidade.edit', 'ral_qualidade.delete',
 ]
 
 def is_coordenador_role(username, role):
@@ -2370,8 +2423,8 @@ def user_has_permission(perm_key):
         return False
     if auth['is_master']:
         return True
-    # Operações de campo: criação de vistoria pós-evento é liberada para técnicos e operadores autenticados
-    if perm_key == 'pos_eventos.create':
+    # Operações de campo: criação de vistoria pós-evento e RAL de qualidade liberadas para operadores autenticados
+    if perm_key in ('pos_eventos.create', 'ral_qualidade.create'):
         return True
     return perm_key in auth['permissions']
 
@@ -2525,6 +2578,14 @@ def _resolve_required_permission(path, method):
         return 'pos_eventos.edit'
     if p.startswith('/api/pos-eventos/') and method == 'DELETE':
         return 'pos_eventos.delete'
+
+    # RAL de Qualidade
+    if p in ('/api/ral-qualidade', '/api/ral-qualidade/') and method == 'POST':
+        return 'ral_qualidade.create'
+    if p.startswith('/api/ral-qualidade/') and method == 'PUT':
+        return 'ral_qualidade.edit'
+    if p.startswith('/api/ral-qualidade/') and method == 'DELETE':
+        return 'ral_qualidade.delete'
 
     return None
 
@@ -11767,6 +11828,348 @@ def api_pos_eventos_export():
         print("Error exporting pos_eventos:", e)
         traceback.print_exc()
         return jsonify({"error": "Erro ao exportar tarefas pós evento."}), 500
+
+
+
+# ==============================================================================
+# RAL DE QUALIDADE - ATIVIDADES DE REDE EXTERNA CLARO BRASIL
+# ==============================================================================
+
+def format_ral_qualidade_row(r):
+    op_date = r.get('opening_date')
+    if hasattr(op_date, 'strftime'):
+        op_date_iso = op_date.strftime('%Y-%m-%dT%H:%M')
+        op_date_fmt = op_date.strftime('%d/%m/%Y %H:%M')
+        month_key = op_date.strftime('%Y-%m')
+        month_label = f"{PT_MONTHS_MAP.get(op_date.month, '')}/{op_date.strftime('%y')}"
+    elif isinstance(op_date, str) and len(op_date) >= 10:
+        op_date_iso = op_date[:16].replace(' ', 'T')
+        date_part = op_date[:10]
+        time_part = op_date[11:16] if len(op_date) >= 16 else '00:00'
+        parts = date_part.split('-')
+        if len(parts) == 3:
+            y, m, d = parts
+            op_date_fmt = f"{d}/{m}/{y} {time_part}"
+            month_key = f"{y}-{m}"
+            m_int = int(m) if m.isdigit() else 1
+            month_label = f"{PT_MONTHS_MAP.get(m_int, '')}/{y[-2:]}"
+        else:
+            op_date_fmt = op_date[:16]
+            month_key = ''
+            month_label = ''
+    else:
+        op_date_iso = ''
+        op_date_fmt = ''
+        month_key = ''
+        month_label = ''
+
+    return {
+        "id": r.get('id'),
+        "ticket_number": r.get('ticket_number') or '',
+        "opening_date": op_date_iso,
+        "opening_date_formatted": op_date_fmt,
+        "month_key": month_key,
+        "month_label": month_label,
+        "designation": r.get('designation') or '',
+        "area": r.get('area') or '',
+        "status": r.get('status') or 'Em Andamento',
+        "summary": r.get('summary') or '',
+        "created_by": format_person_name(r.get('created_by')) or '',
+        "created_at": r['created_at'].isoformat() if r.get('created_at') and hasattr(r['created_at'], 'isoformat') else str(r.get('created_at') or '')
+    }
+
+
+@app.route('/api/ral-qualidade', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/ral-qualidade/', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_ral_qualidade():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    if request.method == 'GET':
+        conn = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    id, ticket_number, opening_date, designation, area,
+                    status, summary, created_by, created_by_id,
+                    created_at, updated_at
+                FROM ral_qualidade
+                ORDER BY opening_date DESC, id DESC;
+            """)
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            month_filter = (request.args.get('month') or '').strip().lower()
+            status_filter = (request.args.get('status') or '').strip()
+            search_query = (request.args.get('search') or '').strip().lower()
+
+            results = []
+            for r in rows:
+                formatted = format_ral_qualidade_row(r)
+
+                if month_filter and month_filter != 'all' and month_filter != 'todos':
+                    if formatted['month_key'].lower() != month_filter and formatted['month_label'].lower() != month_filter:
+                        continue
+
+                if status_filter and status_filter != 'ALL':
+                    if formatted['status'].lower() != status_filter.lower():
+                        continue
+
+                if search_query:
+                    match_str = f"{formatted['ticket_number']} {formatted['designation']} {formatted['area']} {formatted['status']} {formatted['summary']}".lower()
+                    if search_query not in match_str:
+                        continue
+
+                results.append(formatted)
+
+            return jsonify(results)
+        except Exception as e:
+            if conn:
+                try: conn.close()
+                except Exception: pass
+            print("Error fetching ral_qualidade:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao carregar atividades do RAL de Qualidade."}), 500
+
+    # POST (Criar)
+    data = request.get_json(silent=True) or {}
+    ticket_number = (data.get('ticket_number') or '').strip()
+    opening_date = (data.get('opening_date') or '').strip()
+    designation = (data.get('designation') or '').strip()
+    area = (data.get('area') or '').strip()
+    status = (data.get('status') or 'Em Andamento').strip()
+    summary = (data.get('summary') or '').strip()
+
+    if not ticket_number:
+        return jsonify({"error": "O campo NÚMERO é obrigatório."}), 400
+    if not designation:
+        return jsonify({"error": "O campo DESIGNAÇÃO é obrigatório."}), 400
+
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        created_by_name = session.get('name') or session.get('user_name') or session.get('username') or 'Operador'
+        created_by_name = format_person_name(created_by_name)
+
+        cur.execute("""
+            INSERT INTO ral_qualidade (
+                ticket_number, opening_date, designation, area,
+                status, summary, created_by, created_by_id
+            ) VALUES (
+                %s, 
+                COALESCE(NULLIF(%s, '')::timestamp, CURRENT_TIMESTAMP),
+                %s, %s, %s, %s, %s, %s
+            ) RETURNING id, ticket_number, opening_date, designation, area, status, summary, created_by, created_at;
+        """, (
+            ticket_number,
+            opening_date if opening_date else None,
+            designation,
+            area,
+            status,
+            summary,
+            created_by_name,
+            session.get('user_id')
+        ))
+        new_row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        formatted = format_ral_qualidade_row(new_row)
+        log_action(session.get('user_id'), session.get('username'), f"Criou atividade RAL de Qualidade #{formatted['id']} (Ticket: {ticket_number})")
+        return jsonify(formatted), 201
+    except Exception as e:
+        if conn:
+            try: conn.rollback(); conn.close()
+            except Exception: pass
+        print("Error creating ral_qualidade:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao criar atividade no RAL de Qualidade."}), 500
+
+
+@app.route('/api/ral-qualidade/<int:item_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/ral-qualidade/<int:item_id>/', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'], strict_slashes=False)
+@login_required
+def api_ral_qualidade_detail(item_id):
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    conn = None
+    if request.method == 'GET':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, ticket_number, opening_date, designation, area,
+                       status, summary, created_by, created_by_id, created_at, updated_at
+                FROM ral_qualidade WHERE id = %s;
+            """, (item_id,))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            if not row:
+                return jsonify({"error": "Registro não encontrado."}), 404
+            return jsonify(format_ral_qualidade_row(row))
+        except Exception as e:
+            if conn:
+                try: conn.close()
+                except Exception: pass
+            return jsonify({"error": "Erro ao buscar registro."}), 500
+
+    if request.method == 'PUT':
+        data = request.get_json(silent=True) or {}
+        ticket_number = (data.get('ticket_number') or '').strip()
+        opening_date = (data.get('opening_date') or '').strip()
+        designation = (data.get('designation') or '').strip()
+        area = (data.get('area') or '').strip()
+        status = (data.get('status') or 'Em Andamento').strip()
+        summary = (data.get('summary') or '').strip()
+
+        if not ticket_number:
+            return jsonify({"error": "O campo NÚMERO é obrigatório."}), 400
+        if not designation:
+            return jsonify({"error": "O campo DESIGNAÇÃO é obrigatório."}), 400
+
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE ral_qualidade SET
+                    ticket_number = %s,
+                    opening_date = COALESCE(NULLIF(%s, '')::timestamp, opening_date),
+                    designation = %s,
+                    area = %s,
+                    status = %s,
+                    summary = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING id, ticket_number, opening_date, designation, area, status, summary, created_by, created_at;
+            """, (
+                ticket_number,
+                opening_date if opening_date else None,
+                designation,
+                area,
+                status,
+                summary,
+                item_id
+            ))
+            updated_row = cur.fetchone()
+            if not updated_row:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Registro não encontrado para atualização."}), 404
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            formatted = format_ral_qualidade_row(updated_row)
+            log_action(session.get('user_id'), session.get('username'), f"Atualizou atividade RAL de Qualidade #{item_id} (Ticket: {ticket_number})")
+            return jsonify(formatted), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback(); conn.close()
+                except Exception: pass
+            print("Error updating ral_qualidade:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao atualizar registro."}), 500
+
+    if request.method == 'DELETE':
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM ral_qualidade WHERE id = %s RETURNING id, ticket_number;", (item_id,))
+            del_row = cur.fetchone()
+            if not del_row:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Registro não encontrado para remoção."}), 404
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_action(session.get('user_id'), session.get('username'), f"Excluiu atividade RAL de Qualidade #{item_id} (Ticket: {del_row['ticket_number']})")
+            return jsonify({"success": True, "message": "Atividade removida com sucesso."}), 200
+        except Exception as e:
+            if conn:
+                try: conn.rollback(); conn.close()
+                except Exception: pass
+            print("Error deleting ral_qualidade:", e)
+            traceback.print_exc()
+            return jsonify({"error": "Erro ao remover registro."}), 500
+
+
+@app.route('/api/ral-qualidade/export', methods=['GET'], strict_slashes=False)
+@login_required
+def api_ral_qualidade_export():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                id, ticket_number, opening_date, designation, area,
+                status, summary, created_by, created_at
+            FROM ral_qualidade
+            ORDER BY opening_date DESC, id DESC;
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        month_filter = (request.args.get('month') or '').strip().lower()
+
+        output = io.StringIO()
+        output.write('\ufeff')  # UTF-8 BOM for Excel
+        writer = safe_csv_writer(output, delimiter=';')
+
+        # Header matching image specifications
+        writer.writerow([
+            'NÚMERO',
+            'DATA ABERTURA',
+            'DESIGNAÇÃO',
+            'ÁREA',
+            'STATUS',
+            'RESUMO',
+            'CADASTRADO POR',
+            'DATA DE CADASTRO'
+        ])
+
+        for r in rows:
+            formatted = format_ral_qualidade_row(r)
+            if month_filter and month_filter != 'all' and month_filter != 'todos':
+                if formatted['month_key'].lower() != month_filter and formatted['month_label'].lower() != month_filter:
+                    continue
+
+            writer.writerow([
+                formatted['ticket_number'],
+                formatted['opening_date_formatted'],
+                formatted['designation'],
+                formatted['area'],
+                formatted['status'],
+                formatted['summary'],
+                formatted['created_by'],
+                formatted['created_at'][:19].replace('T', ' ')
+            ])
+
+        output.seek(0)
+        filename = f"ral_qualidade_claro_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+    except Exception as e:
+        print("Error exporting ral_qualidade:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Erro ao exportar tarefas do RAL de Qualidade."}), 500
 
 
 

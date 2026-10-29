@@ -4,7 +4,7 @@ import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, FolderKanban, FileText, Route as RouteIcon, BarChart3,
   Settings, Menu, X, LogOut, BellRing, ShieldCheck, CheckSquare,
-  UserCheck, AlertTriangle, ArrowRight, CalendarCheck,
+  UserCheck, AlertTriangle, ArrowRight, CalendarCheck, FileCheck2,
 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import GsapSecurityBackground from './GsapSecurityBackground';
@@ -45,6 +45,7 @@ const NAV_ITEMS = [
   { to: '/auditoria', label: 'Auditoria', icon: ShieldCheck },
   { to: '/aceitacao', label: 'Aceitação', icon: CheckSquare },
   { to: '/pos-evento', label: 'Pós Evento', icon: CalendarCheck },
+  { to: '/ral-qualidade', label: 'RAL de Qualidade', icon: FileCheck2 },
   { to: '/mapa-eventos', label: 'Mapa de Eventos', icon: MapPinned },
   { to: '/avaliacao', label: 'Avaliação', icon: ClipboardCheck },
   { to: '/projetos', label: 'Projetos', icon: FolderKanban },
