@@ -810,7 +810,7 @@ def set_security_headers(response):
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=(), payment=()'
+    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(self "*"), microphone=(), payment=()'
     response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
     response.headers['Server'] = 'Secure-Gateway'
     response.headers['X-Robots-Tag'] = 'noindex, nofollow, noarchive, nosnippet'
@@ -2858,65 +2858,117 @@ def parse_google_form(url):
         return None, "Protocolo inválido. Use https://."
 
     hostname = (parsed_u.hostname or '').lower()
-    if hostname not in ('forms.gle', 'docs.google.com'):
+    if 'forms.gle' not in hostname and 'docs.google.com' not in hostname and 'forms.google.com' not in hostname:
         return None, "Domínio inválido. Apenas links oficiais forms.gle ou docs.google.com são aceitos."
 
-    if hostname == 'docs.google.com' and not parsed_u.path.startswith('/forms/'):
-        return None, "Caminho inválido para docs.google.com. Deve iniciar com /forms/."
-
-    # Normalize Google Form URL
-    if not url.endswith('/viewform') and '/viewform' not in url and not '?usp=' in url:
+    # Se for docs.google.com e estiver em modo /edit, converter para /viewform
+    if 'docs.google.com' in hostname:
         if '/edit' in url:
             url = url.split('/edit')[0] + '/viewform'
-        elif not url.endswith('/'):
+        elif not url.endswith('/viewform') and '/viewform' not in url and not url.endswith('/') and '?usp=' not in url:
             url = url + '/viewform'
+    # Atenção: links forms.gle NUNCA devem receber /viewform antes do redirecionamento!
 
-    req = urllib.request.Request(
-        url,
-        headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
-        }
-    )
+    session = requests.Session()
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Upgrade-Insecure-Requests': '1'
+    }
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            final_url = resp.geturl()
-            if 'accounts.google.com' in final_url or 'ServiceLogin' in final_url:
-                return None, "Formulário privado ou requer login. Por favor, acesse o Google Forms e altere as permissões para PÚBLICO (qualquer pessoa com o link pode responder)."
-            
-            html = resp.read().decode('utf-8', errors='ignore')
-    except urllib.error.HTTPError as e:
-        if e.code in [401, 403]:
-            return None, "Formulário privado ou requer login. Por favor, acesse o Google Forms e altere as permissões para PÚBLICO (qualquer pessoa com o link pode responder)."
-        return None, f"Erro de conexão com o Google Forms (HTTP {e.code}). Verifique o link e tente novamente."
+        resp = session.get(url, headers=headers, timeout=15, allow_redirects=True)
+        final_url = resp.url
+        if 'accounts.google.com' in final_url or 'ServiceLogin' in final_url:
+            return None, "Formulário privado ou requer login. Altere a privacidade do formulário Google para PÚBLICO (qualquer pessoa com o link pode responder)."
+        html = resp.text
     except Exception as e:
-        return None, f"Falha ao acessar o link do formulário: {e}"
+        return None, f"Falha ao conectar ao Google Forms: {e}"
 
-    if 'accounts.google.com' in html or ('Fazer login' in html and 'FB_PUBLIC_LOAD_DATA_' not in html):
-        return None, "Formulário privado ou requer login. Por favor, altere a privacidade do Google Form para PÚBLICO."
+    if 'accounts.google.com' in html and 'FB_PUBLIC_LOAD_DATA_' not in html:
+        return None, "Formulário privado ou requer login no Google. Por favor, torne o formulário público nas opções de compartilhamento do Google Forms."
 
-    # Search for FB_PUBLIC_LOAD_DATA_
-    match = re.search(r'FB_PUBLIC_LOAD_DATA_\s*=\s*(.*?);</script>', html, re.DOTALL)
-    if not match:
-        match = re.search(r'FB_PUBLIC_LOAD_DATA_\s*=\s*(\[.*?\]);', html, re.DOTALL)
+    # Localizar bloco FB_PUBLIC_LOAD_DATA_ com parser balanceado de colchetes
+    idx = html.find('FB_PUBLIC_LOAD_DATA_')
+    if idx == -1:
+        idx = html.find('FB_PUBLIC_LOAD_DATA')
+    if idx == -1:
+        return None, "Não foi possível extrair a estrutura das perguntas deste formulário. Verifique se o link é uma URL pública válida do Google Forms."
 
-    if not match:
-        return None, "Não foi possível extrair a estrutura das perguntas deste formulário. Verifique se o link é uma URL válida de resposta do Google Forms."
+    eq_idx = html.find('=', idx)
+    if eq_idx == -1:
+        return None, "Estrutura do formulário não reconhecida."
 
+    start_bracket = html.find('[', eq_idx)
+    if start_bracket == -1:
+        return None, "Estrutura de dados do formulário não encontrada."
+
+    count = 0
+    in_string = False
+    escape = False
+    quote_char = ''
+    end_bracket = -1
+
+    for i in range(start_bracket, len(html)):
+        c = html[i]
+        if escape:
+            escape = False
+            continue
+        if c == '\\':
+            escape = True
+            continue
+        if in_string:
+            if c == quote_char:
+                in_string = False
+            continue
+        if c in ('"', "'"):
+            in_string = True
+            quote_char = c
+            continue
+        if c == '[':
+            count += 1
+        elif c == ']':
+            count -= 1
+            if count == 0:
+                end_bracket = i + 1
+                break
+
+    if end_bracket == -1:
+        return None, "Estrutura JSON incompleta ou corrompida no Google Forms."
+
+    raw_json = html[start_bracket:end_bracket]
     try:
-        raw_json = match.group(1).strip()
         data = json.loads(raw_json)
     except Exception:
-        return None, "Erro ao processar dados internos do Google Forms. O modelo do formulário não pôde ser copiado."
+        try:
+            cleaned = re.sub(r',\s*]', ']', raw_json)
+            data = json.loads(cleaned)
+        except Exception:
+            return None, "Erro ao processar dados internos do Google Forms. O modelo do formulário não pôde ser copiado."
 
     try:
-        form_meta = data[1]
-        title = form_meta[8] if len(form_meta) > 8 and form_meta[8] else (form_meta[1] if len(form_meta) > 1 and isinstance(form_meta[1], str) else "Formulário Importado")
-        description = form_meta[0] if len(form_meta) > 0 and isinstance(form_meta[0], str) else ""
+        form_meta = data[1] if len(data) > 1 and isinstance(data[1], list) else []
+        title = ""
+        description = ""
+        if form_meta:
+            title = form_meta[8] if len(form_meta) > 8 and form_meta[8] else (form_meta[1] if len(form_meta) > 1 and isinstance(form_meta[1], str) else "")
+            description = form_meta[0] if len(form_meta) > 0 and isinstance(form_meta[0], str) else ""
+
+        if not title:
+            title_m = re.search(r'<title>(.*?)</title>', html, re.IGNORECASE)
+            if title_m:
+                t = title_m.group(1).replace('- Google Forms', '').replace('Google Forms', '').strip()
+                if t:
+                    title = t
+        if not title:
+            title = "Formulário Importado"
 
         questions_raw = []
-        if len(form_meta) > 1 and isinstance(form_meta[1], list):
+        if form_meta and len(form_meta) > 1 and isinstance(form_meta[1], list):
             questions_raw = form_meta[1]
 
         parsed_questions = []
@@ -4621,6 +4673,71 @@ def api_update_project(p_id):
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
+
+@app.route('/api/projects/<int:p_id>/upload', methods=['POST'])
+@login_required
+def api_upload_project_file(p_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM projects WHERE id = %s;", (p_id,))
+        project = cur.fetchone()
+        if not project:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Projeto não encontrado."}), 404
+
+        kmz_paths_list = [p for p in (project['kmz_path'] or '').split(';') if p]
+        pdf_paths_list = [p for p in (project['pdf_path'] or '').split(';') if p]
+
+        uploaded_count = 0
+        all_files = []
+        if 'files' in request.files:
+            all_files.extend(request.files.getlist('files'))
+        if 'file' in request.files:
+            all_files.extend(request.files.getlist('file'))
+        if 'kmz_file' in request.files:
+            all_files.extend(request.files.getlist('kmz_file'))
+        if 'pdf_file' in request.files:
+            all_files.extend(request.files.getlist('pdf_file'))
+
+        upload_dir = os.path.join(UPLOAD_FOLDER, 'projetos')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        for index, file in enumerate(all_files):
+            if file and file.filename != '' and allowed_file(file.filename, ALLOWED_PROJECT_EXTENSIONS):
+                ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+                is_map = ext in ('kmz', 'kml')
+                prefix = 'map' if is_map else 'doc'
+                filename = secure_filename(f"{prefix}_{int(time.time())}_{index}_{file.filename}")
+                file.save(os.path.join(upload_dir, filename))
+                if is_map:
+                    kmz_paths_list.append(f"projetos/{filename}")
+                else:
+                    pdf_paths_list.append(f"projetos/{filename}")
+                uploaded_count += 1
+
+        if uploaded_count == 0:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Nenhum arquivo válido enviado. Extensões aceitas: KMZ, KML, PDF, DOCX, XLSX, imagens."}), 400
+
+        cur.execute(
+            "UPDATE projects SET kmz_path = %s, pdf_path = %s WHERE id = %s;",
+            (';'.join(kmz_paths_list) if kmz_paths_list else None,
+             ';'.join(pdf_paths_list) if pdf_paths_list else None,
+             p_id)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(session['user_id'], session['username'], f"Adicionou {uploaded_count} arquivo(s) ao projeto #{p_id} ({project['name']})")
+        return jsonify({"success": True, "uploaded_count": uploaded_count, "message": f"{uploaded_count} arquivo(s) anexado(s) com sucesso!"})
+    except Exception as e:
+        print("Error uploading file to project:", e)
+        return jsonify({"error": f"Erro ao anexar arquivo: {str(e)}"}), 500
+
 # --- FAVORITES API ---
 @app.route('/api/favorites', methods=['GET'])
 @login_required
@@ -5307,15 +5424,13 @@ def api_form_detail(form_id):
             print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
-# --- SECURED INTERNAL FORM RESPONDER ROUTES (LOGIN & MFA REQUIRED) ---
+# --- PUBLIC FORM RESPONDER ROUTES (NO LOGIN OR AUTHENTICATOR REQUIRED) ---
 @app.route('/f/<slug>', methods=['GET'], strict_slashes=False)
-@login_required
 def public_form_view(slug):
     # Route into React SPA so the form is rendered natively inside Claro Gestão
     return serve_react_app()
 
 @app.route('/api/public/forms/<slug>', methods=['GET'], strict_slashes=False)
-@login_required
 def api_public_form_get(slug):
     try:
         conn = get_db()
@@ -5392,7 +5507,6 @@ def api_public_form_get(slug):
         return jsonify({"error": "Erro ao buscar dados do formulário."}), 500
 
 @app.route('/f/<slug>/submit', methods=['POST'], strict_slashes=False)
-@login_required
 def public_form_submit(slug):
     try:
         conn = get_db()

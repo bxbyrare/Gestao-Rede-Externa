@@ -23,7 +23,14 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 }
 
 function handleUnauthorized(path: string, status: number): boolean {
-  if (status === 401 && !path.startsWith('/api/auth/') && window.location.pathname !== '/login') {
+  if (
+    status === 401 &&
+    !path.startsWith('/api/auth/') &&
+    !path.startsWith('/api/public/') &&
+    !path.includes('/submit') &&
+    window.location.pathname !== '/login' &&
+    !window.location.pathname.startsWith('/f/')
+  ) {
     window.location.href = '/login';
     return true;
   }

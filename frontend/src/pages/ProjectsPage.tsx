@@ -1,10 +1,38 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Download, ExternalLink, File, FolderOpen, FolderPlus, Home, MessageCircle, Paperclip, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import {
+  ChevronRight,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  FolderPlus,
+  Home,
+  MessageCircle,
+  Paperclip,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+  Upload,
+  CheckCircle2,
+  MapPin,
+  FileText,
+  RefreshCw,
+  AlertCircle
+} from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Project, ProjectFolder } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Textarea } from '../components/ui';
 import Modal from '../components/Modal';
 import { hasPermission, useAuth } from '../state/AuthContext';
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
 
 interface Crumb { id: number | null; name: string }
 
@@ -78,8 +106,15 @@ export default function ProjectsPage() {
   const [downloadProjectModal, setDownloadProjectModal] = useState<Project | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectForm, setProjectForm] = useState(emptyProjectForm);
-  const [kmzFiles, setKmzFiles] = useState<FileList | null>(null);
-  const [pdfFiles, setPdfFiles] = useState<FileList | null>(null);
+  const [kmzFiles, setKmzFiles] = useState<File[]>([]);
+  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
+
+  // Modal de Upload Rápido de Arquivos
+  const [quickUploadProject, setQuickUploadProject] = useState<Project | null>(null);
+  const [quickFiles, setQuickFiles] = useState<File[]>([]);
+  const [isQuickUploading, setIsQuickUploading] = useState(false);
+  const [quickUploadError, setQuickUploadError] = useState<string | null>(null);
+  const [quickUploadSuccess, setQuickUploadSuccess] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -167,16 +202,16 @@ export default function ProjectsPage() {
   function openCreateProject() {
     setEditingProject(null);
     setProjectForm(emptyProjectForm);
-    setKmzFiles(null);
-    setPdfFiles(null);
+    setKmzFiles([]);
+    setPdfFiles([]);
     setError(null);
     setProjectModalOpen(true);
   }
   function openEditProject(p: Project) {
     setEditingProject(p);
     setProjectForm({ name: p.name, description: p.description || '', area: p.area || '' });
-    setKmzFiles(null);
-    setPdfFiles(null);
+    setKmzFiles([]);
+    setPdfFiles([]);
     setError(null);
     setProjectModalOpen(true);
   }
@@ -190,8 +225,8 @@ export default function ProjectsPage() {
       fd.append('description', projectForm.description);
       fd.append('area', projectForm.area);
       if (!editingProject) fd.append('folder_id', currentFolderId === null ? '' : String(currentFolderId));
-      if (kmzFiles) Array.from(kmzFiles).forEach((f) => fd.append('kmz_file', f));
-      if (pdfFiles) Array.from(pdfFiles).forEach((f) => fd.append('pdf_file', f));
+      kmzFiles.forEach((f) => fd.append('kmz_file', f));
+      pdfFiles.forEach((f) => fd.append('pdf_file', f));
       if (editingProject) await api.putFormData(`/api/projects/${editingProject.id}`, fd);
       else await api.postFormData('/api/projects', fd);
       setProjectModalOpen(false);
@@ -200,6 +235,32 @@ export default function ProjectsPage() {
       setError(err instanceof ApiError ? err.message : 'Erro ao salvar.');
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleQuickUpload() {
+    if (!quickUploadProject || quickFiles.length === 0) return;
+    setIsQuickUploading(true);
+    setQuickUploadError(null);
+    setQuickUploadSuccess(null);
+    try {
+      const fd = new FormData();
+      quickFiles.forEach((f) => fd.append('files', f));
+      const res = await api.postFormData<{ success: boolean; message: string }>(
+        `/api/projects/${quickUploadProject.id}/upload`,
+        fd
+      );
+      setQuickUploadSuccess(res.message);
+      load(currentFolderId);
+      setTimeout(() => {
+        setQuickUploadProject(null);
+        setQuickFiles([]);
+        setQuickUploadSuccess(null);
+      }, 1600);
+    } catch (err: any) {
+      setQuickUploadError(err.message || 'Erro ao anexar arquivo(s).');
+    } finally {
+      setIsQuickUploading(false);
     }
   }
   async function deleteProject(p: Project) {
@@ -373,6 +434,21 @@ export default function ProjectsPage() {
                 >
                   <Download className="w-3.5 h-3.5" /> Baixar
                 </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickUploadProject(p);
+                      setQuickFiles([]);
+                      setQuickUploadError(null);
+                      setQuickUploadSuccess(null);
+                    }}
+                    title="Carregar / Anexar arquivos neste projeto"
+                    className="h-8 px-2.5 rounded-full bg-[#e20613]/10 border border-[#e20613]/30 text-rose-400 hover:bg-[#e20613]/20 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Anexar
+                  </button>
+                )}
                 <a
                   href={`/p/project/${p.id}`}
                   target="_blank"
@@ -454,15 +530,289 @@ export default function ProjectsPage() {
         <Field label="Descrição">
           <Textarea rows={3} value={projectForm.description} onChange={(e) => setProjectForm((f) => ({ ...f, description: e.target.value }))} />
         </Field>
-        <Field label="Mapas (.kmz, .kml)" hint={editingProject?.kmz_path ? 'Enviar novos arquivos substitui os existentes.' : undefined}>
-          <input type="file" multiple accept=".kmz,.kml" onChange={(e) => setKmzFiles(e.target.files)} className="w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:h-9 file:px-4 file:rounded-full file:border-0 file:bg-white/[0.06] file:text-[var(--color-text)] file:text-sm" />
-        </Field>
-        <Field label="Documentos (PDF, planilhas...)" hint={editingProject?.pdf_path ? 'Enviar novos arquivos substitui os existentes.' : undefined}>
-          <input type="file" multiple onChange={(e) => setPdfFiles(e.target.files)} className="w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:h-9 file:px-4 file:rounded-full file:border-0 file:bg-white/[0.06] file:text-[var(--color-text)] file:text-sm" />
-        </Field>
+        {/* MAPAS (.KMZ, .KML) */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-white flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-rose-400" />
+              <span>Mapas de Rede (.kmz, .kml)</span>
+            </span>
+            <span className="text-[11px] font-normal text-zinc-400">{kmzFiles.length} selecionado(s)</span>
+          </label>
+          <div
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files) {
+                const dropped = Array.from(e.dataTransfer.files).filter(f => {
+                  const ext = f.name.toLowerCase();
+                  return ext.endsWith('.kmz') || ext.endsWith('.kml');
+                });
+                if (dropped.length > 0) setKmzFiles(prev => [...prev, ...dropped]);
+              }
+            }}
+            className="border-2 border-dashed border-white/10 hover:border-rose-500/50 rounded-xl p-4 text-center transition-colors bg-white/[0.02]"
+          >
+            <input
+              type="file"
+              id="kmz-upload-input"
+              multiple
+              accept=".kmz,.kml"
+              onChange={(e) => {
+                if (e.target.files) setKmzFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+              }}
+              className="hidden"
+            />
+            <label htmlFor="kmz-upload-input" className="cursor-pointer flex flex-col items-center gap-1.5">
+              <Upload className="w-5 h-5 text-rose-400" />
+              <span className="text-xs font-semibold text-white">Clique para selecionar mapas ou arraste aqui</span>
+              <span className="text-[11px] text-zinc-500">Aceita arquivos KMZ e KML do Google Earth / Autocad</span>
+            </label>
+          </div>
+
+          {kmzFiles.length > 0 && (
+            <div className="space-y-1.5 mt-2 max-h-32 overflow-y-auto">
+              {kmzFiles.map((file, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10 text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span className="text-white truncate font-medium">{file.name}</span>
+                    <span className="text-zinc-500 text-[10px] shrink-0">({formatBytes(file.size)})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKmzFiles(prev => prev.filter((_, i) => i !== idx))}
+                    className="p-1 text-zinc-400 hover:text-rose-400 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* DOCUMENTOS (PDF, EXCEL, ETC) */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-white flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-sky-400" />
+              <span>Documentos e Anexos (PDF, Planilhas, Imagens)</span>
+            </span>
+            <span className="text-[11px] font-normal text-zinc-400">{pdfFiles.length} selecionado(s)</span>
+          </label>
+          <div
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files) {
+                const dropped = Array.from(e.dataTransfer.files);
+                if (dropped.length > 0) setPdfFiles(prev => [...prev, ...dropped]);
+              }
+            }}
+            className="border-2 border-dashed border-white/10 hover:border-sky-500/50 rounded-xl p-4 text-center transition-colors bg-white/[0.02]"
+          >
+            <input
+              type="file"
+              id="pdf-upload-input"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip,.txt"
+              onChange={(e) => {
+                if (e.target.files) setPdfFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+              }}
+              className="hidden"
+            />
+            <label htmlFor="pdf-upload-input" className="cursor-pointer flex flex-col items-center gap-1.5">
+              <Upload className="w-5 h-5 text-sky-400" />
+              <span className="text-xs font-semibold text-white">Clique para selecionar documentos ou arraste aqui</span>
+              <span className="text-[11px] text-zinc-500">PDF, Excel (.xlsx), Word (.docx), Imagens e ZIP</span>
+            </label>
+          </div>
+
+          {pdfFiles.length > 0 && (
+            <div className="space-y-1.5 mt-2 max-h-32 overflow-y-auto">
+              {pdfFiles.map((file, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10 text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <FileText className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span className="text-white truncate font-medium">{file.name}</span>
+                    <span className="text-zinc-500 text-[10px] shrink-0">({formatBytes(file.size)})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPdfFiles(prev => prev.filter((_, i) => i !== idx))}
+                    className="p-1 text-zinc-400 hover:text-rose-400 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ANEXOS ATUAIS SE EM EDIÇÃO */}
         {editingProject && (editingProject.kmz_path || editingProject.pdf_path) && (
-          <div className="text-xs text-[var(--color-text-faint)] flex items-center gap-1.5"><File className="w-3.5 h-3.5" /> Anexos atuais: {attachmentCount(editingProject)}</div>
+          <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
+            <div className="text-xs font-bold text-white flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5 text-amber-400" />
+                <span>Anexos já salvos neste projeto:</span>
+              </span>
+              <span className="text-[11px] text-zinc-400">{attachmentCount(editingProject)} arquivo(s)</span>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {getProjectFiles(editingProject).map((f, i) => (
+                <a
+                  key={i}
+                  href={f.url}
+                  download={f.name}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-zinc-300 flex items-center gap-1.5 transition-colors"
+                >
+                  <Download className="w-3 h-3 text-sky-400" />
+                  <span className="truncate max-w-[160px]">{f.name}</span>
+                </a>
+              ))}
+            </div>
+          </div>
         )}
+      </Modal>
+
+      {/* MODAL DE UPLOAD RÁPIDO / CARREGAR ARQUIVO NO PROJETO */}
+      <Modal
+        open={Boolean(quickUploadProject)}
+        onClose={() => {
+          if (!isQuickUploading) {
+            setQuickUploadProject(null);
+            setQuickFiles([]);
+            setQuickUploadError(null);
+            setQuickUploadSuccess(null);
+          }
+        }}
+        title={`Carregar Arquivo: ${quickUploadProject?.name || ''}`}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setQuickUploadProject(null);
+                setQuickFiles([]);
+                setQuickUploadError(null);
+                setQuickUploadSuccess(null);
+              }}
+              disabled={isQuickUploading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleQuickUpload}
+              disabled={isQuickUploading || quickFiles.length === 0}
+              className="gap-2 !bg-[#e20613] !border-[#e20613] !text-white hover:!bg-[#c20511] font-bold"
+            >
+              {isQuickUploading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Enviando...</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  <span>Enviar Arquivos ({quickFiles.length})</span>
+                </>
+              )}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-zinc-400">
+            Adicione novos mapas ou documentos a este projeto. Eles ficarão disponíveis imediatamente para download e consulta técnica.
+          </p>
+
+          <div
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files) {
+                const dropped = Array.from(e.dataTransfer.files);
+                if (dropped.length > 0) setQuickFiles(prev => [...prev, ...dropped]);
+              }
+            }}
+            className="border-2 border-dashed border-white/15 hover:border-[#e20613]/60 rounded-2xl p-6 text-center transition-colors bg-white/[0.02]"
+          >
+            <input
+              type="file"
+              id="quick-project-upload-input"
+              multiple
+              onChange={(e) => {
+                if (e.target.files) setQuickFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+              }}
+              className="hidden"
+            />
+            <label htmlFor="quick-project-upload-input" className="cursor-pointer flex flex-col items-center gap-2">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 text-rose-400 flex items-center justify-center">
+                <Upload className="w-6 h-6" />
+              </div>
+              <div className="text-sm font-semibold text-white">
+                Clique para selecionar ou arraste arquivos aqui
+              </div>
+              <div className="text-xs text-zinc-500">
+                Suporta Mapas (.kmz, .kml), Documentos (.pdf, .xlsx, .docx) e Imagens
+              </div>
+            </label>
+          </div>
+
+          {quickFiles.length > 0 && (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="text-xs font-bold text-white flex items-center justify-between">
+                <span>Arquivos prontos para envio:</span>
+                <span className="text-zinc-400">{quickFiles.length} item(ns)</span>
+              </div>
+              {quickFiles.map((file, idx) => {
+                const isMap = file.name.toLowerCase().endsWith('.kmz') || file.name.toLowerCase().endsWith('.kml');
+                return (
+                  <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs">
+                    <div className="flex items-center gap-2.5 truncate">
+                      {isMap ? (
+                        <MapPin className="w-4 h-4 text-rose-400 shrink-0" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-sky-400 shrink-0" />
+                      )}
+                      <span className="text-white truncate font-medium">{file.name}</span>
+                      <span className="text-zinc-500 text-[10px] shrink-0">({formatBytes(file.size)})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQuickFiles(prev => prev.filter((_, i) => i !== idx))}
+                      className="p-1 text-zinc-400 hover:text-rose-400 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {quickUploadError && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{quickUploadError}</span>
+            </div>
+          )}
+
+          {quickUploadSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{quickUploadSuccess}</span>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

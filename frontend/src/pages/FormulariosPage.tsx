@@ -650,7 +650,7 @@ export default function FormulariosPage() {
           <Button
             type="submit"
             disabled={isQuickConverting || !quickLink.trim()}
-            className="whitespace-nowrap px-5 font-semibold text-xs flex items-center justify-center gap-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white shadow-md shadow-red-950/30"
+            className="whitespace-nowrap px-5 font-bold text-xs flex items-center justify-center gap-2 !bg-[#e20613] hover:!bg-[#c20511] !text-white disabled:!bg-zinc-800 disabled:!text-zinc-500 disabled:!border-zinc-700 shadow-md shadow-red-950/30 transition-all"
           >
             {isQuickConverting ? (
               <>

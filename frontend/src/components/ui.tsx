@@ -35,7 +35,7 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   const variants: Record<ButtonVariant, string> = {
-    primary: 'bg-white hover:bg-neutral-100 text-black font-semibold shadow-[0_4px_16px_rgba(255,255,255,0.12)] border border-transparent',
+    primary: 'bg-[#e20613] hover:bg-[#c20511] text-white font-bold shadow-lg shadow-[#e20613]/25 border border-transparent',
     outline: 'bg-white/[0.03] border border-white/10 text-white hover:bg-white/[0.08] hover:border-white/20',
     ghost: 'bg-transparent text-neutral-400 hover:text-white hover:bg-white/[0.04]',
     danger: 'bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-500/25',
