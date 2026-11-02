@@ -2604,7 +2604,7 @@ def _resolve_required_permission(path, method):
         return 'pos_eventos.delete'
 
     # RAL de Qualidade
-    if p in ('/api/ral-qualidade', '/api/ral-qualidade/') and method == 'POST':
+    if p in ('/api/ral-qualidade', '/api/ral-qualidade/', '/api/ral-qualidade/import') and method == 'POST':
         return 'ral_qualidade.create'
     if p.startswith('/api/ral-qualidade/') and method == 'PUT':
         return 'ral_qualidade.edit'
@@ -12221,6 +12221,169 @@ def api_ral_qualidade_export():
         print("Error exporting ral_qualidade:", e)
         traceback.print_exc()
         return jsonify({"error": "Erro ao exportar tarefas do RAL de Qualidade."}), 500
+
+
+@app.route('/api/ral-qualidade/import', methods=['POST'], strict_slashes=False)
+@login_required
+def api_ral_qualidade_import():
+    conn = None
+    try:
+        import unicodedata
+        content = None
+        file = request.files.get('file')
+        if file and file.filename:
+            raw_bytes = file.read()
+            for enc in ('utf-8-sig', 'utf-8', 'latin1', 'cp1252'):
+                try:
+                    content = raw_bytes.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+        else:
+            data = request.get_json(silent=True) or request.form or {}
+            content = data.get('csv_data', '') or data.get('content', '')
+
+        if not content or not content.strip():
+            return jsonify({"error": "Nenhum arquivo ou dado CSV fornecido para importação."}), 400
+
+        lines = [l for l in content.splitlines() if l.strip()]
+        if not lines:
+            return jsonify({"error": "O arquivo CSV está vazio."}), 400
+
+        # Sniff delimiter
+        delims = [';', ',', '\t', '|']
+        delim_counts = {d: lines[0].count(d) for d in delims}
+        best_delim = max(delim_counts, key=delim_counts.get)
+        if delim_counts[best_delim] == 0:
+            best_delim = ';'
+
+        reader = csv.reader(io.StringIO(content), delimiter=best_delim)
+        try:
+            header_row = next(reader)
+        except StopIteration:
+            return jsonify({"error": "Cabeçalho CSV ausente ou inválido."}), 400
+
+        def _norm_col(s):
+            if not s: return ''
+            n = unicodedata.normalize('NFKD', str(s))
+            return ''.join(c for c in n if not unicodedata.combining(c)).strip().upper()
+
+        norm_headers = [_norm_col(h) for h in header_row]
+
+        num_idx = -1
+        date_idx = -1
+        desig_idx = -1
+        area_idx = -1
+        obs_idx = -1
+
+        for idx, h in enumerate(norm_headers):
+            if h in ['NUMERO', 'TICKET', 'N', 'TICKET_NUMBER', 'ID']:
+                if num_idx == -1: num_idx = idx
+            elif 'ABERTURA' in h or 'OPENING' in h:
+                if date_idx == -1: date_idx = idx
+            elif 'DESIGNAC' in h or 'DESIG' in h or 'TRECHO' in h:
+                if desig_idx == -1: desig_idx = idx
+            elif 'AREA' in h or 'REGIAO' in h:
+                if area_idx == -1: area_idx = idx
+            elif 'OBS' in h or 'RESUMO' in h or 'SUMMARY' in h or 'OBSERVAC' in h:
+                if obs_idx == -1: obs_idx = idx
+
+        if num_idx == -1:
+            return jsonify({
+                "error": "Coluna 'Número' (ou 'NÚMERO') não encontrada no cabeçalho do arquivo CSV."
+            }), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        # Obter todos os números de ticket já existentes para deduplicação
+        cur.execute("SELECT LOWER(TRIM(ticket_number)) FROM ral_qualidade WHERE ticket_number IS NOT NULL;")
+        existing_tickets = set(r[0] for r in cur.fetchall() if r[0])
+
+        created_by_name = session.get('name') or session.get('user_name') or session.get('username') or 'Importação Automática'
+        created_by_name = format_person_name(created_by_name)
+        user_id = session.get('user_id')
+
+        created_count = 0
+        skipped_count = 0
+        total_rows = 0
+
+        for row in reader:
+            if not row or not any(row):
+                continue
+            total_rows += 1
+
+            ticket_num = row[num_idx].strip() if num_idx < len(row) else ''
+            if not ticket_num:
+                skipped_count += 1
+                continue
+
+            ticket_key = ticket_num.lower()
+            if ticket_key in existing_tickets:
+                skipped_count += 1
+                continue
+
+            raw_date = row[date_idx].strip() if (date_idx != -1 and date_idx < len(row)) else ''
+            opening_date_val = None
+            if raw_date:
+                for fmt in ('%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y',
+                            '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+                    try:
+                        dt = datetime.datetime.strptime(raw_date, fmt)
+                        opening_date_val = dt.strftime('%Y-%m-%d %H:%M:%S')
+                        break
+                    except ValueError:
+                        pass
+
+            desig_val = row[desig_idx].strip() if (desig_idx != -1 and desig_idx < len(row)) else ''
+            if not desig_val:
+                desig_val = f"RAL {ticket_num}"
+
+            area_val = row[area_idx].strip() if (area_idx != -1 and area_idx < len(row)) else ''
+            obs_val = row[obs_idx].strip() if (obs_idx != -1 and obs_idx < len(row)) else ''
+
+            cur.execute("""
+                INSERT INTO ral_qualidade (
+                    ticket_number, opening_date, designation, area,
+                    status, summary, created_by, created_by_id
+                ) VALUES (
+                    %s,
+                    COALESCE(NULLIF(%s, '')::timestamp, CURRENT_TIMESTAMP),
+                    %s, %s, 'Pendente', %s, %s, %s
+                );
+            """, (
+                ticket_num,
+                opening_date_val,
+                desig_val,
+                area_val,
+                obs_val,
+                created_by_name,
+                user_id
+            ))
+
+            existing_tickets.add(ticket_key)
+            created_count += 1
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(user_id, session.get('username'), f"Importou base RAL de Qualidade: {created_count} criados, {skipped_count} ignorados")
+
+        return jsonify({
+            "success": True,
+            "created_count": created_count,
+            "skipped_count": skipped_count,
+            "total_rows": total_rows,
+            "message": f"{created_count} novas atividades pendentes criadas com sucesso ({skipped_count} já existentes ignoradas)."
+        })
+    except Exception as e:
+        if conn:
+            try: conn.rollback(); conn.close()
+            except Exception: pass
+        print("Error importing ral_qualidade:", e)
+        traceback.print_exc()
+        return jsonify({"error": f"Erro ao processar importação: {str(e)}"}), 500
 
 
 

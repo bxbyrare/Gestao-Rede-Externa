@@ -19,6 +19,8 @@ import {
   X,
   Check,
   FileCheck2,
+  Upload,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -80,8 +82,8 @@ export default function RalQualidadePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Mês selecionado
-  const [selectedMonth, setSelectedMonth] = useState<string>(getInitialMonthKey());
+  // Mês selecionado (padrão: "Todos os meses")
+  const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
 
   // Filtros rápidos
   const [search, setSearch] = useState('');
@@ -92,6 +94,13 @@ export default function RalQualidadePage() {
   const [editingItem, setEditingItem] = useState<RalQualidadeItem | null>(null);
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState('');
+
+  // Modal de Importação CSV
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   // Campos do formulário
   const [formTicketNumber, setFormTicketNumber] = useState('');
@@ -339,6 +348,41 @@ _Gestão de Rede Externa Claro_`;
     window.location.href = url;
   }
 
+  // Carregar Base CSV
+  async function handleImportCsv() {
+    if (!importFile) {
+      setImportError('Por favor, selecione um arquivo CSV para carregar.');
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const res = await api.postFormData<{
+        success: boolean;
+        created_count: number;
+        skipped_count: number;
+        total_rows: number;
+        message: string;
+      }>('/api/ral-qualidade/import', formData);
+
+      setImportSuccess(res.message);
+      showToast(res.message);
+      loadData();
+      setTimeout(() => {
+        setImportModalOpen(false);
+        setImportFile(null);
+        setImportSuccess(null);
+      }, 2200);
+    } catch (err: any) {
+      setImportError(err.message || 'Erro ao carregar base CSV.');
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6 pb-12">
       {/* Toast Flutuante */}
@@ -418,6 +462,24 @@ _Gestão de Rede Externa Claro_`;
               <Download className="w-4 h-4 text-emerald-400" />
               <span>EXPORTAR TAREFAS (CSV)</span>
             </Button>
+
+            {/* Carregar Base (CSV) */}
+            {canCreate && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setImportFile(null);
+                  setImportError(null);
+                  setImportSuccess(null);
+                  setImportModalOpen(true);
+                }}
+                className="gap-2 text-xs uppercase tracking-wider h-11 border-sky-500/40 text-sky-400 hover:bg-sky-500/10 hover:border-sky-500"
+                title="Carregar arquivo CSV com novos tickets"
+              >
+                <Upload className="w-4 h-4 text-sky-400" />
+                <span>CARREGAR BASE (CSV)</span>
+              </Button>
+            )}
 
             {/* + Nova Atividade */}
             {canCreate && (
@@ -851,6 +913,149 @@ _Gestão de Rede Externa Claro_`;
                 <>
                   <Check className="w-4 h-4" />
                   <span>{editingItem ? 'Salvar Alterações' : 'Salvar Registro'}</span>
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal de Importação de Base CSV */}
+      <Modal
+        open={importModalOpen}
+        onClose={() => {
+          if (!importing) {
+            setImportModalOpen(false);
+            setImportFile(null);
+            setImportError(null);
+            setImportSuccess(null);
+          }
+        }}
+        title="Carregar Base RAL de Qualidade (CSV)"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-5">
+          {/* Caixa de Regras de Importação */}
+          <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2 text-xs text-zinc-300">
+            <div className="font-semibold text-white flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-sky-400" />
+              <span>Regras de Importação e Equivalência de Colunas</span>
+            </div>
+            <ul className="list-disc list-inside space-y-1.5 pl-1 text-zinc-400">
+              <li><strong className="text-zinc-200">Deduplicação:</strong> O portal só criará as linhas que ainda não existem (comparação pelo <span className="text-amber-400 font-mono font-bold">Número</span>).</li>
+              <li><strong className="text-zinc-200">Status Automático:</strong> Novas linhas serão sempre criadas com status <span className="text-amber-400 font-semibold">Pendente</span>.</li>
+              <li><strong className="text-zinc-200">Equivalências:</strong>
+                <span className="ml-1 text-zinc-300 font-mono">Número = Número</span> | 
+                <span className="ml-1 text-zinc-300 font-mono">DATA ABERTURA = DATA ABERTURA</span> | 
+                <span className="ml-1 text-zinc-300 font-mono">DESIGNAÇÃO = DESIGNAÇÃO</span> | 
+                <span className="ml-1 text-zinc-300 font-mono">AREA = AREA</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Área de Seleção do Arquivo */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const f = e.dataTransfer.files[0];
+                if (f.name.toLowerCase().endsWith('.csv')) {
+                  setImportFile(f);
+                  setImportError(null);
+                } else {
+                  setImportError('Por favor selecione um arquivo no formato .csv.');
+                }
+              }
+            }}
+            className="border-2 border-dashed border-white/15 hover:border-sky-500/50 rounded-2xl p-6 text-center transition-colors bg-white/[0.02]"
+          >
+            <input
+              type="file"
+              id="ral-csv-upload-input"
+              accept=".csv"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  setImportFile(e.target.files[0]);
+                  setImportError(null);
+                }
+              }}
+              className="hidden"
+            />
+            {importFile ? (
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-400 flex items-center justify-center">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <div className="text-sm font-semibold text-white">{importFile.name}</div>
+                <div className="text-xs text-zinc-400">{(importFile.size / 1024).toFixed(1)} KB</div>
+                <button
+                  type="button"
+                  onClick={() => setImportFile(null)}
+                  className="mt-2 text-xs text-rose-400 hover:text-rose-300 underline"
+                >
+                  Trocar arquivo
+                </button>
+              </div>
+            ) : (
+              <label
+                htmlFor="ral-csv-upload-input"
+                className="cursor-pointer flex flex-col items-center gap-2"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 text-zinc-400 flex items-center justify-center group-hover:text-sky-400">
+                  <Upload className="w-6 h-6" />
+                </div>
+                <div className="text-sm font-medium text-white">
+                  Clique para selecionar ou arraste o arquivo CSV aqui
+                </div>
+                <div className="text-xs text-zinc-500">
+                  Suporta relatórios Claro / Buscador RAL (.csv delimitado por ponto e vírgula ou vírgula)
+                </div>
+              </label>
+            )}
+          </div>
+
+          {/* Erro */}
+          {importError && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{importError}</span>
+            </div>
+          )}
+
+          {/* Sucesso */}
+          {importSuccess && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{importSuccess}</span>
+            </div>
+          )}
+
+          {/* Botões */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+            <Button
+              variant="outline"
+              onClick={() => setImportModalOpen(false)}
+              disabled={importing}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleImportCsv}
+              disabled={importing || !importFile}
+              className="gap-2 !bg-sky-600 !border-sky-600 !text-white hover:!bg-sky-500 font-bold"
+            >
+              {importing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Processando Base...</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  <span>Carregar Base</span>
                 </>
               )}
             </Button>
