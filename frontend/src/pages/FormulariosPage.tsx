@@ -170,6 +170,7 @@ export default function FormulariosPage() {
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
@@ -591,16 +592,25 @@ export default function FormulariosPage() {
         title="Formulários"
         subtitle="Formulários nativos de campo e respostas com evidências fotográficas"
         actions={
-          canCreate ? (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => setExportModalOpen(true)}
+              className="gap-2 text-xs uppercase tracking-wider h-11 border-white/10 hover:border-emerald-500/40 text-slate-200"
+              title="Exportar respostas para Excel (.csv com UTF-8 BOM)"
+            >
+              <Download className="w-4 h-4 text-emerald-400" />
+              <span>Exportar Respostas (CSV)</span>
+            </Button>
+            {canCreate && (
               <Button
                 onClick={openCreate}
-                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-[var(--color-primary-dim)] transition-all hover:scale-[1.02]"
+                className="gap-2 h-11 !bg-[#e20613] !border-[#e20613] !text-white hover:!bg-[#c20511] font-bold shadow-lg shadow-[#e20613]/25"
               >
                 <Plus className="w-4 h-4" /> Novo Formulário
               </Button>
-            </div>
-          ) : undefined
+            )}
+          </div>
         }
       />
 
@@ -776,7 +786,7 @@ export default function FormulariosPage() {
                 <p className="text-xs text-[var(--color-text-muted)] line-clamp-2">
                   {f.description || 'Sem instruções adicionais.'}
                 </p>
-                <div className="grid grid-cols-3 gap-2 mt-auto pt-3 border-t border-white/5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-auto pt-3 border-t border-white/5">
                   <a
                     href={`/f/${f.slug}`}
                     target="_blank"
@@ -799,6 +809,15 @@ export default function FormulariosPage() {
                     title="Visualizar respostas e evidências"
                   >
                     <FileText className="w-3.5 h-3.5" /> Respostas
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.location.href = `/api/forms/${f.id}/responses/export`;
+                    }}
+                    className="h-9 rounded-full bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center gap-1 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors"
+                    title="Exportar respostas para CSV (Excel)"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-400" /> Exportar
                   </button>
                 </div>
               </Card>
@@ -1076,6 +1095,18 @@ export default function FormulariosPage() {
                 >
                   <ArrowUpDown className="w-3.5 h-3.5" />
                   <span>{responseSortNewest ? 'Mais recentes' : 'Mais antigos'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (responsesModal) window.location.href = `/api/forms/${responsesModal.id}/responses/export`;
+                  }}
+                  className="h-8 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1.5 transition-colors shrink-0"
+                  title="Exportar respostas para CSV (Excel)"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Exportar CSV</span>
                 </button>
               </div>
             </div>
@@ -1729,6 +1760,56 @@ export default function FormulariosPage() {
             className="font-mono text-xs"
           />
         </Field>
+      </Modal>
+
+      {/* MODAL DE EXPORTAÇÃO DE RESPOSTAS */}
+      <Modal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Exportar Respostas (CSV / Excel)"
+        maxWidth="max-w-2xl"
+        footer={
+          <Button variant="ghost" onClick={() => setExportModalOpen(false)}>
+            Fechar
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Selecione o formulário que deseja exportar. O arquivo será baixado em formato CSV estruturado com codificação UTF-8 BOM, pronto para abertura imediata no Microsoft Excel.
+          </p>
+          <div className="divide-y divide-white/10 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+            {forms && forms.length > 0 ? (
+              forms.map((f) => (
+                <div
+                  key={f.id}
+                  className="p-4 flex items-center justify-between gap-4 hover:bg-white/[0.04] transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-sm font-bold text-white truncate">{f.title}</h4>
+                    <p className="text-xs text-[var(--color-text-faint)] truncate">
+                      {f.category} • /f/{f.slug}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      window.location.href = `/api/forms/${f.id}/responses/export`;
+                    }}
+                    className="shrink-0 gap-2 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Baixar CSV</span>
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center text-xs text-[var(--color-text-muted)]">
+                Nenhum formulário cadastrado no momento.
+              </div>
+            )}
+          </div>
+        </div>
       </Modal>
     </div>
   );

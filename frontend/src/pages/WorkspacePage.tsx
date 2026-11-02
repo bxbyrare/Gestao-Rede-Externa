@@ -213,7 +213,7 @@ export default function WorkspacePage() {
             {canCreate && (
               <Button
                 onClick={openCreate}
-                className="bg-red-600 hover:bg-red-500 text-white font-semibold shadow-lg shadow-red-600/20"
+                className="gap-2 h-11 !bg-[#e20613] !border-[#e20613] !text-white hover:!bg-[#c20511] font-bold shadow-lg shadow-[#e20613]/25"
               >
                 <Plus className="w-4 h-4 mr-1.5" /> Nova Atividade
               </Button>
