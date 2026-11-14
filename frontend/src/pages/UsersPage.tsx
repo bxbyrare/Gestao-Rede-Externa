@@ -94,6 +94,7 @@ export default function UsersPage() {
   const [emailPreview, setEmailPreview] = useState<PendingEmailPreview | null>(null);
   const [resendStatus, setResendStatus] = useState<ResendStatusInfo | null>(null);
   const [loadingEmailPreview, setLoadingEmailPreview] = useState(false);
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [sendingGlobalEmails, setSendingGlobalEmails] = useState(false);
   const [dispatchResult, setDispatchResult] = useState<DispatchResult | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
@@ -126,14 +127,36 @@ export default function UsersPage() {
     }
   }
 
-  async function refreshPendingPreview() {
+  async function refreshPendingPreview(silent = false) {
+    if (!silent) {
+      setRefreshingStatus(true);
+      setDispatchError(null);
+    }
     try {
-      const previewRes = await api.get<PendingEmailPreview>('/api/admin/notify-outdated-profile');
+      const [previewRes, statusRes] = await Promise.all([
+        api.get<PendingEmailPreview>('/api/admin/notify-outdated-profile'),
+        api.get<ResendStatusInfo>('/api/admin/resend-status'),
+      ]);
       setEmailPreview(previewRes);
-    } catch {
-      // ignore background refresh error
+      setResendStatus(statusRes);
+    } catch (err) {
+      if (!silent) {
+        setDispatchError(
+          err instanceof ApiError ? err.message : 'Não foi possível atualizar o status do disparo.'
+        );
+      }
+    } finally {
+      if (!silent) setRefreshingStatus(false);
     }
   }
+
+  useEffect(() => {
+    if (!emailModalOpen || emailPreview?.last_dispatch?.status !== 'running') return;
+    const timer = window.setInterval(() => {
+      refreshPendingPreview(true);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [emailModalOpen, emailPreview?.last_dispatch?.status]);
 
   async function handleSendGlobalPendingEmails(force = false) {
     if (!emailPreview || emailPreview.eligible_count === 0) return;
@@ -826,10 +849,11 @@ export default function UsersPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={refreshPendingPreview}
-                      className="text-[11px] text-blue-300 hover:text-blue-200 underline"
+                      disabled={refreshingStatus}
+                      onClick={() => refreshPendingPreview(false)}
+                      className="text-[11px] text-blue-300 hover:text-blue-200 underline disabled:opacity-50 cursor-pointer"
                     >
-                      Atualizar status
+                      {refreshingStatus ? 'Atualizando...' : 'Atualizar status'}
                     </button>
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">

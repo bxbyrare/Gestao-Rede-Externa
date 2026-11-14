@@ -13210,10 +13210,17 @@ def _start_global_email_dispatch(trigger_type='manual', user_id=None, username='
         """, (user_id, username, trigger_type, len(recipients)))
         log_id = cur.fetchone()['id']
         conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         if locked:
             try:
                 cur.execute("SELECT pg_advisory_unlock(984513);")
+                conn.commit()
             except Exception:
                 pass
         cur.close()
@@ -13380,8 +13387,10 @@ def api_notify_outdated_profile():
             "message": res.get("message"),
         })
     except Exception as e:
-        print("[NOTIFY OUTDATED PROFILE ERROR]", e)
-        return jsonify({"error": "Falha interna ao processar envio de pendências por e-mail."}), 500
+        import traceback
+        traceback.print_exc()
+        print("[NOTIFY OUTDATED PROFILE ERROR]", type(e).__name__, e)
+        return jsonify({"error": f"Falha interna ao processar envio de pendências ({type(e).__name__})."}), 500
 
 
 
