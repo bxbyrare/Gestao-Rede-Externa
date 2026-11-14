@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, Star, BarChart3, BellRing, X, ExternalLink, CheckSquare
@@ -113,75 +113,101 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [playBip]
   );
 
-  // Poll live alerts from backend every 6 seconds
+  // Poll live alerts from backend every 6 seconds (pauses when tab is hidden, cancels in-flight on unmount)
+  const userId = user?.id;
+  const userTotpVerified = user?.totp_verified;
+
   useEffect(() => {
-    if (!user || !user.totp_verified) return;
+    if (!userId || !userTotpVerified) return;
 
     let isMounted = true;
+    let timerId: number | undefined;
+    let activeController: AbortController | null = null;
 
     async function pollAlerts() {
+      if (!isMounted) return;
+      if (document.visibilityState === 'hidden') {
+        timerId = window.setTimeout(pollAlerts, 6000);
+        return;
+      }
+
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
+
       try {
         const sinceId = latestIdRef.current;
-        const res = await api.get<{ alerts: LiveAlert[]; latest_id: number }>('/api/live-alerts', {
-          since_id: sinceId,
-        });
+        const res = await api.get<{ alerts: LiveAlert[]; latest_id: number }>(
+          '/api/live-alerts',
+          { since_id: sinceId },
+          { signal: controller.signal, timeoutMs: 10000 }
+        );
 
         if (!isMounted || !res) return;
 
         if (isFirstFetchRef.current) {
-          // On first load, initialize latest_id without spamming alerts from the past
           isFirstFetchRef.current = false;
           latestIdRef.current = res.latest_id || 0;
           if (res.alerts && res.alerts.length > 0) {
             setAlerts(res.alerts);
           }
-          return;
-        }
-
-        if (res.alerts && res.alerts.length > 0) {
+        } else if (res.alerts && res.alerts.length > 0) {
           latestIdRef.current = res.latest_id || latestIdRef.current;
-          
-          // Trigger toasts & bip
           setToasts((prev) => [...res.alerts, ...prev].slice(0, 5));
           setAlerts((prev) => [...res.alerts, ...prev].slice(0, 50));
           playBip();
         }
       } catch {
-        // Silently catch network errors during polling
+        // Silently catch network/abort errors during polling
+      } finally {
+        if (isMounted) {
+          timerId = window.setTimeout(pollAlerts, 6000);
+        }
       }
     }
 
-    // Initial check
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        if (timerId !== undefined) clearTimeout(timerId);
+        pollAlerts();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
     pollAlerts();
-    const interval = setInterval(pollAlerts, 6000);
 
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (timerId !== undefined) clearTimeout(timerId);
+      activeController?.abort();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [user, playBip]);
+  }, [userId, userTotpVerified, playBip]);
 
-  function handleSetSound(val: boolean) {
+  const handleSetSound = useCallback((val: boolean) => {
     setSoundEnabled(val);
     localStorage.setItem('notifications_sound_enabled', val ? 'true' : 'false');
     if (val) {
       playNotificationChime();
     }
-  }
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({
+      alerts,
+      toasts,
+      soundEnabled,
+      setSoundEnabled: handleSetSound,
+      playBip,
+      notify,
+      dismissToast,
+      clearAllToasts,
+    }),
+    [alerts, toasts, soundEnabled, handleSetSound, playBip, notify, dismissToast, clearAllToasts]
+  );
 
   return (
-    <NotificationContext.Provider
-      value={{
-        alerts,
-        toasts,
-        soundEnabled,
-        setSoundEnabled: handleSetSound,
-        playBip,
-        notify,
-        dismissToast,
-        clearAllToasts,
-      }}
-    >
+    <NotificationContext.Provider value={contextValue}>
       {children}
       <NotificationToaster toasts={toasts} onDismiss={dismissToast} />
     </NotificationContext.Provider>
@@ -227,27 +253,20 @@ function ToastItem({
   onDismiss: () => void;
 }) {
   const navigate = useNavigate();
-  const [progress, setProgress] = useState(100);
   const [isHovered, setIsHovered] = useState(false);
+  const [barWidth, setBarWidth] = useState('100%');
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setBarWidth('0%'));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   useEffect(() => {
     if (isHovered) return;
-    const duration = 7000;
-    const intervalTime = 50;
-    const step = (intervalTime / duration) * 100;
-
-    const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev <= step) {
-          clearInterval(timer);
-          onDismiss();
-          return 0;
-        }
-        return prev - step;
-      });
-    }, intervalTime);
-
-    return () => clearInterval(timer);
+    const timer = window.setTimeout(() => {
+      onDismiss();
+    }, 7000);
+    return () => clearTimeout(timer);
   }, [isHovered, onDismiss]);
 
   const config = getCategoryConfig(toast.category);
@@ -325,8 +344,8 @@ function ToastItem({
       {/* Auto-dismiss progress bar */}
       <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/5">
         <div
-          className={`h-full transition-all duration-75 ${config.progressBg}`}
-          style={{ width: `${progress}%` }}
+          className={`h-full transition-[width] ease-linear ${config.progressBg}`}
+          style={{ width: isHovered ? '100%' : barWidth, transitionDuration: isHovered ? '150ms' : '7000ms' }}
         />
       </div>
     </div>

@@ -768,11 +768,42 @@ def safe_float(val, default=0.0):
 
 
 # Security Hardening Stores: IP Rate Limiters
+_SECURITY_STORE_LOCK = threading.Lock()
+_LAST_SECURITY_PRUNE_TS = 0.0
 RATE_LIMIT_STORE = defaultdict(list)
 AUTH_RATE_LIMIT_STORE = defaultdict(list)
 
 GLOBAL_RATE_LIMIT_MAX = 600  # Max 600 requests per 60s per IP (evita falsos positivos em polling de alertas)
 AUTH_RATE_LIMIT_MAX = 30     # Max 30 attempts per 60s per IP for login/resets
+
+
+def _prune_security_stores(now_ts):
+    global _LAST_SECURITY_PRUNE_TS
+    if now_ts - _LAST_SECURITY_PRUNE_TS < 300:
+        return
+    _LAST_SECURITY_PRUNE_TS = now_ts
+    for store, ttl in (
+        (RATE_LIMIT_STORE, 60),
+        (AUTH_RATE_LIMIT_STORE, 60),
+        (_PROBE_TRACKER, 300),
+        (_TOTP_FAILURES, 900),
+    ):
+        dead_keys = [k for k, ts_list in store.items() if not ts_list or (now_ts - ts_list[-1] >= ttl)]
+        for k in dead_keys:
+            store.pop(k, None)
+    expired_bans = [ip for ip, exp in _SECURITY_BAN_LIST.items() if now_ts >= exp]
+    for ip in expired_bans:
+        _SECURITY_BAN_LIST.pop(ip, None)
+    for uid in list(_USED_TOTP_BUCKETS.keys()):
+        buckets = _USED_TOTP_BUCKETS.get(uid)
+        if not buckets:
+            _USED_TOTP_BUCKETS.pop(uid, None)
+            continue
+        expired_b = [b for b, exp in buckets.items() if now_ts >= exp]
+        for b in expired_b:
+            buckets.pop(b, None)
+        if not buckets:
+            _USED_TOTP_BUCKETS.pop(uid, None)
 
 BLOCKED_USER_AGENTS = [
     'sqlmap', 'nikto', 'nmap', 'burp', 'burpcollaborator', 'dirbuster',
@@ -833,28 +864,30 @@ def enforce_security_policies():
     client_ip = get_client_ip()
     now = time.time()
 
-    # 0. Active IP Security Ban Check with Scanner Tarpit
-    if client_ip in _SECURITY_BAN_LIST:
-        if now < _SECURITY_BAN_LIST[client_ip]:
-            # TARPIT: Sleep 2.5 seconds to throttle and stall automated scanners (Nikto, Burp, Ffuf)
-            time.sleep(2.5)
-            # If accessed via a web browser (not an API request), serve the visual Honeypot trap screen
-            if not request.path.startswith('/api/') and not request.is_json and 'text/html' in (request.headers.get('Accept') or ''):
-                try:
-                    loc = get_ip_location(client_ip)
-                    return render_template('honeypot_warning.html', client_ip=client_ip, location=loc), 403
-                except Exception:
-                    pass
-            resp = jsonify({
-                "error": "Acesso bloqueado por varredura/tentativa de ataque detectada. Conexão interrompida.",
-                "status": 429
-            })
-            resp.status_code = 429
-            resp.headers['Retry-After'] = '7200'
-            resp.headers['Connection'] = 'close'
-            return resp
-        else:
-            del _SECURITY_BAN_LIST[client_ip]
+    # 0. Active IP Security Ban Check (immediate 429/403 without blocking worker threads)
+    with _SECURITY_STORE_LOCK:
+        _prune_security_stores(now)
+        ban_exp = _SECURITY_BAN_LIST.get(client_ip)
+        if ban_exp is not None and now >= ban_exp:
+            _SECURITY_BAN_LIST.pop(client_ip, None)
+            ban_exp = None
+
+    if ban_exp is not None:
+        # If accessed via a web browser (not an API request), serve the visual Honeypot trap screen
+        if not request.path.startswith('/api/') and not request.is_json and 'text/html' in (request.headers.get('Accept') or ''):
+            try:
+                loc = get_ip_location(client_ip)
+                return render_template('honeypot_warning.html', client_ip=client_ip, location=loc), 403
+            except Exception:
+                pass
+        resp = jsonify({
+            "error": "Acesso bloqueado por varredura/tentativa de ataque detectada. Conexão interrompida.",
+            "status": 429
+        })
+        resp.status_code = 429
+        resp.headers['Retry-After'] = '7200'
+        resp.headers['Connection'] = 'close'
+        return resp
 
     # 1. Deep Anti-Scanner / Exploit Probing Detection (Nikto, Burp Suite, Metasploit, Sqlmap, Nuclei)
     path_lower = request.path.lower()
@@ -873,17 +906,14 @@ def enforce_security_policies():
     is_bad_ua = any(bad_ua in user_agent for bad_ua in BLOCKED_USER_AGENTS)
 
     if is_dangerous_ext or is_known_probe or is_malicious_payload or is_bad_ua:
-        # NAT-friendly Progressive Defense:
-        # Limpa probes com mais de 5 minutos
-        _PROBE_TRACKER[client_ip] = [t for t in _PROBE_TRACKER[client_ip] if now - t < 300]
-        _PROBE_TRACKER[client_ip].append(now)
+        # NAT-friendly Progressive Defense (thread-safe, non-blocking)
+        with _SECURITY_STORE_LOCK:
+            probes = [t for t in _PROBE_TRACKER[client_ip] if now - t < 300]
+            probes.append(now)
+            _PROBE_TRACKER[client_ip] = probes
+            if len(probes) >= 3:
+                _SECURITY_BAN_LIST[client_ip] = now + 900  # Ban temporário por 15 minutos
 
-        # Se acumular 3 ou mais tentativas de exploração em 5 minutos, ativa o ban temporário do IP
-        if len(_PROBE_TRACKER[client_ip]) >= 3:
-            _SECURITY_BAN_LIST[client_ip] = now + 900 # Ban temporário por 15 minutos
-
-        # Tarpit defense: desacelera a requisição do scanner
-        time.sleep(1.5)
         # Se for navegador, renderiza tela visual de alerta Honeypot
         if not request.path.startswith('/api/') and not request.is_json and 'text/html' in (request.headers.get('Accept') or ''):
             try:
@@ -1039,19 +1069,67 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'workspace_anexos'), exist_ok=True)
 # Leak-proof PostgreSQL connection manager with connection reuse & ultra-fast failover
 _KNOWN_DB_IPS = ['38.18.229.30', '38.92.41.2', '38.92.41.65', '154.30.4.133']
 _CACHED_DB_IP = '38.18.229.30'
+_DB_POOL = None
+_DB_POOL_LOCK = threading.Lock()
 
-def get_db():
-    global _CACHED_DB_IP
-    if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL não configurada no ambiente do servidor.")
 
-    # 1. Fast path: reuse open connection for the current request context (0ms handshake!)
-    if has_request_context():
-        current_conn = getattr(g, '_current_db_conn', None)
-        if current_conn and hasattr(current_conn, 'closed') and not current_conn.closed:
-            return current_conn
+class _PooledConnProxy:
+    """Wrapper seguro sobre conexão do ThreadedConnectionPool compatível com conn.close()."""
+    __slots__ = ('_conn', '_pool', '_released')
 
-    # 2. Connection sequence: pre-warmed working IP first, then alternate IPs, then DNS
+    def __init__(self, conn, pool):
+        self._conn = conn
+        self._pool = pool
+        self._released = False
+
+    @property
+    def closed(self):
+        return self._released or bool(getattr(self._conn, 'closed', 1))
+
+    @property
+    def autocommit(self):
+        return self._conn.autocommit
+
+    @autocommit.setter
+    def autocommit(self, val):
+        self._conn.autocommit = val
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        if not self._released and not getattr(self._conn, 'closed', 1):
+            return self._conn.rollback()
+
+    def close(self):
+        if self._released:
+            return
+        self._released = True
+        raw = self._conn
+        try:
+            if not getattr(raw, 'closed', 1):
+                try:
+                    raw.rollback()
+                except Exception:
+                    pass
+            self._pool.putconn(raw, close=bool(getattr(raw, 'closed', 1)))
+        except Exception:
+            try:
+                raw.close()
+            except Exception:
+                pass
+
+    def __getattr__(self, item):
+        return getattr(self._conn, item)
+
+
+def _init_db_pool():
+    global _DB_POOL, _CACHED_DB_IP
+    from psycopg2.pool import ThreadedConnectionPool
+
     attempts = []
     if _CACHED_DB_IP:
         attempts.append(_CACHED_DB_IP)
@@ -1059,26 +1137,24 @@ def get_db():
         for ip in _KNOWN_DB_IPS:
             if ip != _CACHED_DB_IP:
                 attempts.append(ip)
-    attempts.append(None)  # Standard DNS as fallback
+    attempts.append(None)
 
     last_error = None
     for h_addr in attempts:
         try:
             kwargs = {
                 'cursor_factory': RealDictCursor,
-                'connect_timeout': 3,
+                'connect_timeout': 4,
             }
             if h_addr:
                 kwargs['hostaddr'] = h_addr
-            conn = psycopg2.connect(DATABASE_URL, **kwargs)
+            pool = ThreadedConnectionPool(2, 20, DATABASE_URL, **kwargs)
+            test_conn = pool.getconn()
+            pool.putconn(test_conn)
             if h_addr:
                 _CACHED_DB_IP = h_addr
-            if has_request_context():
-                if not hasattr(g, '_active_db_conns'):
-                    g._active_db_conns = []
-                g._active_db_conns.append(conn)
-                g._current_db_conn = conn
-            return conn
+            _DB_POOL = pool
+            return pool
         except psycopg2.OperationalError as e:
             last_error = e
             err_msg = str(e).lower()
@@ -1089,8 +1165,40 @@ def get_db():
             last_error = e
             continue
 
-    print(f"🚨 [FATAL DB CONNECTION ERROR] Falha em todas as tentativas de conexão ao PostgreSQL: {last_error}")
+    print(f"🚨 [FATAL DB CONNECTION ERROR] Falha ao inicializar pool PostgreSQL: {last_error}")
     raise last_error
+
+
+def get_db():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL não configurada no ambiente do servidor.")
+
+    # 1. Fast path: reuse open connection for the current request context (0ms handshake!)
+    if has_request_context():
+        current_conn = getattr(g, '_current_db_conn', None)
+        if current_conn and not current_conn.closed:
+            return current_conn
+
+    pool = _DB_POOL
+    if pool is None:
+        with _DB_POOL_LOCK:
+            pool = _DB_POOL
+            if pool is None:
+                pool = _init_db_pool()
+
+    raw_conn = pool.getconn()
+    if getattr(raw_conn, 'closed', 1):
+        pool.putconn(raw_conn, close=True)
+        raw_conn = pool.getconn()
+
+    conn = _PooledConnProxy(raw_conn, pool)
+    if has_request_context():
+        if not hasattr(g, '_active_db_conns'):
+            g._active_db_conns = []
+        g._active_db_conns.append(conn)
+        g._current_db_conn = conn
+    return conn
+
 
 @app.teardown_appcontext
 def close_db_connections(exception=None):
@@ -1098,7 +1206,9 @@ def close_db_connections(exception=None):
     if conns:
         for c in conns:
             try:
-                if hasattr(c, 'closed') and not c.closed:
+                if not c.closed:
+                    if exception is not None:
+                        c.rollback()
                     c.close()
             except Exception:
                 pass
@@ -1110,21 +1220,38 @@ def allowed_file(filename, extensions):
 # Database Initialization Script
 
 def emit_live_alert(category, title, message, target_user_id=None, target_username=None, source_user_id=None, source_username=None, link=None):
+    in_req = has_request_context()
+    conn = None
+    cur = None
     try:
         conn = get_db()
         cur = conn.cursor()
-        s_uid = source_user_id or (session.get('user_id') if 'user_id' in session else None)
-        s_uname = source_username or (session.get('username') if 'username' in session else None)
+        s_uid = source_user_id or (session.get('user_id') if in_req and 'user_id' in session else None)
+        s_uname = source_username or (session.get('username') if in_req and 'username' in session else None)
         cur.execute("""
             INSERT INTO system_live_alerts (
                 category, title, message, target_user_id, target_username, source_user_id, source_username, link
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
         """, (category, title, message, target_user_id, target_username, s_uid, s_uname, link))
         conn.commit()
-        cur.close()
-        conn.close()
     except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         print("Error emitting live alert:", e)
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn and not in_req:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 # --------------------------------------------------------------------------
 # BRAZILIAN PORTUGUESE PROPER NAME GRAMMAR FORMATTER
@@ -2512,15 +2639,48 @@ def init_db():
                 print(f"Cleanup unwanted user {unwanted_user} error:", e_del)
                 conn.rollback()
 
+        # Hot Performance Indexes & work_schedules table
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS work_schedules (
+                    id SERIAL PRIMARY KEY,
+                    tech_id INTEGER NOT NULL REFERENCES technicians(id) ON DELETE CASCADE,
+                    date DATE NOT NULL,
+                    shift_code VARCHAR(20) NOT NULL DEFAULT '',
+                    custom_time VARCHAR(100) DEFAULT '',
+                    updated_by VARCHAR(100),
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (tech_id, date)
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_users_tech_id ON users(tech_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_username_lower ON audit_logs(LOWER(username));")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_fault_searcher_topic_col1 ON fault_searcher_records(topic, col1);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_grafana_tickets_abertura ON grafana_tickets(abertura_dt ASC NULLS LAST, id ASC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_grafana_tickets_new_seen ON grafana_tickets(is_new, first_seen_at);")
+        except Exception as e_idx:
+            print("Warning creating performance indexes:", e_idx)
+            conn.rollback()
+
         conn.commit()
-        cur.close()
-        conn.close()
         print("Database tables initialized and seeded successfully.")
         normalize_all_database_names()
     except Exception as e:
         import traceback
         print("Database initialization failed with traceback:")
         traceback.print_exc()
+    finally:
+        if 'cur' in locals() and cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if 'conn' in locals() and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 # Run DB schema check in background thread so server starts in milliseconds
 if DATABASE_URL:
@@ -2536,6 +2696,9 @@ if DATABASE_URL:
 # HELPER FUNCTIONS & DECORATORS
 # --------------------------------------------------------------------------
 def log_action(user_id, username, action):
+    in_req = has_request_context()
+    conn = None
+    cur = None
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -2544,10 +2707,24 @@ def log_action(user_id, username, action):
             (user_id, username, action)
         )
         conn.commit()
-        cur.close()
-        conn.close()
     except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         print(f"Failed to write audit log: {e}")
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn and not in_req:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def login_required(f):
     @wraps(f)
@@ -9137,34 +9314,45 @@ def api_save_schedules_batch():
         conn = get_db()
         cur = conn.cursor()
 
+        dedup_updates = {}
         for u in updates:
             tech_id = int(u.get('tech_id'))
             dt_str = u.get('date')
             status = u.get('status', 'Trabalho')
             work_hours = u.get('work_hours', '08 às 17:48hs')
             on_call = str(u.get('on_call', '0'))
+            dedup_updates[(tech_id, dt_str)] = (tech_id, dt_str, status, work_hours, on_call)
 
-            cur.execute(
-                """
+        if dedup_updates:
+            from psycopg2.extras import execute_values
+            execute_values(cur, """
                 INSERT INTO work_schedules (tech_id, date, status, work_hours, on_call)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (tech_id, date) 
-                DO UPDATE SET 
+                VALUES %s
+                ON CONFLICT (tech_id, date)
+                DO UPDATE SET
                     status = EXCLUDED.status,
                     work_hours = EXCLUDED.work_hours,
                     on_call = EXCLUDED.on_call;
-                """,
-                (tech_id, dt_str, status, work_hours, on_call)
-            )
+            """, list(dedup_updates.values()), page_size=500)
 
         conn.commit()
 
         log_action(session['user_id'], session['username'], f"Atualizou {len(updates)} dia(s) na escala de trabalho")
         return jsonify({"success": True, "updated": len(updates)})
     except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
     finally:
+        if 'cur' in locals() and cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
         if conn:
             try:
                 conn.close()
@@ -13311,6 +13499,8 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
                         final_status = 'interrupted'
                     break
             if (idx + 1) % 5 == 0:
+                c_prog = None
+                cur_prog = None
                 try:
                     c_prog = get_db()
                     cur_prog = c_prog.cursor()
@@ -13323,10 +13513,15 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
                         (sent_count, failed_count, log_id)
                     )
                     c_prog.commit()
-                    cur_prog.close()
-                    c_prog.close()
-                except Exception:
-                    pass
+                except Exception as ex_prog:
+                    print("[GLOBAL EMAIL PROGRESS NOTICE]", ex_prog)
+                finally:
+                    if cur_prog:
+                        try: cur_prog.close()
+                        except Exception: pass
+                    if c_prog:
+                        try: c_prog.close()
+                        except Exception: pass
     except Exception as ex:
         print("[GLOBAL EMAIL WORKER ERROR]", ex)
         if sent_count == 0:
@@ -13334,6 +13529,8 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
         else:
             final_status = 'interrupted'
 
+    conn = None
+    cur = None
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -13348,10 +13545,15 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
             WHERE id = %s;
         """, (final_status, sent_count, failed_count, json.dumps(results), log_id))
         conn.commit()
-        cur.close()
-        conn.close()
     except Exception as ex:
         print("[GLOBAL EMAIL LOG UPDATE ERROR]", ex)
+    finally:
+        if cur:
+            try: cur.close()
+            except Exception: pass
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
 
 def _start_global_email_dispatch(trigger_type='manual', user_id=None, username='system', force=False):
@@ -13885,39 +14087,48 @@ def _sync_grafana_data(force=False):
                     "author_name": n["author_name"],
                     "created_at": n["created_at"].strftime("%d/%m %H:%M") if n.get("created_at") else "",
                 })
-            for t in to_archive:
-                cur.execute("""
+            if to_archive:
+                from psycopg2.extras import execute_values
+                archive_rows = [
+                    (
+                        t["ticket_key"], t["ticket_type"], t["ticket_number"], t["cf"], t["regional"], t["cf_exec_raw"],
+                        t["designation"], t["tipo_ral"], t["is_qualidade"], t["cliente"], t["abertura_raw"], t["abertura_dt"],
+                        t["status_andamento"], t["responsible_name"],
+                        json.dumps(notes_by_key.get(t["ticket_key"], []), ensure_ascii=False),
+                        t["first_seen_at"], now_brt
+                    )
+                    for t in to_archive
+                ]
+                execute_values(cur, """
                     INSERT INTO grafana_cleared_tickets (
                         ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
                         designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
                         status_andamento, responsible_name, notes_snapshot, first_seen_at, cleared_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s);
-                """, (
-                    t["ticket_key"], t["ticket_type"], t["ticket_number"], t["cf"], t["regional"], t["cf_exec_raw"],
-                    t["designation"], t["tipo_ral"], t["is_qualidade"], t["cliente"], t["abertura_raw"], t["abertura_dt"],
-                    t["status_andamento"], t["responsible_name"],
-                    json.dumps(notes_by_key.get(t["ticket_key"], []), ensure_ascii=False),
-                    t["first_seen_at"], now_brt
-                ))
-                cleared_now += 1
+                    ) VALUES %s;
+                """, archive_rows, template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)", page_size=500)
+                cleared_now = len(archive_rows)
             cur.execute("DELETE FROM grafana_ticket_notes WHERE ticket_key = ANY(%s);", (removed_keys,))
             cur.execute("DELETE FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
 
-        # Upsert all active tickets
-        for tkey, item in parsed_tickets.items():
-            mark_new = bool(had_existing and tkey in new_keys)
-            cur.execute("""
+        # Upsert all active tickets in a single batch
+        if parsed_tickets:
+            from psycopg2.extras import execute_values
+            ticket_rows = [
+                (
+                    item["ticket_key"], item["ticket_type"], item["ticket_number"], item["cf"], item["regional"], item["cf_exec_raw"],
+                    item["designation"], item["tipo_ral"], item["is_qualidade"], item["cliente"], item["anorm"], item["abertura_raw"],
+                    item["abertura_dt"], item["duracao_raw"], item["resp_code"], item["tecnico_csv"], item["anatel"], item["prejuizo"],
+                    now_brt, now_brt, bool(had_existing and tkey in new_keys), now_brt
+                )
+                for tkey, item in parsed_tickets.items()
+            ]
+            execute_values(cur, """
                 INSERT INTO grafana_tickets (
                     ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
                     designation, tipo_ral, is_qualidade, cliente, anorm, abertura_raw,
                     abertura_dt, duracao_raw, resp_code, tecnico_csv, anatel, prejuizo,
                     first_seen_at, last_seen_at, is_new, updated_at
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s
-                )
+                ) VALUES %s
                 ON CONFLICT (ticket_key) DO UPDATE SET
                     cf = EXCLUDED.cf,
                     regional = EXCLUDED.regional,
@@ -13936,12 +14147,7 @@ def _sync_grafana_data(force=False):
                     prejuizo = EXCLUDED.prejuizo,
                     last_seen_at = EXCLUDED.last_seen_at,
                     updated_at = EXCLUDED.updated_at;
-            """, (
-                item["ticket_key"], item["ticket_type"], item["ticket_number"], item["cf"], item["regional"], item["cf_exec_raw"],
-                item["designation"], item["tipo_ral"], item["is_qualidade"], item["cliente"], item["anorm"], item["abertura_raw"],
-                item["abertura_dt"], item["duracao_raw"], item["resp_code"], item["tecnico_csv"], item["anatel"], item["prejuizo"],
-                now_brt, now_brt, mark_new, now_brt
-            ))
+            """, ticket_rows, page_size=500)
 
         ral_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "RAL" and not v["is_qualidade"])
         rec_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "REC")

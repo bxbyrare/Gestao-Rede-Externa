@@ -84,11 +84,10 @@ export default function EscalaPage() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [month, area, company]);
   useEffect(() => {
-    const t = setTimeout(load, 300);
+    const t = setTimeout(load, search ? 300 : 0);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [month, area, company, search]);
 
   const pendingCount = Object.keys(pending).length;
 

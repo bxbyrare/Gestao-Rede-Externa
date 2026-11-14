@@ -14,16 +14,15 @@ export default function SpotlightCard({
   onClick,
 }: SpotlightCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!cardRef.current) return;
+    if (!cardRef.current || !overlayRef.current) return;
     const rect = cardRef.current.getBoundingClientRect();
-    setPosition({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    overlayRef.current.style.background = `radial-gradient(400px circle at ${x}px ${y}px, ${spotlightColor}, transparent 70%)`;
   };
 
   return (
@@ -39,15 +38,11 @@ export default function SpotlightCard({
         WebkitBackdropFilter: 'blur(16px)',
       }}
     >
-      {/* Radial Spotlight Overlay */}
-      {isHovered && (
-        <div
-          className="pointer-events-none absolute -inset-px transition-opacity duration-300"
-          style={{
-            background: `radial-gradient(400px circle at ${position.x}px ${position.y}px, ${spotlightColor}, transparent 70%)`,
-          }}
-        />
-      )}
+      {/* Radial Spotlight Overlay (updated directly via DOM ref, zero React re-renders) */}
+      <div
+        ref={overlayRef}
+        className={`pointer-events-none absolute -inset-px transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}
+      />
 
       {/* Top Gloss Reflection */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/[0.04] to-transparent" />

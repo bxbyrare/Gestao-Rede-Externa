@@ -100,19 +100,38 @@ export default function BuscadorPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback((signal?: AbortSignal) => {
     setLoading(true);
-    api.get<BuscadorResponse>('/api/buscador/records', { topic, search: search || undefined, route: route || undefined })
+    api.get<BuscadorResponse>(
+      '/api/buscador/records',
+      { topic, search: search || undefined, route: route || undefined },
+      signal ? { signal } : undefined,
+    )
       .then(setData)
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(err instanceof ApiError ? err.message : 'Erro ao carregar base.');
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
   }, [topic, search, route]);
 
   useEffect(() => {
-    const t = setTimeout(load, search ? 300 : 0);
-    return () => clearTimeout(t);
+    const controller = new AbortController();
+    const t = setTimeout(() => load(controller.signal), search ? 300 : 0);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
   }, [load, search]);
 
-  useEffect(() => { setRoute(''); setSearch(''); }, [topic]);
+  function handleSelectTopic(nextTopic: string) {
+    if (nextTopic === topic) return;
+    setRoute('');
+    setSearch('');
+    setTopic(nextTopic);
+  }
 
   function openEdit(id: number, distance: string, ref: string) {
     setEditingId(id);
@@ -210,7 +229,7 @@ export default function BuscadorPage() {
         {TOPICS.map((t) => (
           <button
             key={t}
-            onClick={() => setTopic(t)}
+            onClick={() => handleSelectTopic(t)}
             className={`h-10 px-5 rounded-full text-sm font-bold transition-colors ${topic === t ? 'bg-[var(--color-primary-dim)] text-[var(--color-primary)] border border-[var(--color-primary)]/30' : 'bg-white/[0.03] border border-white/10 text-[var(--color-text-muted)]'}`}
           >
             {t}

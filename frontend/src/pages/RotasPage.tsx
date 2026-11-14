@@ -161,8 +161,12 @@ export default function RotasPage() {
   async function deleteRoute(r: RouteItem, e: MouseEvent) {
     e.stopPropagation();
     if (!confirm(`Excluir permanentemente a rota "${r.name}"? Todas as medições e arquivos serão removidos.`)) return;
-    await api.delete(`/api/routes/${r.id}`);
-    loadRoutes();
+    try {
+      await api.delete(`/api/routes/${r.id}`);
+      loadRoutes();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir rota.');
+    }
   }
 
   if (selectedRoute) {
@@ -456,11 +460,11 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
 
   useEffect(() => {
     if (tab === 'medicoes') loadLines();
-  }, [tab]);
+  }, [tab, route.id]);
 
   useEffect(() => {
     if (tab === 'arquivos') loadContents();
-  }, [tab, currentFolderId]);
+  }, [tab, currentFolderId, route.id]);
 
   function openCreateLine() {
     setEditingLine(null);
@@ -505,8 +509,12 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
 
   async function deleteLine(l: RouteLine) {
     if (!confirm('Excluir esta medição técnica da rota?')) return;
-    await api.delete(`/api/routes/lines/${l.id}`);
-    loadLines();
+    try {
+      await api.delete(`/api/routes/lines/${l.id}`);
+      loadLines();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir medição.');
+    }
   }
 
   async function submitImport() {
@@ -537,20 +545,32 @@ function RouteDetail({ route, onBack }: { route: RouteItem; onBack: () => void }
   }
   async function submitFolder() {
     if (!folderName.trim()) return;
-    await api.post(`/api/routes/${route.id}/folders`, { name: folderName, parent_id: currentFolderId });
-    setFolderModalOpen(false);
-    setFolderName('');
-    loadContents();
+    try {
+      await api.post(`/api/routes/${route.id}/folders`, { name: folderName, parent_id: currentFolderId });
+      setFolderModalOpen(false);
+      setFolderName('');
+      loadContents();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao criar pasta.');
+    }
   }
   async function deleteFolder(f: RouteFolder) {
     if (!confirm(`Excluir a pasta "${f.name}"?`)) return;
-    await api.delete(`/api/routes/folders/${f.id}`);
-    loadContents();
+    try {
+      await api.delete(`/api/routes/folders/${f.id}`);
+      loadContents();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir pasta.');
+    }
   }
   async function deleteFile(f: RouteFile) {
     if (!confirm(`Excluir o arquivo "${f.filename}"?`)) return;
-    await api.delete(`/api/routes/files/${f.id}`);
-    loadContents();
+    try {
+      await api.delete(`/api/routes/files/${f.id}`);
+      loadContents();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir arquivo.');
+    }
   }
   async function handleFileUpload(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;

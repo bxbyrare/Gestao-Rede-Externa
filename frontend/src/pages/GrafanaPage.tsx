@@ -176,6 +176,43 @@ function formatCountdown(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
 }
 
+function GrafanaCountdownBadge({
+  syncSeconds,
+  syncTick,
+  onRefresh,
+}: {
+  syncSeconds: number;
+  syncTick: number;
+  onRefresh: () => void;
+}) {
+  const [sec, setSec] = useState(syncSeconds);
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+
+  useEffect(() => {
+    setSec(syncSeconds);
+  }, [syncSeconds, syncTick]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSec((prev) => {
+        if (prev <= 1) {
+          window.setTimeout(() => onRefreshRef.current(), 0);
+          return 300;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <span>
+      Auto-atualização em <strong className="text-emerald-400 font-mono">{formatCountdown(sec)}</strong>
+    </span>
+  );
+}
+
 function getCountTone(count: number, type: QueueType): string {
   if (count === 0) return 'bg-white/[0.03] border-white/5 text-slate-500';
   if (type === 'QUALIDADE') {
@@ -238,7 +275,8 @@ export default function GrafanaPage() {
     interval_seconds: 300,
     seconds_to_next: 300,
   });
-  const [countdown, setCountdown] = useState(300);
+  const [syncSeconds, setSyncSeconds] = useState(300);
+  const [syncTick, setSyncTick] = useState(0);
   const [serverTime, setServerTime] = useState('');
 
   // Drill-down selection
@@ -287,7 +325,8 @@ export default function GrafanaPage() {
       setClearedTotal(data.cleared_total || 0);
       if (data.sync) {
         setSyncMeta(data.sync);
-        setCountdown(data.sync.seconds_to_next ?? 300);
+        setSyncSeconds(data.sync.seconds_to_next ?? 300);
+        setSyncTick((n) => n + 1);
       }
       if (data.server_time_brt) setServerTime(data.server_time_brt);
     } catch (err) {
@@ -336,20 +375,18 @@ export default function GrafanaPage() {
     fetchPeople();
   }, [fetchDashboard, fetchPeople]);
 
-  // 1-second countdown + automatic 5-minute refresh
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          fetchDashboard(true);
-          if (selectedCf) fetchTickets(selectedCf, selectedQueue);
-          return 300;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
+  const handleAutoRefresh = useCallback(() => {
+    fetchDashboard(true);
+    if (selectedCf) fetchTickets(selectedCf, selectedQueue);
   }, [fetchDashboard, fetchTickets, selectedCf, selectedQueue]);
+
+  const filteredPeopleOptions = useMemo(() => {
+    const q = respQuery.trim().toLowerCase();
+    if (!q) return peopleList.slice(0, 8);
+    return peopleList
+      .filter((p) => p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [peopleList, respQuery]);
 
   useEffect(() => {
     function handleOutsideClick(e: MouseEvent) {
@@ -734,9 +771,7 @@ export default function GrafanaPage() {
               Última sincronização: <strong className="text-slate-200">{syncMeta.last_sync_at || 'Aguardando...'}</strong>
             </span>
             <span className="text-slate-500">•</span>
-            <span>
-              Auto-atualização em <strong className="text-emerald-400 font-mono">{formatCountdown(countdown)}</strong>
-            </span>
+            <GrafanaCountdownBadge syncSeconds={syncSeconds} syncTick={syncTick} onRefresh={handleAutoRefresh} />
             {syncMeta.status === 'error' && (
               <span className="text-red-400 inline-flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" /> Falha na última leitura CSV
@@ -1216,13 +1251,7 @@ export default function GrafanaPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredTickets.map((t) => {
                 const stStyle = STATUS_STYLES[t.status_andamento] || STATUS_STYLES['Sem classificação'];
-                const filteredPeople = peopleList
-                  .filter((p) => {
-                    const q = respQuery.trim().toLowerCase();
-                    if (!q) return true;
-                    return p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q);
-                  })
-                  .slice(0, 8);
+                const filteredPeople = filteredPeopleOptions;
 
                 return (
                   <div

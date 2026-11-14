@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import { api, ApiError } from '../api/client';
-import GsapSecurityBackground from './GsapSecurityBackground';
 import { formatPersonName } from '../utils/formatName';
 
 export default function AuthenticatorModal() {
@@ -186,10 +185,7 @@ export default function AuthenticatorModal() {
   const digits = code.split('');
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-y-auto select-none bg-[#030305]">
-      {/* GSAP Lagos Digital Blueprint Architecture Background */}
-      <GsapSecurityBackground />
-
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-y-auto select-none bg-[#030305]/80 backdrop-blur-sm">
       {/* LAGOS DIGITAL DOUBLE-BEZEL PRECISION CARD */}
       <div
         ref={cardRef}

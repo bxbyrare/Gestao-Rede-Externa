@@ -297,10 +297,8 @@ export default function PessoasPage() {
       .catch(() => setPeople([]));
   }
 
-  useEffect(() => { load(); }, []);
-
   useEffect(() => {
-    const t = setTimeout(() => load(search), 300);
+    const t = setTimeout(() => load(search), search ? 300 : 0);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -365,8 +363,12 @@ export default function PessoasPage() {
 
   async function handleDelete(tech: Technician) {
     if (!confirm(`Excluir permanentemente o cadastro de "${tech.name}"?`)) return;
-    await api.delete(`/api/technicians/${tech.id}`);
-    load(search);
+    try {
+      await api.delete(`/api/technicians/${tech.id}`);
+      load(search);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir cadastro.');
+    }
   }
 
   function set(key: string, value: string) {

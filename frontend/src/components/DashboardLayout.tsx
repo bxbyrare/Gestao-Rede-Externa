@@ -92,7 +92,6 @@ export default function DashboardLayout() {
       <AntiPrintGuard />
 
       {/* Mandatory Blocking Modal if user has no email registered */}
-      <AuthenticatorModal />
       <MandatoryEmailModal />
 
       {/* Mobile overlay */}
