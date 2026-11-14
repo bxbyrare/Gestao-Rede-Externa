@@ -3265,11 +3265,21 @@ def public_project_view(project_id):
 REACT_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist')
 
 def serve_react_app():
-    return send_from_directory(REACT_DIST, 'index.html')
+    resp = make_response(send_from_directory(REACT_DIST, 'index.html'))
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 @app.route('/assets/<path:filename>')
 def react_assets(filename):
-    return send_from_directory(os.path.join(REACT_DIST, 'assets'), filename)
+    assets_dir = os.path.join(REACT_DIST, 'assets')
+    full_path = os.path.normpath(os.path.join(assets_dir, filename))
+    if not full_path.startswith(os.path.normpath(assets_dir)) or not os.path.isfile(full_path):
+        return Response("Asset not found", status=404, mimetype="text/plain")
+    resp = send_from_directory(assets_dir, filename)
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
 
 @app.route('/logout')
 def logout():
@@ -12667,18 +12677,11 @@ def api_test_email_template():
         "target": target_email
     })
 
+GLOBAL_EMAIL_COOLDOWN_SECONDS = 86400  # 24 horas mínimas entre disparos globais
+
 def _has_admin_notify_access(auth):
-    if not auth:
-        return False
-    role_lower = (auth.get('role') or '').lower()
-    return bool(
-        auth.get('is_master')
-        or auth.get('is_coordenador')
-        or role_lower in ['supervisor', 'coordenador']
-        or user_has_permission('notificacoes.create')
-        or user_has_permission('usuarios.edit')
-        or user_has_permission('gerenciamento.edit')
-    )
+    # Exclusivo para o Coordenador Master
+    return bool(auth and auth.get('is_master'))
 
 
 def _is_date_missing_or_expired(exp_val, today_date):
@@ -12702,13 +12705,13 @@ def _compute_pending_fields_from_row(row):
     missing = []
     today_date = datetime.date.today()
 
-    name_val = (row.get('tech_name') or row.get('username') or '').strip()
+    name_val = (row.get('tech_name') or row.get('user_name') or row.get('username') or '').strip()
     cpf_raw = (row.get('cpf') or '').strip()
     cpf_digits = re.sub(r'\D', '', cpf_raw)
     identity_val = (row.get('identity') or '').strip()
     dob_val = row.get('dob')
     phone_val = (row.get('tech_phone') or row.get('user_phone') or '').strip()
-    company_val = (row.get('tech_company') or row.get('user_company') or '').strip()
+    company_val = (row.get('tech_company') or '').strip()
     role_val = (row.get('tech_role') or row.get('user_role') or '').strip()
 
     # Identificação & Contato
@@ -12786,10 +12789,10 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
         SELECT
             u.id AS user_id,
             u.username,
+            u.name AS user_name,
             u.role AS user_role,
             u.email AS user_email,
             u.phone AS user_phone,
-            u.company AS user_company,
             u.tech_id,
             t.id AS tech_row_id,
             t.name AS tech_name,
@@ -12855,7 +12858,7 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
             continue
 
         seen_emails.add(raw_email)
-        display_name = (row.get('tech_name') or row.get('username') or 'Colaborador').strip()
+        display_name = (row.get('tech_name') or row.get('user_name') or row.get('username') or 'Colaborador').strip()
         recipients.append({
             "user_id": row.get('user_id'),
             "tech_id": row.get('tech_row_id'),
@@ -12875,12 +12878,268 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
     }
 
 
+def _ensure_global_email_log_table(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS global_email_dispatch_log (
+            id SERIAL PRIMARY KEY,
+            triggered_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+            triggered_by_username VARCHAR(100),
+            trigger_type VARCHAR(30) DEFAULT 'manual',
+            status VARCHAR(30) DEFAULT 'completed',
+            eligible_count INT DEFAULT 0,
+            sent_count INT DEFAULT 0,
+            failed_count INT DEFAULT 0,
+            details_json JSONB DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP DEFAULT NULL
+        );
+    """)
+
+
+def _format_remaining_cooldown(seconds):
+    secs = max(0, int(seconds))
+    hrs = secs // 3600
+    mins = (secs % 3600) // 60
+    if hrs > 0:
+        return f"{hrs}h {mins:02d}min"
+    return f"{max(1, mins)}min"
+
+
+def _get_global_email_cooldown_info():
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        _ensure_global_email_log_table(cur)
+        conn.commit()
+        cur.execute("""
+            SELECT id, triggered_by_username, trigger_type, status,
+                   eligible_count, sent_count, failed_count, details_json,
+                   created_at, completed_at,
+                   EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) AS elapsed_seconds
+            FROM global_email_dispatch_log
+            WHERE status = 'running' OR (status = 'completed' AND sent_count > 0)
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """)
+        row = cur.fetchone()
+        cur.execute("""
+            SELECT id, triggered_by_username, trigger_type, status,
+                   eligible_count, sent_count, failed_count, details_json,
+                   created_at, completed_at
+            FROM global_email_dispatch_log
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """)
+        latest_any = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    cooldown_active = False
+    remaining_seconds = 0
+    next_allowed_at = None
+    if row:
+        elapsed = float(row.get('elapsed_seconds') or 0)
+        if row.get('status') == 'running':
+            cooldown_active = True
+            remaining_seconds = GLOBAL_EMAIL_COOLDOWN_SECONDS
+        elif elapsed < GLOBAL_EMAIL_COOLDOWN_SECONDS:
+            cooldown_active = True
+            remaining_seconds = int(GLOBAL_EMAIL_COOLDOWN_SECONDS - elapsed)
+        if row.get('created_at'):
+            try:
+                next_dt = row['created_at'] + datetime.timedelta(seconds=GLOBAL_EMAIL_COOLDOWN_SECONDS)
+                next_allowed_at = next_dt.strftime('%d/%m/%Y às %H:%M')
+            except Exception:
+                pass
+
+    last_dispatch = None
+    if latest_any:
+        details = latest_any.get('details_json')
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except Exception:
+                details = []
+        last_dispatch = {
+            "id": latest_any.get('id'),
+            "triggered_by": latest_any.get('triggered_by_username') or 'Sistema',
+            "trigger_type": latest_any.get('trigger_type') or 'manual',
+            "status": latest_any.get('status') or 'completed',
+            "eligible_count": int(latest_any.get('eligible_count') or 0),
+            "sent_count": int(latest_any.get('sent_count') or 0),
+            "failed_count": int(latest_any.get('failed_count') or 0),
+            "results": details if isinstance(details, list) else [],
+            "created_at": latest_any['created_at'].strftime('%d/%m/%Y às %H:%M:%S') if latest_any.get('created_at') else None,
+            "completed_at": latest_any['completed_at'].strftime('%d/%m/%Y às %H:%M:%S') if latest_any.get('completed_at') else None,
+        }
+
+    return {
+        "cooldown_active": cooldown_active,
+        "remaining_seconds": remaining_seconds,
+        "remaining_label": _format_remaining_cooldown(remaining_seconds) if cooldown_active else None,
+        "next_allowed_at": next_allowed_at,
+        "last_dispatch": last_dispatch,
+    }
+
+
+def _execute_global_email_dispatch_worker(log_id, recipients):
+    sent_count = 0
+    failed_count = 0
+    results = []
+    final_status = 'completed'
+
+    try:
+        for idx, rec in enumerate(recipients):
+            if idx > 0:
+                time.sleep(0.55)
+            ok, status_code, detail = send_outdated_profile_email(
+                to_email=rec["email"],
+                user_display=rec["name"],
+                missing_fields=rec["missing_fields"],
+                sync=True
+            )
+            if ok:
+                sent_count += 1
+                results.append({
+                    "email": rec["email"],
+                    "name": rec["name"],
+                    "status": "sent",
+                    "detail": detail,
+                })
+            else:
+                failed_count += 1
+                results.append({
+                    "email": rec["email"],
+                    "name": rec["name"],
+                    "status": "failed",
+                    "detail": detail,
+                })
+                if status_code in [401, 403, 503]:
+                    if sent_count == 0:
+                        final_status = 'failed'
+                    break
+    except Exception as ex:
+        print("[GLOBAL EMAIL WORKER ERROR]", ex)
+        if sent_count == 0:
+            final_status = 'failed'
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE global_email_dispatch_log
+            SET status = %s,
+                sent_count = %s,
+                failed_count = %s,
+                details_json = %s,
+                completed_at = CURRENT_TIMESTAMP
+            WHERE id = %s;
+        """, (final_status, sent_count, failed_count, json.dumps(results), log_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as ex:
+        print("[GLOBAL EMAIL LOG UPDATE ERROR]", ex)
+
+
+def _start_global_email_dispatch(trigger_type='manual', user_id=None, username='system'):
+    api_key, _ = _get_resend_config()
+    if not api_key:
+        return {"started": False, "error": "RESEND_API_KEY não configurada no servidor.", "status_code": 503}
+
+    conn = get_db()
+    cur = conn.cursor()
+    locked = False
+    try:
+        cur.execute("SELECT pg_try_advisory_lock(984513) AS locked;")
+        locked = bool((cur.fetchone() or {}).get('locked'))
+        if not locked:
+            return {"started": False, "error": "Um disparo global já está em andamento.", "status_code": 429}
+
+        _ensure_global_email_log_table(cur)
+        conn.commit()
+
+        cur.execute("""
+            SELECT id, status, created_at,
+                   EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) AS elapsed_seconds
+            FROM global_email_dispatch_log
+            WHERE status = 'running' OR (status = 'completed' AND sent_count > 0)
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """)
+        recent = cur.fetchone()
+        if recent:
+            elapsed = float(recent.get('elapsed_seconds') or 0)
+            if recent.get('status') == 'running' or elapsed < GLOBAL_EMAIL_COOLDOWN_SECONDS:
+                rem = GLOBAL_EMAIL_COOLDOWN_SECONDS if recent.get('status') == 'running' else int(GLOBAL_EMAIL_COOLDOWN_SECONDS - elapsed)
+                return {
+                    "started": False,
+                    "error": f"Intervalo mínimo de 24h ativo. Aguarde {_format_remaining_cooldown(rem)} para realizar um novo disparo global.",
+                    "status_code": 429,
+                }
+
+        summary = _collect_pending_email_recipients()
+        recipients = summary["recipients"]
+        if not recipients:
+            return {
+                "started": True,
+                "sent_count": 0,
+                "eligible_count": 0,
+                "message": "Nenhum colaborador com e-mail cadastrado possui pendências no momento.",
+            }
+
+        cur.execute("""
+            INSERT INTO global_email_dispatch_log
+                (triggered_by_user_id, triggered_by_username, trigger_type, status, eligible_count)
+            VALUES (%s, %s, %s, 'running', %s)
+            RETURNING id;
+        """, (user_id, username, trigger_type, len(recipients)))
+        log_id = cur.fetchone()['id']
+        conn.commit()
+    finally:
+        if locked:
+            try:
+                cur.execute("SELECT pg_advisory_unlock(984513);")
+            except Exception:
+                pass
+        cur.close()
+        conn.close()
+
+    t = threading.Thread(
+        target=_execute_global_email_dispatch_worker,
+        args=(log_id, recipients),
+        daemon=True
+    )
+    t.start()
+    return {
+        "started": True,
+        "log_id": log_id,
+        "eligible_count": len(recipients),
+        "message": f"Disparo global iniciado em segundo plano para {len(recipients)} colaborador(es) com pendências.",
+    }
+
+
+def _trigger_initial_global_pending_email_if_due():
+    try:
+        api_key, _ = _get_resend_config()
+        if not api_key:
+            return
+        res = _start_global_email_dispatch(trigger_type='auto', user_id=None, username='auto-startup')
+        print("[AUTO GLOBAL EMAIL]", res.get('message') or res.get('error'))
+    except Exception as ex:
+        print("[AUTO GLOBAL EMAIL NOTICE]", ex)
+
+
+threading.Timer(8.0, _trigger_initial_global_pending_email_if_due).start()
+
+
 @app.route('/api/admin/resend-status', methods=['GET'])
 @login_required
 def api_admin_resend_status():
     auth = get_current_user_auth()
     if not _has_admin_notify_access(auth):
-        return jsonify({"error": "Acesso restrito à coordenação e supervisão."}), 403
+        return jsonify({"error": "Acesso restrito exclusivamente ao Coordenador Master."}), 403
 
     api_key, from_email = _get_resend_config()
     domain_status = "unknown"
@@ -12923,24 +13182,23 @@ def api_admin_resend_status():
 def api_notify_outdated_profile():
     auth = get_current_user_auth()
     if not _has_admin_notify_access(auth):
-        return jsonify({"error": "Acesso restrito à coordenação e supervisão."}), 403
+        return jsonify({"error": "Acesso restrito exclusivamente ao Coordenador Master."}), 403
 
     data = request.get_json(silent=True) or {}
     target_user_id = data.get('user_id') if request.method == 'POST' else None
     target_email = data.get('email') if request.method == 'POST' else None
 
     try:
-        summary = _collect_pending_email_recipients(
-            target_user_id=target_user_id,
-            target_email=target_email
-        )
         api_key, from_email = _get_resend_config()
 
         if request.method == 'GET':
+            summary = _collect_pending_email_recipients()
+            cooldown_info = _get_global_email_cooldown_info()
             return jsonify({
                 "resend_configured": bool(api_key),
                 "from_email": from_email,
-                **summary
+                **summary,
+                **cooldown_info,
             })
 
         if not api_key:
@@ -12948,71 +13206,63 @@ def api_notify_outdated_profile():
                 "error": "RESEND_API_KEY não configurada nas variáveis de ambiente do servidor."
             }), 503
 
-        recipients = summary["recipients"]
-        if not recipients:
-            return jsonify({
-                "success": True,
-                "sent_count": 0,
-                "failed_count": 0,
-                "eligible_count": 0,
-                "results": [],
-                "message": "Nenhum colaborador com e-mail cadastrado possui pendências no momento."
-            })
-
-        sent_count = 0
-        failed_count = 0
-        results = []
-        fatal_error = None
-
-        for idx, rec in enumerate(recipients):
-            if idx > 0:
-                # Respeita o limite de 2 req/s do Resend sem estourar 429
-                time.sleep(0.55)
-
+        # Disparo individual pontual (não conta como disparo global)
+        if target_user_id or target_email:
+            summary = _collect_pending_email_recipients(
+                target_user_id=target_user_id,
+                target_email=target_email
+            )
+            recipients = summary["recipients"]
+            if not recipients:
+                return jsonify({
+                    "success": True,
+                    "sent_count": 0,
+                    "failed_count": 0,
+                    "eligible_count": 0,
+                    "results": [],
+                    "message": "Colaborador sem e-mail válido ou sem pendências."
+                })
+            rec = recipients[0]
             ok, status_code, detail = send_outdated_profile_email(
                 to_email=rec["email"],
                 user_display=rec["name"],
                 missing_fields=rec["missing_fields"],
                 sync=True
             )
-            if ok:
-                sent_count += 1
-                results.append({
-                    "email": rec["email"],
-                    "name": rec["name"],
-                    "status": "sent",
-                    "detail": detail,
-                })
-            else:
-                failed_count += 1
-                results.append({
-                    "email": rec["email"],
-                    "name": rec["name"],
-                    "status": "failed",
-                    "detail": detail,
-                })
-                if status_code in [401, 403, 503]:
-                    fatal_error = detail
-                    break
-
-        if sent_count == 0 and fatal_error:
+            if not ok:
+                return jsonify({
+                    "success": False,
+                    "sent_count": 0,
+                    "failed_count": 1,
+                    "eligible_count": 1,
+                    "results": [{"email": rec["email"], "name": rec["name"], "status": "failed", "detail": detail}],
+                    "error": detail,
+                }), 502
             return jsonify({
-                "success": False,
-                "sent_count": 0,
-                "failed_count": failed_count,
-                "eligible_count": len(recipients),
-                "results": results,
-                "error": fatal_error,
-            }), 502
+                "success": True,
+                "sent_count": 1,
+                "failed_count": 0,
+                "eligible_count": 1,
+                "results": [{"email": rec["email"], "name": rec["name"], "status": "sent", "detail": detail}],
+                "message": f"E-mail enviado para {rec['email']}."
+            })
+
+        # Disparo global com trava de 24h
+        res = _start_global_email_dispatch(
+            trigger_type='manual',
+            user_id=auth.get('id'),
+            username=auth.get('username') or 'master'
+        )
+        if not res.get("started"):
+            return jsonify({"error": res.get("error")}), res.get("status_code", 400)
 
         return jsonify({
             "success": True,
-            "sent_count": sent_count,
-            "failed_count": failed_count,
-            "eligible_count": len(recipients),
-            "results": results,
-            "message": f"{sent_count} e-mail(s) enviado(s) com sucesso"
-            + (f" ({failed_count} falha(s))." if failed_count else ".")
+            "started": True,
+            "eligible_count": res.get("eligible_count", 0),
+            "sent_count": res.get("sent_count", 0),
+            "failed_count": 0,
+            "message": res.get("message"),
         })
     except Exception as e:
         print("[NOTIFY OUTDATED PROFILE ERROR]", e)

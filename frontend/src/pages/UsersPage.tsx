@@ -25,6 +25,19 @@ interface PendingEmailRecipient {
   missing_fields: string[];
 }
 
+interface LastDispatchInfo {
+  id: number;
+  triggered_by: string;
+  trigger_type: string;
+  status: string;
+  eligible_count: number;
+  sent_count: number;
+  failed_count: number;
+  created_at: string | null;
+  completed_at: string | null;
+  results?: Array<{ email: string; name: string; status: 'sent' | 'failed'; detail: string }>;
+}
+
 interface PendingEmailPreview {
   resend_configured: boolean;
   from_email: string;
@@ -33,6 +46,11 @@ interface PendingEmailPreview {
   with_email_count: number;
   eligible_count: number;
   missing_email_but_pending_count: number;
+  cooldown_active?: boolean;
+  remaining_seconds?: number;
+  remaining_label?: string | null;
+  next_allowed_at?: string | null;
+  last_dispatch?: LastDispatchInfo | null;
 }
 
 interface ResendStatusInfo {
@@ -84,12 +102,8 @@ export default function UsersPage() {
   const canCreateUser = hasPermission(currentUser, 'gerenciamento.create');
   const canEditUser = hasPermission(currentUser, 'gerenciamento.edit');
   const canDeleteUser = hasPermission(currentUser, 'gerenciamento.delete');
-  const canNotifyPendingEmails =
-    isMaster ||
-    isCoordenador(currentUser) ||
-    (currentUser?.role || '').toLowerCase() === 'supervisor' ||
-    canEditUser ||
-    hasPermission(currentUser, 'notificacoes.create');
+  // Exclusivo para o Coordenador Master
+  const canNotifyPendingEmails = isMaster;
 
   async function openPendingEmailModal() {
     setEmailModalOpen(true);
@@ -112,14 +126,24 @@ export default function UsersPage() {
     }
   }
 
+  async function refreshPendingPreview() {
+    try {
+      const previewRes = await api.get<PendingEmailPreview>('/api/admin/notify-outdated-profile');
+      setEmailPreview(previewRes);
+    } catch {
+      // ignore background refresh error
+    }
+  }
+
   async function handleSendGlobalPendingEmails() {
-    if (!emailPreview || emailPreview.eligible_count === 0) return;
+    if (!emailPreview || emailPreview.eligible_count === 0 || emailPreview.cooldown_active) return;
     setSendingGlobalEmails(true);
     setDispatchError(null);
     setDispatchResult(null);
     try {
       const res = await api.post<DispatchResult>('/api/admin/notify-outdated-profile', {});
       setDispatchResult(res);
+      await refreshPendingPreview();
     } catch (err) {
       setDispatchError(
         err instanceof ApiError ? err.message : 'Falha ao disparar e-mails via Resend.'
@@ -663,13 +687,16 @@ export default function UsersPage() {
                 sendingGlobalEmails ||
                 !emailPreview ||
                 emailPreview.eligible_count === 0 ||
-                !resendStatus?.configured
+                !resendStatus?.configured ||
+                Boolean(emailPreview.cooldown_active)
               }
             >
               <Send className="w-4 h-4" />
               {sendingGlobalEmails
-                ? 'Enviando e-mails...'
-                : `Enviar E-mail Global (${emailPreview?.eligible_count ?? 0})`}
+                ? 'Iniciando disparo...'
+                : emailPreview?.cooldown_active
+                  ? `Aguardar 24h (${emailPreview.remaining_label || 'ativo'})`
+                  : `Enviar E-mail Global (${emailPreview?.eligible_count ?? 0})`}
             </Button>
           </>
         }
@@ -747,6 +774,57 @@ export default function UsersPage() {
                   </div>
                 </div>
               </div>
+
+              {emailPreview.cooldown_active && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                  <div className="font-semibold">
+                    Intervalo mínimo de 24h ativo entre disparos globais
+                  </div>
+                  <div className="text-[11px] opacity-90 mt-0.5">
+                    Tempo restante: <strong>{emailPreview.remaining_label}</strong>
+                    {emailPreview.next_allowed_at ? ` • Próximo envio liberado em ${emailPreview.next_allowed_at}` : ''}
+                  </div>
+                </div>
+              )}
+
+              {emailPreview.last_dispatch && (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-slate-200">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-semibold">
+                      Último Disparo Global ({emailPreview.last_dispatch.trigger_type === 'auto' ? 'Automático' : 'Manual'})
+                      {' · '}
+                      <span
+                        className={
+                          emailPreview.last_dispatch.status === 'running'
+                            ? 'text-blue-300'
+                            : emailPreview.last_dispatch.status === 'failed'
+                              ? 'text-red-300'
+                              : 'text-emerald-300'
+                        }
+                      >
+                        {emailPreview.last_dispatch.status === 'running'
+                          ? 'Enviando em segundo plano...'
+                          : emailPreview.last_dispatch.status === 'failed'
+                            ? 'Falhou'
+                            : 'Concluído'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={refreshPendingPreview}
+                      className="text-[11px] text-blue-300 hover:text-blue-200 underline"
+                    >
+                      Atualizar status
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Iniciado em {emailPreview.last_dispatch.created_at || '—'} por {emailPreview.last_dispatch.triggered_by}
+                    {' • '}Elegíveis: <strong className="text-white">{emailPreview.last_dispatch.eligible_count}</strong>
+                    {' • '}Enviados: <strong className="text-emerald-300">{emailPreview.last_dispatch.sent_count}</strong>
+                    {' • '}Falhas: <strong className="text-red-300">{emailPreview.last_dispatch.failed_count}</strong>
+                  </div>
+                </div>
+              )}
 
               {dispatchError && (
                 <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-200">
