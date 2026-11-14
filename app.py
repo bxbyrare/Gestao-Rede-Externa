@@ -593,76 +593,156 @@ def send_outdated_profile_email(to_email, user_display, missing_fields=None, por
         cta_url=profile_url
     )
 
-def send_security_alert_email(to_email, user_display, ip_address, user_agent=None, login_time=None, portal_url=None):
-    """Template 3: Alerta de Segurança quando um IP novo entra na conta"""
+def _resolve_ip_location(ip_address, cf_city=None, cf_region=None, cf_country=None):
+    parts = [p.strip() for p in (cf_city, cf_region, cf_country) if p and str(p).strip()]
+    if len(parts) >= 2:
+        return " - ".join(parts).upper()
+
+    ip_clean = str(ip_address or '').strip()
+    if not ip_clean or ip_clean.startswith(('127.', '10.', '192.168.', '::1', 'fe80:')) or (
+        ip_clean.startswith('172.') and 16 <= int(ip_clean.split('.')[1]) <= 31 if len(ip_clean.split('.')) >= 2 and ip_clean.split('.')[1].isdigit() else False
+    ):
+        return "REDE LOCAL / INTERNA"
+
+    try:
+        resp = requests.get(f"https://ipwho.is/{ip_clean}", timeout=3)
+        if resp.status_code == 200:
+            geo = resp.json() or {}
+            if geo.get('success'):
+                geo_parts = [
+                    str(geo.get('city') or '').strip(),
+                    str(geo.get('region') or '').strip(),
+                    str(geo.get('country') or '').strip(),
+                ]
+                geo_parts = [g for g in geo_parts if g]
+                if geo_parts:
+                    return " - ".join(geo_parts).upper()
+    except Exception:
+        pass
+    return "LOCALIZAÇÃO NÃO IDENTIFICADA"
+
+
+def send_security_alert_email(
+    to_email,
+    user_display,
+    ip_address,
+    user_agent=None,
+    login_time=None,
+    portal_url=None,
+    totp_blocked=True,
+    is_new_ip=True,
+    cf_city=None,
+    cf_region=None,
+    cf_country=None,
+):
+    """Template 3: Alerta de Segurança de tentativa/entrada na conta com localização, IP e hora"""
+    if not _is_valid_email_addr(to_email):
+        return False
+
+    brt_tz = datetime.timezone(datetime.timedelta(hours=-3))
+    now_brt = datetime.datetime.now(brt_tz)
+    time_only = now_brt.strftime('%H:%M')
+    date_full = str(login_time or f"{time_only} ({now_brt.strftime('%d/%m/%Y')} - Horário de Brasília)")
+
     safe_user = html.escape(str(user_display or 'Colaborador'))
     safe_ip = html.escape(str(ip_address or 'IP não identificado'))
     safe_ua = html.escape(str(user_agent or 'Navegador Web')[:180])
-    safe_time = html.escape(str(login_time or datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')))
+    safe_time = html.escape(date_full)
     reset_url = portal_url or get_portal_url('/login')
 
-    message_html = f'''
-        <p style="margin: 0 0 14px 0; font-size: 15px; color: #E2E8F0;">Olá, <strong>{safe_user}</strong>.</p>
-        
-        <!-- Security Header Callout -->
-        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 16px 0 20px 0;">
-            <tr>
-                <td style="background: linear-gradient(180deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.05) 100%); border: 1px solid rgba(239, 68, 68, 0.4); border-left: 4px solid #EF4444; border-radius: 10px; padding: 18px 20px;">
-                    <div style="font-size: 12px; font-weight: 800; color: #FCA5A5; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">
-                        🚨 NOVO ACESSO DETECTADO EM SUA CONTA
-                    </div>
-                    <p style="margin: 0; font-size: 13.5px; line-height: 1.6; color: #FEE2E2;">
-                        O sistema de monitoramento de segurança da <strong>Claro Gestão Rede Externa</strong> detectou um login bem-sucedido na sua conta a partir de um <strong>endereço IP que nunca foi utilizado anteriormente</strong>.
-                    </p>
-                </td>
-            </tr>
-        </table>
+    status_label = (
+        "Senha aceita &bull; Aguardando Autenticador (2FA)"
+        if totp_blocked
+        else "Acesso autorizado"
+    )
+    status_color = "#FBBF24" if totp_blocked else "#4ADE80"
+    callout_title = (
+        "TENTATIVA DE ENTRADA DETECTADA NA SUA CONTA"
+        if totp_blocked
+        else "NOVO ACESSO DETECTADO NA SUA CONTA"
+    )
+    callout_desc = (
+        "Alguém inseriu seu <strong>usuário e senha corretos</strong> para entrar na sua conta e ficou retido na verificação do <strong>Autenticador (2FA)</strong>."
+        if totp_blocked
+        else "Detectamos uma entrada na sua conta na plataforma <strong>Claro Gestão Rede Externa</strong>."
+    )
+    if is_new_ip:
+        callout_desc += " A requisição veio de um <strong>novo endereço IP</strong>."
 
-        <!-- Event Details Card -->
-        <div style="background: #111726; border: 1px solid #1E293B; border-radius: 10px; padding: 18px 22px; margin-bottom: 22px;">
-            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #94A3B8; margin-bottom: 12px;">
-                DETALHES DO EVENTO DE LOGIN
-            </div>
-            <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+    def _dispatch_with_geo():
+        resolved_loc = _resolve_ip_location(ip_address, cf_city=cf_city, cf_region=cf_region, cf_country=cf_country)
+        safe_loc = html.escape(resolved_loc)
+
+        message_html = f'''
+            <p style="margin: 0 0 14px 0; font-size: 15px; color: #E2E8F0;">Olá, <strong>{safe_user}</strong>.</p>
+            
+            <!-- Security Header Callout -->
+            <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 16px 0 20px 0;">
                 <tr>
-                    <td style="padding: 6px 0; font-size: 13px; color: #64748B; width: 140px;">Endereço IP:</td>
-                    <td style="padding: 6px 0; font-size: 13px; color: #F87171; font-family: Consolas, monospace; font-weight: bold;">{safe_ip}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 6px 0; font-size: 13px; color: #64748B;">Data e Hora:</td>
-                    <td style="padding: 6px 0; font-size: 13px; color: #E2E8F0; font-weight: 600;">{safe_time} (Horário de Brasília)</td>
-                </tr>
-                <tr>
-                    <td style="padding: 6px 0; font-size: 13px; color: #64748B;">Dispositivo / Navegador:</td>
-                    <td style="padding: 6px 0; font-size: 12px; color: #94A3B8;">{safe_ua}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 6px 0; font-size: 13px; color: #64748B;">Status da Autenticação:</td>
-                    <td style="padding: 6px 0; font-size: 13px; color: #4ADE80; font-weight: 600;">Concluído com Sucesso</td>
+                    <td style="background: linear-gradient(180deg, rgba(226, 6, 19, 0.14) 0%, rgba(185, 28, 28, 0.05) 100%); border: 1px solid rgba(226, 6, 19, 0.4); border-left: 4px solid #E20613; border-radius: 10px; padding: 18px 20px;">
+                        <div style="font-size: 12px; font-weight: 800; color: #FDA4AF; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">
+                            {callout_title}
+                        </div>
+                        <p style="margin: 0; font-size: 13.5px; line-height: 1.6; color: #F1F5F9;">
+                            {callout_desc}
+                        </p>
+                    </td>
                 </tr>
             </table>
-        </div>
 
-        <!-- Action Guidance -->
-        <div style="margin-bottom: 18px;">
-            <p style="margin: 0 0 10px 0; font-size: 13.5px; line-height: 1.6; color: #CBD5E1;">
-                <strong style="color: #4ADE80;">✅ Foi você?</strong> Se você realizou este login (por exemplo, conectado a uma nova rede Wi-Fi, dados móveis 4G/5G ou em um novo dispositivo), nenhuma ação é necessária. Este IP foi adicionado aos seus registros seguros.
-            </p>
-            <p style="margin: 12px 0 0 0; font-size: 13.5px; line-height: 1.6; color: #FDA4AF;">
-                <strong style="color: #EF4444;">🚨 Não reconhece este acesso?</strong> Se você não reconhece este evento, recomendamos alterar sua senha imediatamente para proteger seus dados e encerrar acessos não autorizados.
-            </p>
-        </div>
-    '''
+            <!-- Event Details Card -->
+            <div style="background: #111726; border: 1px solid #1E293B; border-radius: 10px; padding: 18px 22px; margin-bottom: 22px;">
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #94A3B8; margin-bottom: 12px;">
+                    ORIGEM DA REQUISIÇÃO
+                </div>
+                <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #64748B; width: 150px;">Localização:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: #F8FAFC; font-weight: 700;">{safe_loc}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #64748B;">IP:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: #F87171; font-family: Consolas, monospace; font-weight: bold;">{safe_ip}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #64748B;">Hora:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: #E2E8F0; font-weight: 600;">{safe_time}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #64748B;">Status:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: {status_color}; font-weight: 600;">{status_label}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #64748B;">Dispositivo / Navegador:</td>
+                        <td style="padding: 6px 0; font-size: 12px; color: #94A3B8;">{safe_ua}</td>
+                    </tr>
+                </table>
+            </div>
 
-    return send_resend_email(
-        to_email=to_email,
-        subject=f"🚨 [Alerta de Segurança] Novo Acesso Detectado - Claro Rede Externa ({safe_ip})",
-        category_badge="ALERTA DE SEGURANÇA",
-        title="Novo Acesso Detectado em Sua Conta",
-        message_html=message_html,
-        cta_text="Redefinir Minha Senha Imediatamente",
-        cta_url=reset_url
-    )
+            <!-- Action Guidance -->
+            <div style="margin-bottom: 18px;">
+                <p style="margin: 0 0 10px 0; font-size: 13.5px; line-height: 1.6; color: #CBD5E1;">
+                    <strong style="color: #4ADE80;">Foi você?</strong> Se você acabou de fazer login, nenhuma ação é necessária.
+                </p>
+                <p style="margin: 12px 0 0 0; font-size: 13.5px; line-height: 1.6; color: #FDA4AF;">
+                    <strong style="color: #EF4444;">Não foi você?</strong> Mesmo com o Autenticador (2FA) protegendo sua conta, altere sua senha imediatamente e avise um coordenador.
+                </p>
+            </div>
+        '''
+
+        _send_resend_email_sync(
+            to_email=to_email,
+            subject=f"[Claro Gestão Externa] Alerta de Acesso na Conta ({resolved_loc})",
+            category_badge=None,
+            title="Alerta de Entrada na Conta",
+            message_html=message_html,
+            cta_text="Acessar Portal / Alterar Senha",
+            cta_url=reset_url
+        )
+
+    t = threading.Thread(target=_dispatch_with_geo, daemon=True)
+    t.start()
+    return True
 app.permanent_session_lifetime = datetime.timedelta(hours=12)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -3414,8 +3494,9 @@ def api_login():
                 cur_ip.execute("SELECT id FROM user_known_ips WHERE user_id = %s AND ip_address = %s;", (user['id'], client_ip))
                 ip_exists = cur_ip.fetchone()
                 
-                if total_ips > 0 and not ip_exists:
-                    # New IP detected for an established user!
+                if True:
+                    # Notifica sempre que houver validação de usuário/senha (inclusive se barrado pelo 2FA)
+                    is_new_ip = bool(total_ips > 0 and not ip_exists)
                     sec_email = (user.get('email') or '').strip().lower()
                     if not sec_email and user.get('tech_id'):
                         cur_ip.execute("SELECT email FROM technicians WHERE id = %s;", (user['tech_id'],))
@@ -3425,15 +3506,22 @@ def api_login():
                     
                     if sec_email and '@' in sec_email:
                         sec_display = user.get('name') or user['username']
-                        now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
+                        brt_tz = datetime.timezone(datetime.timedelta(hours=-3))
+                        now_brt = datetime.datetime.now(brt_tz)
+                        now_str = f"{now_brt.strftime('%H:%M')} ({now_brt.strftime('%d/%m/%Y')} - Horário de Brasília)"
                         send_security_alert_email(
                             to_email=sec_email,
                             user_display=sec_display,
                             ip_address=client_ip,
                             user_agent=client_ua,
-                            login_time=now_str
+                            login_time=now_str,
+                            totp_blocked=bool(user.get('totp_enabled')),
+                            is_new_ip=is_new_ip,
+                            cf_city=request.headers.get('CF-IPCity'),
+                            cf_region=request.headers.get('CF-Region'),
+                            cf_country=request.headers.get('CF-IPCountry'),
                         )
-                        print(f"[SECURITY ALERT DISPATCHED] Novo IP ({client_ip}) detectado para {user['username']}. Alerta enviado para {sec_email}.")
+                        print(f"[SECURITY ALERT DISPATCHED] Login detectado ({client_ip}) para {user['username']}. Alerta enviado para {sec_email}.")
 
                 # Register / update IP
                 cur_ip.execute("""
