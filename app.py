@@ -234,10 +234,7 @@ def _get_resend_config():
 def get_portal_url(path='/'):
     base = os.environ.get('PORTAL_BASE_URL', '').strip()
     if not base:
-        try:
-            base = request.host_url.rstrip('/')
-        except Exception:
-            base = 'https://gestaoredeexterna.com.br'
+        base = 'https://gestaoredeexterna.shardweb.app'
     if not path.startswith('/'):
         path = '/' + path
     return f"{base.rstrip('/')}{path}"
@@ -829,7 +826,7 @@ def enforce_security_policies():
             origin = request.headers.get('Origin')
             referer = request.headers.get('Referer')
             host = request.host.split(':')[0].lower()
-            allowed_hosts = {'localhost', '127.0.0.1', 'gestaoredeexterna.shardatabases.app', 'gestaoredeexterna.com.br', 'www.gestaoredeexterna.com.br'}
+            allowed_hosts = {'localhost', '127.0.0.1', 'gestaoredeexterna.shardweb.app', 'gestaoredeexterna.shardatabases.app', 'gestaoredeexterna.com.br', 'www.gestaoredeexterna.com.br'}
             if origin:
                 origin_clean = origin.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0].lower()
                 if origin_clean != host and origin_clean not in allowed_hosts:
@@ -4010,7 +4007,7 @@ def api_update_my_profile():
                 <p>Este e-mail será utilizado para envio de comunicados operacionais importantes, avisos de manutenções, menções em ocorrências e recuperação segura de credenciais.</p>
             ''',
             cta_text="Acessar Minha Conta",
-            cta_url="https://gestaoredeexterna.com.br/"
+            cta_url="https://gestaoredeexterna.shardweb.app/"
         )
 
     if hashed_pw and (email or old_email):
@@ -4028,7 +4025,7 @@ def api_update_my_profile():
                 <p>Se você realizou essa alteração, nenhuma ação é necessária. Se você <strong>não reconhece</strong> essa operação, redefina sua senha imediatamente.</p>
             ''',
             cta_text="Acessar Minha Conta",
-            cta_url="https://gestaoredeexterna.com.br/"
+            cta_url="https://gestaoredeexterna.shardweb.app/"
         )
 
     log_action(user_id, user['username'], f"Atualizou seus dados de perfil próprio (E-mail: {email or 'mantido'}, Telefone: {phone or 'mantido'}).")
@@ -4385,7 +4382,7 @@ def api_update_technician(tech_id):
                         <p>Caso identifique alguma informação incorreta, acesse o menu <strong>Meu Perfil</strong> para verificar ou entre em contato com sua coordenação.</p>
                     ''',
                     cta_text="Conferir Meu Perfil",
-                    cta_url="https://gestaoredeexterna.com.br/perfil"
+                    cta_url="https://gestaoredeexterna.shardweb.app/perfil"
                 )
         except Exception as notify_err:
             print("Technician update email error:", notify_err)
@@ -7676,7 +7673,7 @@ def api_notifications():
                                 <p>Para conferir os detalhes e histórico completo, acesse a aba de Notificações na plataforma.</p>
                             ''',
                             cta_text="Ver Notificações",
-                            cta_url="https://gestaoredeexterna.com.br/notificacoes"
+                            cta_url="https://gestaoredeexterna.shardweb.app/notificacoes"
                         )
             except Exception as mention_err:
                 print("Mention email error:", mention_err)
@@ -9929,7 +9926,7 @@ def api_create_user_task():
                         </div>
                     ''',
                     cta_text="Abrir Minhas Tarefas",
-                    cta_url="https://gestaoredeexterna.com.br/area-de-trabalho"
+                    cta_url="https://gestaoredeexterna.shardweb.app/area-de-trabalho"
                 )
         except Exception as task_email_err:
             print("Task assign email error:", task_email_err)
