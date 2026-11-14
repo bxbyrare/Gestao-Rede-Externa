@@ -12916,6 +12916,9 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
         ORDER BY COALESCE(t.name, u.username, '') ASC;
     """)
     rows = cur.fetchall()
+    _ensure_global_email_log_table(cur)
+    conn.commit()
+    recently_sent_24h = _get_recently_notified_emails_24h(cur) if (target_user_id is None and not target_email) else set()
     cur.close()
     conn.close()
 
@@ -12923,6 +12926,7 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
     seen_emails = set()
     with_email_count = 0
     missing_email_but_pending_count = 0
+    already_sent_24h_count = 0
 
     clean_filter_email = str(target_email).strip().lower() if target_email else None
 
@@ -12946,6 +12950,10 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
             continue
 
         seen_emails.add(raw_email)
+        if raw_email in recently_sent_24h:
+            already_sent_24h_count += 1
+            continue
+
         display_name = (row.get('tech_name') or row.get('user_name') or row.get('username') or 'Colaborador').strip()
         recipients.append({
             "user_id": row.get('user_id'),
@@ -12962,6 +12970,7 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
         "total_registered": len(rows),
         "with_email_count": with_email_count,
         "eligible_count": len(recipients),
+        "already_sent_24h_count": already_sent_24h_count,
         "missing_email_but_pending_count": missing_email_but_pending_count,
     }
 
@@ -12979,9 +12988,125 @@ def _ensure_global_email_log_table(cur):
             failed_count INT DEFAULT 0,
             details_json JSONB DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             completed_at TIMESTAMP DEFAULT NULL
         );
     """)
+    cur.execute("""
+        ALTER TABLE global_email_dispatch_log
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS outdated_profile_email_sent_log (
+            id SERIAL PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            user_id INT DEFAULT NULL,
+            tech_id INT DEFAULT NULL,
+            dispatch_log_id INT DEFAULT NULL,
+            resend_message_id VARCHAR(255) DEFAULT NULL,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_outdated_email_sent_email_time
+        ON outdated_profile_email_sent_log (LOWER(email), sent_at DESC);
+    """)
+
+
+def _mark_stale_running_dispatches(cur):
+    cur.execute("""
+        UPDATE global_email_dispatch_log
+        SET status = 'interrupted',
+            completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP)
+        WHERE status = 'running'
+          AND COALESCE(updated_at, created_at) < CURRENT_TIMESTAMP - INTERVAL '2 minutes';
+    """)
+
+
+def _get_recently_notified_emails_24h(cur):
+    sent_set = set()
+    cur.execute("""
+        SELECT DISTINCT LOWER(email) AS email
+        FROM outdated_profile_email_sent_log
+        WHERE sent_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours';
+    """)
+    for r in cur.fetchall():
+        em = (r.get('email') or '').strip().lower()
+        if em:
+            sent_set.add(em)
+
+    # Compatibilidade retroativa: extrai e-mails já confirmados em details_json nas últimas 24h
+    try:
+        cur.execute("""
+            SELECT details_json
+            FROM global_email_dispatch_log
+            WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+              AND details_json IS NOT NULL;
+        """)
+        for r in cur.fetchall():
+            details = r.get('details_json')
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except Exception:
+                    details = []
+            if isinstance(details, list):
+                for item in details:
+                    if isinstance(item, dict) and item.get('status') == 'sent':
+                        em = (item.get('email') or '').strip().lower()
+                        if em:
+                            sent_set.add(em)
+    except Exception:
+        pass
+
+    return sent_set
+
+
+def _was_email_notified_24h(email):
+    clean = (email or '').strip().lower()
+    if not clean:
+        return False
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        _ensure_global_email_log_table(cur)
+        conn.commit()
+        cur.execute("""
+            SELECT 1
+            FROM outdated_profile_email_sent_log
+            WHERE LOWER(email) = LOWER(%s)
+              AND sent_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+            LIMIT 1;
+        """, (clean,))
+        return cur.fetchone() is not None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _record_outdated_profile_email_sent(email, user_id=None, tech_id=None, dispatch_log_id=None, resend_message_id=None):
+    clean = (email or '').strip().lower()
+    if not clean:
+        return
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        _ensure_global_email_log_table(cur)
+        cur.execute("""
+            INSERT INTO outdated_profile_email_sent_log
+                (email, user_id, tech_id, dispatch_log_id, resend_message_id, sent_at)
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP);
+        """, (clean, user_id, tech_id, dispatch_log_id, str(resend_message_id)[:255] if resend_message_id else None))
+        conn.commit()
+    except Exception as ex:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print("[OUTDATED EMAIL SENT LOG ERROR]", ex)
+    finally:
+        cur.close()
+        conn.close()
 
 
 def _format_remaining_cooldown(seconds):
@@ -12998,6 +13123,7 @@ def _get_global_email_cooldown_info():
     cur = conn.cursor()
     try:
         _ensure_global_email_log_table(cur)
+        _mark_stale_running_dispatches(cur)
         conn.commit()
         cur.execute("""
             SELECT id, triggered_by_username, trigger_type, status,
@@ -13005,7 +13131,7 @@ def _get_global_email_cooldown_info():
                    created_at, completed_at,
                    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) AS elapsed_seconds
             FROM global_email_dispatch_log
-            WHERE (status = 'running' AND created_at >= CURRENT_TIMESTAMP - INTERVAL '10 minutes')
+            WHERE (status = 'running' AND COALESCE(updated_at, created_at) >= CURRENT_TIMESTAMP - INTERVAL '2 minutes')
                OR (status = 'completed' AND sent_count > 0)
             ORDER BY created_at DESC
             LIMIT 1;
@@ -13084,21 +13210,42 @@ def _get_global_email_cooldown_info():
 def _execute_global_email_dispatch_worker(log_id, recipients):
     sent_count = 0
     failed_count = 0
+    skipped_24h_count = 0
     results = []
     final_status = 'completed'
 
     try:
         for idx, rec in enumerate(recipients):
+            if _was_email_notified_24h(rec["email"]):
+                skipped_24h_count += 1
+                continue
+
             if idx > 0:
-                time.sleep(0.55)
-            ok, status_code, detail = send_outdated_profile_email(
-                to_email=rec["email"],
-                user_display=rec["name"],
-                missing_fields=rec["missing_fields"],
-                sync=True
-            )
+                time.sleep(0.65)
+
+            ok = False
+            status_code = 500
+            detail = "Erro desconhecido"
+            for attempt in range(3):
+                ok, status_code, detail = send_outdated_profile_email(
+                    to_email=rec["email"],
+                    user_display=rec["name"],
+                    missing_fields=rec["missing_fields"],
+                    sync=True
+                )
+                if ok or status_code not in [429, 502, 504]:
+                    break
+                time.sleep(2.5 * (attempt + 1))
+
             if ok:
                 sent_count += 1
+                _record_outdated_profile_email_sent(
+                    email=rec["email"],
+                    user_id=rec.get("user_id"),
+                    tech_id=rec.get("tech_id"),
+                    dispatch_log_id=log_id,
+                    resend_message_id=detail
+                )
                 results.append({
                     "email": rec["email"],
                     "name": rec["name"],
@@ -13116,13 +13263,19 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
                 if status_code in [401, 403, 503]:
                     if sent_count == 0:
                         final_status = 'failed'
+                    else:
+                        final_status = 'interrupted'
                     break
-            if (idx + 1) % 10 == 0:
+            if (idx + 1) % 5 == 0:
                 try:
                     c_prog = get_db()
                     cur_prog = c_prog.cursor()
                     cur_prog.execute(
-                        "UPDATE global_email_dispatch_log SET sent_count = %s, failed_count = %s WHERE id = %s;",
+                        """
+                        UPDATE global_email_dispatch_log
+                        SET sent_count = %s, failed_count = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s;
+                        """,
                         (sent_count, failed_count, log_id)
                     )
                     c_prog.commit()
@@ -13134,6 +13287,8 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
         print("[GLOBAL EMAIL WORKER ERROR]", ex)
         if sent_count == 0:
             final_status = 'failed'
+        else:
+            final_status = 'interrupted'
 
     try:
         conn = get_db()
@@ -13144,6 +13299,7 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
                 sent_count = %s,
                 failed_count = %s,
                 details_json = %s,
+                updated_at = CURRENT_TIMESTAMP,
                 completed_at = CURRENT_TIMESTAMP
             WHERE id = %s;
         """, (final_status, sent_count, failed_count, json.dumps(results), log_id))
@@ -13169,38 +13325,62 @@ def _start_global_email_dispatch(trigger_type='manual', user_id=None, username='
             return {"started": False, "error": "Um disparo global já está em andamento.", "status_code": 429}
 
         _ensure_global_email_log_table(cur)
+        _mark_stale_running_dispatches(cur)
         conn.commit()
+
+        # Nunca permite dois disparos simultaneamente ativos
+        cur.execute("""
+            SELECT id
+            FROM global_email_dispatch_log
+            WHERE status = 'running'
+              AND COALESCE(updated_at, created_at) >= CURRENT_TIMESTAMP - INTERVAL '2 minutes'
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """)
+        if cur.fetchone():
+            return {
+                "started": False,
+                "error": "Um disparo global já está em andamento neste momento. Aguarde a conclusão.",
+                "status_code": 429,
+            }
+
+        summary = _collect_pending_email_recipients()
+        recipients = summary["recipients"]
+        already_sent_24h = int(summary.get("already_sent_24h_count") or 0)
+
+        if not recipients:
+            msg = (
+                f"Todos os {already_sent_24h} colaborador(es) com pendências já receberam este e-mail nas últimas 24h."
+                if already_sent_24h > 0
+                else "Nenhum colaborador com e-mail cadastrado possui pendências no momento."
+            )
+            return {
+                "started": True,
+                "sent_count": 0,
+                "eligible_count": 0,
+                "already_sent_24h_count": already_sent_24h,
+                "message": msg,
+            }
 
         if not force:
             cur.execute("""
                 SELECT id, status, created_at,
                        EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) AS elapsed_seconds
                 FROM global_email_dispatch_log
-                WHERE (status = 'running' AND created_at >= CURRENT_TIMESTAMP - INTERVAL '10 minutes')
-                   OR (status = 'completed' AND sent_count > 0)
+                WHERE status = 'completed' AND sent_count > 0
                 ORDER BY created_at DESC
                 LIMIT 1;
             """)
             recent = cur.fetchone()
             if recent:
                 elapsed = float(recent.get('elapsed_seconds') or 0)
-                if recent.get('status') == 'running' or elapsed < GLOBAL_EMAIL_COOLDOWN_SECONDS:
-                    rem = GLOBAL_EMAIL_COOLDOWN_SECONDS if recent.get('status') == 'running' else int(GLOBAL_EMAIL_COOLDOWN_SECONDS - elapsed)
+                if elapsed < GLOBAL_EMAIL_COOLDOWN_SECONDS:
+                    rem = int(GLOBAL_EMAIL_COOLDOWN_SECONDS - elapsed)
                     return {
                         "started": False,
                         "error": f"Intervalo mínimo de 24h ativo. Aguarde {_format_remaining_cooldown(rem)} para realizar um novo disparo global.",
                         "status_code": 429,
                     }
-
-        summary = _collect_pending_email_recipients()
-        recipients = summary["recipients"]
-        if not recipients:
-            return {
-                "started": True,
-                "sent_count": 0,
-                "eligible_count": 0,
-                "message": "Nenhum colaborador com e-mail cadastrado possui pendências no momento.",
-            }
 
         cur.execute("""
             INSERT INTO global_email_dispatch_log
@@ -13326,7 +13506,7 @@ def api_notify_outdated_profile():
                 "error": "RESEND_API_KEY não configurada nas variáveis de ambiente do servidor."
             }), 503
 
-        # Disparo individual pontual (não conta como disparo global)
+        # Disparo individual pontual (não conta como disparo global, mas respeita trava de 24h por destinatário)
         if target_user_id or target_email:
             summary = _collect_pending_email_recipients(
                 target_user_id=target_user_id,
@@ -13343,6 +13523,15 @@ def api_notify_outdated_profile():
                     "message": "Colaborador sem e-mail válido ou sem pendências."
                 })
             rec = recipients[0]
+            if _was_email_notified_24h(rec["email"]):
+                return jsonify({
+                    "success": False,
+                    "sent_count": 0,
+                    "failed_count": 0,
+                    "eligible_count": 0,
+                    "results": [],
+                    "error": f"O e-mail {rec['email']} já recebeu uma notificação de regularização cadastral nas últimas 24h."
+                }), 429
             ok, status_code, detail = send_outdated_profile_email(
                 to_email=rec["email"],
                 user_display=rec["name"],
@@ -13358,6 +13547,13 @@ def api_notify_outdated_profile():
                     "results": [{"email": rec["email"], "name": rec["name"], "status": "failed", "detail": detail}],
                     "error": detail,
                 }), 502
+            _record_outdated_profile_email_sent(
+                email=rec["email"],
+                user_id=rec.get("user_id"),
+                tech_id=rec.get("tech_id"),
+                dispatch_log_id=None,
+                resend_message_id=detail
+            )
             return jsonify({
                 "success": True,
                 "sent_count": 1,

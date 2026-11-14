@@ -45,6 +45,7 @@ interface PendingEmailPreview {
   total_registered: number;
   with_email_count: number;
   eligible_count: number;
+  already_sent_24h_count?: number;
   missing_email_but_pending_count: number;
   cooldown_active?: boolean;
   remaining_seconds?: number;
@@ -772,7 +773,7 @@ export default function UsersPage() {
             </p>
           ) : emailPreview ? (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
                   <div className="text-[11px] uppercase tracking-wider text-[var(--color-text-faint)]">
                     Com E-mail Cadastrado
@@ -787,6 +788,14 @@ export default function UsersPage() {
                   </div>
                   <div className="text-xl font-bold text-amber-300 mt-0.5">
                     {emailPreview.eligible_count}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-emerald-300/80">
+                    Já Notificados (24h)
+                  </div>
+                  <div className="text-xl font-bold text-emerald-300 mt-0.5">
+                    {emailPreview.already_sent_24h_count ?? 0}
                   </div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
@@ -837,14 +846,18 @@ export default function UsersPage() {
                             ? 'text-blue-300'
                             : emailPreview.last_dispatch.status === 'failed'
                               ? 'text-red-300'
-                              : 'text-emerald-300'
+                              : emailPreview.last_dispatch.status === 'interrupted'
+                                ? 'text-amber-300'
+                                : 'text-emerald-300'
                         }
                       >
                         {emailPreview.last_dispatch.status === 'running'
                           ? 'Enviando em segundo plano...'
                           : emailPreview.last_dispatch.status === 'failed'
                             ? 'Falhou'
-                            : 'Concluído'}
+                            : emailPreview.last_dispatch.status === 'interrupted'
+                              ? 'Interrompido (retomável)'
+                              : 'Concluído'}
                       </span>
                     </div>
                     <button
