@@ -285,6 +285,15 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
     banner_url = html.escape(get_portal_url('/email-banner-claro.png'), quote=True)
     claro_icon_url = html.escape(get_portal_url('/claro-icon.png'), quote=True)
 
+    badge_block = ""
+    if category_badge and str(category_badge).strip():
+        badge_block = f'''
+                        <div style="margin-bottom: 16px;">
+                            <span style="display: inline-block; background: rgba(225, 29, 72, 0.15); border: 1px solid rgba(225, 29, 72, 0.4); color: #FDA4AF; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 12px; letter-spacing: 0.5px;">
+                                {safe_badge}
+                            </span>
+                        </div>'''
+
     return f'''<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -316,12 +325,7 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
                 
                 <!-- Main Content -->
                 <tr>
-                    <td style="padding: 32px 32px 24px 32px;">
-                        <div style="margin-bottom: 16px;">
-                            <span style="display: inline-block; background: rgba(225, 29, 72, 0.15); border: 1px solid rgba(225, 29, 72, 0.4); color: #FDA4AF; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 12px; letter-spacing: 0.5px;">
-                                {category_badge}
-                            </span>
-                        </div>
+                    <td style="padding: 32px 32px 24px 32px;">{badge_block}
                         <h1 style="color: #F8FAFC; font-size: 21px; font-weight: 700; margin: 0 0 18px 0; line-height: 1.35;">
                             {title}
                         </h1>
@@ -585,7 +589,7 @@ def send_outdated_profile_email(to_email, user_display, missing_fields=None, por
     return sender_fn(
         to_email=to_email,
         subject="[Claro Gestão Externa] Regularização Cadastral",
-        category_badge="REGULARIZAÇÃO CADASTRAL • PORTAL",
+        category_badge=None,
         title="Atualize seu Cadastro no Portal",
         message_html=message_html,
         cta_text="Atualizar Meu Cadastro Agora",
