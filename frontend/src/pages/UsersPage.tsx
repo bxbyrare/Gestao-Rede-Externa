@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, KeyRound, Lock, Plus, Shield, Trash2, Smartphone } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, KeyRound, Lock, Mail, Plus, Send, Shield, Trash2, Smartphone } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { ManagedUser, Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -14,6 +14,43 @@ import {
 } from '../state/AuthContext';
 
 const ALL_ROLES = ['Técnico', 'Auxiliar', 'Supervisor', 'Coordenador'];
+
+interface PendingEmailRecipient {
+  user_id: number | null;
+  tech_id: number | null;
+  name: string;
+  username?: string | null;
+  role: string;
+  email: string;
+  missing_fields: string[];
+}
+
+interface PendingEmailPreview {
+  resend_configured: boolean;
+  from_email: string;
+  recipients: PendingEmailRecipient[];
+  total_registered: number;
+  with_email_count: number;
+  eligible_count: number;
+  missing_email_but_pending_count: number;
+}
+
+interface ResendStatusInfo {
+  configured: boolean;
+  from_email: string;
+  domain_name: string;
+  domain_status: string;
+}
+
+interface DispatchResult {
+  success: boolean;
+  sent_count: number;
+  failed_count: number;
+  eligible_count: number;
+  message?: string;
+  error?: string;
+  results?: Array<{ email: string; name: string; status: 'sent' | 'failed'; detail: string }>;
+}
 
 export default function UsersPage() {
   const { user: currentUser, refreshUser } = useAuth();
@@ -35,10 +72,62 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailPreview, setEmailPreview] = useState<PendingEmailPreview | null>(null);
+  const [resendStatus, setResendStatus] = useState<ResendStatusInfo | null>(null);
+  const [loadingEmailPreview, setLoadingEmailPreview] = useState(false);
+  const [sendingGlobalEmails, setSendingGlobalEmails] = useState(false);
+  const [dispatchResult, setDispatchResult] = useState<DispatchResult | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+
   const isMaster = isMasterCoordenador(currentUser);
   const canCreateUser = hasPermission(currentUser, 'gerenciamento.create');
   const canEditUser = hasPermission(currentUser, 'gerenciamento.edit');
   const canDeleteUser = hasPermission(currentUser, 'gerenciamento.delete');
+  const canNotifyPendingEmails =
+    isMaster ||
+    isCoordenador(currentUser) ||
+    (currentUser?.role || '').toLowerCase() === 'supervisor' ||
+    canEditUser ||
+    hasPermission(currentUser, 'notificacoes.create');
+
+  async function openPendingEmailModal() {
+    setEmailModalOpen(true);
+    setLoadingEmailPreview(true);
+    setDispatchResult(null);
+    setDispatchError(null);
+    try {
+      const [previewRes, statusRes] = await Promise.all([
+        api.get<PendingEmailPreview>('/api/admin/notify-outdated-profile'),
+        api.get<ResendStatusInfo>('/api/admin/resend-status'),
+      ]);
+      setEmailPreview(previewRes);
+      setResendStatus(statusRes);
+    } catch (err) {
+      setDispatchError(
+        err instanceof ApiError ? err.message : 'Não foi possível carregar os usuários com pendências.'
+      );
+    } finally {
+      setLoadingEmailPreview(false);
+    }
+  }
+
+  async function handleSendGlobalPendingEmails() {
+    if (!emailPreview || emailPreview.eligible_count === 0) return;
+    setSendingGlobalEmails(true);
+    setDispatchError(null);
+    setDispatchResult(null);
+    try {
+      const res = await api.post<DispatchResult>('/api/admin/notify-outdated-profile', {});
+      setDispatchResult(res);
+    } catch (err) {
+      setDispatchError(
+        err instanceof ApiError ? err.message : 'Falha ao disparar e-mails via Resend.'
+      );
+    } finally {
+      setSendingGlobalEmails(false);
+    }
+  }
 
   function load() {
     api.get<ManagedUser[]>('/api/users').then(setUsers).catch(() => setUsers([]));
@@ -279,11 +368,18 @@ export default function UsersPage() {
         title="Gerenciamento"
         subtitle="Contas de acesso e controle de permissões por módulo"
         actions={
-          canCreateUser ? (
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4" /> Criar Acesso
-            </Button>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {canNotifyPendingEmails && (
+              <Button variant="outline" onClick={openPendingEmailModal}>
+                <Mail className="w-4 h-4" /> Notificar Pendências (E-mail)
+              </Button>
+            )}
+            {canCreateUser && (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4" /> Criar Acesso
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -543,6 +639,178 @@ export default function UsersPage() {
               );
             })}
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={emailModalOpen}
+        onClose={() => !sendingGlobalEmails && setEmailModalOpen(false)}
+        title="Notificação Global de Pendências Cadastrais (Resend)"
+        maxWidth="max-w-3xl"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setEmailModalOpen(false)}
+              disabled={sendingGlobalEmails}
+            >
+              Fechar
+            </Button>
+            <Button
+              onClick={handleSendGlobalPendingEmails}
+              disabled={
+                loadingEmailPreview ||
+                sendingGlobalEmails ||
+                !emailPreview ||
+                emailPreview.eligible_count === 0 ||
+                !resendStatus?.configured
+              }
+            >
+              <Send className="w-4 h-4" />
+              {sendingGlobalEmails
+                ? 'Enviando e-mails...'
+                : `Enviar E-mail Global (${emailPreview?.eligible_count ?? 0})`}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Envia e-mail para todos os colaboradores com e-mail cadastrado que possuem CPF, Identidade (RG) ou outros dados pendentes.
+          </p>
+
+          {resendStatus && (
+            <div
+              className={`rounded-xl border px-4 py-3 text-xs flex flex-wrap items-center justify-between gap-2 ${
+                resendStatus.configured
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {resendStatus.configured ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                )}
+                <div>
+                  <div className="font-semibold">
+                    {resendStatus.configured
+                      ? 'Resend API configurada no servidor'
+                      : 'RESEND_API_KEY não configurada no ambiente'}
+                  </div>
+                  <div className="text-[11px] opacity-80">
+                    Remetente: <span className="mono">{resendStatus.from_email}</span>
+                  </div>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-md bg-black/30 border border-white/10 font-medium">
+                Domínio ({resendStatus.domain_name}):{' '}
+                {resendStatus.domain_status === 'verified'
+                  ? 'Verificado'
+                  : resendStatus.domain_status === 'sending_key_only'
+                    ? 'Chave de envio ativa'
+                    : resendStatus.domain_status}
+              </span>
+            </div>
+          )}
+
+          {loadingEmailPreview ? (
+            <p className="text-sm text-[var(--color-text-muted)] py-6 text-center">
+              Analisando cadastros (CPF, Identidade, Telefone, Empresa e E-mail)...
+            </p>
+          ) : emailPreview ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-[var(--color-text-faint)]">
+                    Com E-mail Cadastrado
+                  </div>
+                  <div className="text-xl font-bold text-white mt-0.5">
+                    {emailPreview.with_email_count}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-amber-300/80">
+                    Elegíveis para Envio
+                  </div>
+                  <div className="text-xl font-bold text-amber-300 mt-0.5">
+                    {emailPreview.eligible_count}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-[var(--color-text-faint)]">
+                    Pendentes Sem E-mail
+                  </div>
+                  <div className="text-xl font-bold text-neutral-300 mt-0.5">
+                    {emailPreview.missing_email_but_pending_count}
+                  </div>
+                </div>
+              </div>
+
+              {dispatchError && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+                  {dispatchError}
+                </div>
+              )}
+
+              {dispatchResult && (
+                <div
+                  className={`rounded-xl border px-4 py-3 text-xs ${
+                    dispatchResult.failed_count > 0 && dispatchResult.sent_count === 0
+                      ? 'border-red-500/30 bg-red-500/10 text-red-200'
+                      : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                  }`}
+                >
+                  <div className="font-semibold">{dispatchResult.message}</div>
+                  {dispatchResult.results && dispatchResult.results.some((r) => r.status === 'failed') && (
+                    <ul className="mt-2 space-y-1 text-[11px] opacity-90">
+                      {dispatchResult.results
+                        .filter((r) => r.status === 'failed')
+                        .slice(0, 5)
+                        .map((r) => (
+                          <li key={r.email}>
+                            • {r.name} ({r.email}): {r.detail}
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {emailPreview.recipients.length === 0 ? (
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center text-sm text-[var(--color-text-muted)]">
+                  Nenhum colaborador com e-mail cadastrado possui pendências no momento.
+                </div>
+              ) : (
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-white/10 divide-y divide-white/5">
+                  {emailPreview.recipients.map((rec) => (
+                    <div
+                      key={rec.email}
+                      className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-white/[0.02]"
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-white">{rec.name}</div>
+                        <div className="text-xs text-[var(--color-text-muted)] mono">
+                          {rec.email} • {rec.role}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {rec.missing_fields.map((field) => (
+                          <span
+                            key={field}
+                            className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                          >
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       </Modal>
     </div>

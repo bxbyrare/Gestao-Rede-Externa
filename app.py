@@ -221,7 +221,15 @@ def get_totp_uri(secret, username, issuer="Claro Gestão Rede Externa"):
 
 # Resend API Configuration (Strictly from environment; no hardcoded fallback keys)
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
-RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'Gestão Rede Externa <onboarding@resend.dev>')
+RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'Gestão Rede Externa <noreply@gestaoredeexterna.com.br>').strip()
+
+def _get_resend_config():
+    api_key = os.environ.get('RESEND_API_KEY', RESEND_API_KEY or '').strip()
+    from_email = os.environ.get(
+        'RESEND_FROM_EMAIL',
+        RESEND_FROM_EMAIL or 'Gestão Rede Externa <noreply@gestaoredeexterna.com.br>'
+    ).strip()
+    return api_key, from_email
 
 def get_portal_url(path='/'):
     base = os.environ.get('PORTAL_BASE_URL', '').strip()
@@ -353,56 +361,89 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
 </body>
 </html>'''
 
-def send_resend_email(to_email, subject, category_badge, title, message_html, cta_text=None, cta_url=None):
-    if not to_email or '@' not in to_email:
+def _is_valid_email_addr(email_str):
+    if not email_str or '@' not in str(email_str):
         return False
+    clean = str(email_str).strip().lower()
+    return bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', clean))
+
+def _send_resend_email_sync(to_email, subject, category_badge, title, message_html, cta_text=None, cta_url=None):
+    if not to_email or '@' not in str(to_email):
+        return False, 400, "E-mail destinatário ausente ou inválido."
 
     clean_target = str(to_email).strip().lower()
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', clean_target):
+    if not _is_valid_email_addr(clean_target):
         print(f"[EMAIL REJECTED] Endereço de email com formato inválido ignorado: {clean_target}")
-        return False
+        return False, 400, "Formato de e-mail inválido."
+
+    api_key, from_email = _get_resend_config()
+    if not api_key:
+        print("[RESEND NOTICE] RESEND_API_KEY não configurada no ambiente. Envio cancelado de forma segura.")
+        return False, 503, "RESEND_API_KEY não configurada no servidor."
 
     safe_subject = str(subject or 'Comunicado Claro Gestão Rede Externa').replace('\r', '').replace('\n', ' ').strip()
+    full_html = render_executive_email_template(
+        category_badge=category_badge,
+        title=title,
+        message_html=message_html,
+        cta_text=cta_text,
+        cta_url=cta_url
+    )
+
+    try:
+        resp = requests.post(
+            'https://api.resend.com/emails',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'from': from_email,
+                'to': [clean_target],
+                'subject': safe_subject,
+                'html': full_html
+            },
+            timeout=12
+        )
+        if resp.status_code in [200, 201]:
+            res_data = resp.json() if resp.text else {}
+            msg_id = res_data.get('id') or 'ok'
+            print(f"[RESEND SUCCESS] Email entregue ao provedor para {clean_target} | ID: {msg_id}")
+            return True, resp.status_code, str(msg_id)
+        else:
+            print(f"[RESEND NOTICE] Envio para {clean_target} retornou status {resp.status_code}: {resp.text}")
+            err_msg = f"Resend HTTP {resp.status_code}"
+            try:
+                err_json = resp.json()
+                if isinstance(err_json, dict) and err_json.get('message'):
+                    err_msg = str(err_json.get('message'))[:180]
+            except Exception:
+                pass
+            if resp.status_code in [401, 403]:
+                err_msg = f"Autorização/domínio Resend ({resp.status_code}): {err_msg}"
+            elif resp.status_code == 429:
+                err_msg = "Limite de taxa do Resend atingido (429). Aguarde alguns segundos."
+            return False, resp.status_code, err_msg
+    except Exception as ex:
+        print(f"[RESEND ERROR] Exceção de rede no envio para {clean_target}: {ex}")
+        return False, 502, "Falha de comunicação com o provedor de e-mail (Resend)."
+
+def send_resend_email(to_email, subject, category_badge, title, message_html, cta_text=None, cta_url=None):
+    if not _is_valid_email_addr(to_email):
+        if to_email:
+            print(f"[EMAIL REJECTED] Endereço de email com formato inválido ignorado: {to_email}")
+        return False
 
     def _worker():
-        full_html = render_executive_email_template(
+        _send_resend_email_sync(
+            to_email=to_email,
+            subject=subject,
             category_badge=category_badge,
             title=title,
             message_html=message_html,
             cta_text=cta_text,
             cta_url=cta_url
         )
-
-        # Envio direto via Resend API exclusivamente com a chave de ambiente
-        if not RESEND_API_KEY:
-            print("[RESEND NOTICE] RESEND_API_KEY não configurada no ambiente. Envio cancelado de forma segura.")
-            return
-
-        try:
-            resp = requests.post(
-                'https://api.resend.com/emails',
-                headers={
-                    'Authorization': f'Bearer {RESEND_API_KEY}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'from': RESEND_FROM_EMAIL,
-                    'to': [clean_target],
-                    'subject': safe_subject,
-                    'html': full_html
-                },
-                timeout=10
-            )
-            if resp.status_code in [200, 201]:
-                res_data = resp.json() if resp.text else {}
-                print(f"[RESEND SUCCESS] Email entregue ao provedor para {clean_target} | ID: {res_data.get('id')}")
-                return
-            else:
-                print(f"[RESEND NOTICE] Envio para {clean_target} retornou status {resp.status_code}: {resp.text}")
-                return
-        except Exception as ex:
-            print(f"[RESEND ERROR] Exceção de rede no envio para {clean_target}: {ex}")
-            return
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
@@ -470,7 +511,7 @@ def send_password_reset_email(to_email, user_display, code, client_ip=None, expi
         cta_url=reset_url
     )
 
-def send_outdated_profile_email(to_email, user_display, missing_fields=None, portal_url=None):
+def send_outdated_profile_email(to_email, user_display, missing_fields=None, portal_url=None, sync=False):
     """Template 2: Cadastro Desatualizado com aviso de bloqueio de acesso ao portal"""
     safe_user = html.escape(str(user_display or 'Colaborador'))
     profile_url = portal_url or get_portal_url('/perfil')
@@ -529,7 +570,8 @@ def send_outdated_profile_email(to_email, user_display, missing_fields=None, por
         </p>
     '''
 
-    return send_resend_email(
+    sender_fn = _send_resend_email_sync if sync else send_resend_email
+    return sender_fn(
         to_email=to_email,
         subject="[Claro Rede Externa] Ação Obrigatória: Cadastro Pendente de Atualização",
         category_badge="REGULARIZAÇÃO CADASTRAL OBRIGATÓRIA",
@@ -12608,49 +12650,263 @@ def api_test_email_template():
         "target": target_email
     })
 
-@app.route('/api/admin/notify-outdated-profile', methods=['POST'])
+def _has_admin_notify_access(auth):
+    if not auth:
+        return False
+    role_lower = (auth.get('role') or '').lower()
+    return bool(
+        auth.get('is_master')
+        or auth.get('is_coordenador')
+        or role_lower in ['supervisor', 'coordenador']
+        or user_has_permission('notificacoes.create')
+        or user_has_permission('usuarios.edit')
+        or user_has_permission('gerenciamento.edit')
+    )
+
+
+def _compute_pending_fields_from_row(row):
+    missing = []
+    name_val = (row.get('tech_name') or row.get('username') or '').strip()
+    cpf_raw = (row.get('cpf') or '').strip()
+    cpf_digits = re.sub(r'\D', '', cpf_raw)
+    identity_val = (row.get('identity') or '').strip()
+    dob_val = row.get('dob')
+    phone_val = (row.get('tech_phone') or row.get('user_phone') or '').strip()
+    company_val = (row.get('tech_company') or row.get('user_company') or '').strip()
+
+    if not name_val:
+        missing.append("Nome completo")
+    if len(cpf_digits) != 11:
+        missing.append("CPF")
+    if not identity_val:
+        missing.append("Identidade (RG)")
+    if not dob_val:
+        missing.append("Data de Nascimento")
+    if not phone_val:
+        missing.append("Telefone / WhatsApp com DDD")
+    if not company_val:
+        missing.append("Empresa parceira / prestadora")
+    return missing
+
+
+def _collect_pending_email_recipients(target_user_id=None, target_email=None):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            u.id AS user_id,
+            u.username,
+            u.role AS user_role,
+            u.email AS user_email,
+            u.phone AS user_phone,
+            u.company AS user_company,
+            u.tech_id,
+            t.id AS tech_row_id,
+            t.name AS tech_name,
+            t.cpf,
+            t.identity,
+            t.dob,
+            t.phone AS tech_phone,
+            t.company AS tech_company,
+            t.email AS tech_email,
+            t.role AS tech_role
+        FROM technicians t
+        FULL OUTER JOIN users u ON u.tech_id = t.id
+        ORDER BY COALESCE(t.name, u.username, '') ASC;
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    recipients = []
+    seen_emails = set()
+    with_email_count = 0
+    missing_email_but_pending_count = 0
+
+    clean_filter_email = str(target_email).strip().lower() if target_email else None
+
+    for row in rows:
+        raw_email = (row.get('tech_email') or row.get('user_email') or '').strip().lower()
+        has_valid_email = _is_valid_email_addr(raw_email)
+        missing_fields = _compute_pending_fields_from_row(row)
+
+        if has_valid_email:
+            with_email_count += 1
+        elif missing_fields:
+            missing_email_but_pending_count += 1
+
+        if target_user_id is not None and row.get('user_id') != target_user_id:
+            continue
+        if clean_filter_email and raw_email != clean_filter_email:
+            continue
+        if not has_valid_email or not missing_fields:
+            continue
+        if raw_email in seen_emails:
+            continue
+
+        seen_emails.add(raw_email)
+        display_name = (row.get('tech_name') or row.get('username') or 'Colaborador').strip()
+        recipients.append({
+            "user_id": row.get('user_id'),
+            "tech_id": row.get('tech_row_id'),
+            "name": display_name,
+            "username": row.get('username'),
+            "role": row.get('tech_role') or row.get('user_role') or 'Colaborador',
+            "email": raw_email,
+            "missing_fields": missing_fields,
+        })
+
+    return {
+        "recipients": recipients,
+        "total_registered": len(rows),
+        "with_email_count": with_email_count,
+        "eligible_count": len(recipients),
+        "missing_email_but_pending_count": missing_email_but_pending_count,
+    }
+
+
+@app.route('/api/admin/resend-status', methods=['GET'])
+@login_required
+def api_admin_resend_status():
+    auth = get_current_user_auth()
+    if not _has_admin_notify_access(auth):
+        return jsonify({"error": "Acesso restrito à coordenação e supervisão."}), 403
+
+    api_key, from_email = _get_resend_config()
+    domain_status = "unknown"
+    domain_name = "gestaoredeexterna.com.br"
+    if '@' in from_email:
+        domain_part = from_email.split('@')[-1].replace('>', '').strip().lower()
+        if domain_part:
+            domain_name = domain_part
+
+    if api_key:
+        try:
+            resp = requests.get(
+                'https://api.resend.com/domains',
+                headers={'Authorization': f'Bearer {api_key}'},
+                timeout=6
+            )
+            if resp.status_code == 200:
+                domains_data = (resp.json() or {}).get('data') or []
+                matched = next((d for d in domains_data if (d.get('name') or '').lower() == domain_name), None)
+                if matched:
+                    domain_status = matched.get('status') or 'pending'
+                else:
+                    domain_status = 'not_added'
+            elif resp.status_code in [401, 403]:
+                # Chave restrita apenas a envio (sending-only) pode não listar /domains
+                domain_status = 'sending_key_only'
+        except Exception as ex:
+            print("[RESEND DOMAIN CHECK NOTICE]", ex)
+
+    return jsonify({
+        "configured": bool(api_key),
+        "from_email": from_email,
+        "domain_name": domain_name,
+        "domain_status": domain_status,
+    })
+
+
+@app.route('/api/admin/notify-outdated-profile', methods=['GET', 'POST'])
 @login_required
 def api_notify_outdated_profile():
     auth = get_current_user_auth()
-    role_lower = (auth.get('role') or '').lower() if auth else ''
-    if not auth or (not auth['is_master'] and not auth['is_coordenador'] and role_lower not in ['supervisor', 'coordenador'] and not user_has_permission('notificacoes.create') and not user_has_permission('usuarios.edit')):
+    if not _has_admin_notify_access(auth):
         return jsonify({"error": "Acesso restrito à coordenação e supervisão."}), 403
 
     data = request.get_json(silent=True) or {}
-    target_user_id = data.get('user_id')
+    target_user_id = data.get('user_id') if request.method == 'POST' else None
+    target_email = data.get('email') if request.method == 'POST' else None
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        if target_user_id:
-            cur.execute("SELECT id FROM users WHERE id = %s;", (target_user_id,))
-            target_ids = [r['id'] for r in cur.fetchall()]
-        else:
-            cur.execute("SELECT id FROM users;")
-            target_ids = [r['id'] for r in cur.fetchall()]
-        cur.close()
-        conn.close()
+        summary = _collect_pending_email_recipients(
+            target_user_id=target_user_id,
+            target_email=target_email
+        )
+        api_key, from_email = _get_resend_config()
 
-        notified_count = 0
-        for uid in target_ids:
-            u_info = get_user_info_dict(uid)
-            if u_info and (u_info.get('needs_email') or not u_info.get('profile_complete')):
-                target_email = u_info.get('email')
-                if target_email and '@' in target_email:
-                    send_outdated_profile_email(
-                        to_email=target_email,
-                        user_display=u_info.get('name') or u_info.get('username'),
-                        missing_fields=u_info.get('missing_fields')
-                    )
-                    notified_count += 1
+        if request.method == 'GET':
+            return jsonify({
+                "resend_configured": bool(api_key),
+                "from_email": from_email,
+                **summary
+            })
+
+        if not api_key:
+            return jsonify({
+                "error": "RESEND_API_KEY não configurada nas variáveis de ambiente do servidor."
+            }), 503
+
+        recipients = summary["recipients"]
+        if not recipients:
+            return jsonify({
+                "success": True,
+                "sent_count": 0,
+                "failed_count": 0,
+                "eligible_count": 0,
+                "results": [],
+                "message": "Nenhum colaborador com e-mail cadastrado possui pendências no momento."
+            })
+
+        sent_count = 0
+        failed_count = 0
+        results = []
+        fatal_error = None
+
+        for idx, rec in enumerate(recipients):
+            if idx > 0:
+                # Respeita o limite de 2 req/s do Resend sem estourar 429
+                time.sleep(0.55)
+
+            ok, status_code, detail = send_outdated_profile_email(
+                to_email=rec["email"],
+                user_display=rec["name"],
+                missing_fields=rec["missing_fields"],
+                sync=True
+            )
+            if ok:
+                sent_count += 1
+                results.append({
+                    "email": rec["email"],
+                    "name": rec["name"],
+                    "status": "sent",
+                    "detail": detail,
+                })
+            else:
+                failed_count += 1
+                results.append({
+                    "email": rec["email"],
+                    "name": rec["name"],
+                    "status": "failed",
+                    "detail": detail,
+                })
+                if status_code in [401, 403, 503]:
+                    fatal_error = detail
+                    break
+
+        if sent_count == 0 and fatal_error:
+            return jsonify({
+                "success": False,
+                "sent_count": 0,
+                "failed_count": failed_count,
+                "eligible_count": len(recipients),
+                "results": results,
+                "error": fatal_error,
+            }), 502
 
         return jsonify({
             "success": True,
-            "message": f"{notified_count} colaboradores com cadastro pendente notificados por e-mail."
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "eligible_count": len(recipients),
+            "results": results,
+            "message": f"{sent_count} e-mail(s) enviado(s) com sucesso"
+            + (f" ({failed_count} falha(s))." if failed_count else ".")
         })
     except Exception as e:
         print("[NOTIFY OUTDATED PROFILE ERROR]", e)
-        return jsonify({"error": "Falha interna ao notificar colaboradores."}), 500
+        return jsonify({"error": "Falha interna ao processar envio de pendências por e-mail."}), 500
 
 
 
