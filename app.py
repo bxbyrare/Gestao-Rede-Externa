@@ -13005,7 +13005,8 @@ def _get_global_email_cooldown_info():
                    created_at, completed_at,
                    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) AS elapsed_seconds
             FROM global_email_dispatch_log
-            WHERE status = 'running' OR (status = 'completed' AND sent_count > 0)
+            WHERE (status = 'running' AND created_at >= CURRENT_TIMESTAMP - INTERVAL '10 minutes')
+               OR (status = 'completed' AND sent_count > 0)
             ORDER BY created_at DESC
             LIMIT 1;
         """)
@@ -13131,7 +13132,7 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
         print("[GLOBAL EMAIL LOG UPDATE ERROR]", ex)
 
 
-def _start_global_email_dispatch(trigger_type='manual', user_id=None, username='system'):
+def _start_global_email_dispatch(trigger_type='manual', user_id=None, username='system', force=False):
     api_key, _ = _get_resend_config()
     if not api_key:
         return {"started": False, "error": "RESEND_API_KEY não configurada no servidor.", "status_code": 503}
@@ -13148,24 +13149,26 @@ def _start_global_email_dispatch(trigger_type='manual', user_id=None, username='
         _ensure_global_email_log_table(cur)
         conn.commit()
 
-        cur.execute("""
-            SELECT id, status, created_at,
-                   EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) AS elapsed_seconds
-            FROM global_email_dispatch_log
-            WHERE status = 'running' OR (status = 'completed' AND sent_count > 0)
-            ORDER BY created_at DESC
-            LIMIT 1;
-        """)
-        recent = cur.fetchone()
-        if recent:
-            elapsed = float(recent.get('elapsed_seconds') or 0)
-            if recent.get('status') == 'running' or elapsed < GLOBAL_EMAIL_COOLDOWN_SECONDS:
-                rem = GLOBAL_EMAIL_COOLDOWN_SECONDS if recent.get('status') == 'running' else int(GLOBAL_EMAIL_COOLDOWN_SECONDS - elapsed)
-                return {
-                    "started": False,
-                    "error": f"Intervalo mínimo de 24h ativo. Aguarde {_format_remaining_cooldown(rem)} para realizar um novo disparo global.",
-                    "status_code": 429,
-                }
+        if not force:
+            cur.execute("""
+                SELECT id, status, created_at,
+                       EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - created_at)) AS elapsed_seconds
+                FROM global_email_dispatch_log
+                WHERE (status = 'running' AND created_at >= CURRENT_TIMESTAMP - INTERVAL '10 minutes')
+                   OR (status = 'completed' AND sent_count > 0)
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """)
+            recent = cur.fetchone()
+            if recent:
+                elapsed = float(recent.get('elapsed_seconds') or 0)
+                if recent.get('status') == 'running' or elapsed < GLOBAL_EMAIL_COOLDOWN_SECONDS:
+                    rem = GLOBAL_EMAIL_COOLDOWN_SECONDS if recent.get('status') == 'running' else int(GLOBAL_EMAIL_COOLDOWN_SECONDS - elapsed)
+                    return {
+                        "started": False,
+                        "error": f"Intervalo mínimo de 24h ativo. Aguarde {_format_remaining_cooldown(rem)} para realizar um novo disparo global.",
+                        "status_code": 429,
+                    }
 
         summary = _collect_pending_email_recipients()
         recipients = summary["recipients"]
@@ -13335,11 +13338,13 @@ def api_notify_outdated_profile():
                 "message": f"E-mail enviado para {rec['email']}."
             })
 
-        # Disparo global com trava de 24h
+        # Disparo global com trava de 24h (Master pode passar force=True se acabou de trocar chave/reconfigurar)
+        force_send = bool(data.get('force'))
         res = _start_global_email_dispatch(
             trigger_type='manual',
             user_id=auth.get('id'),
-            username=auth.get('username') or 'master'
+            username=auth.get('username') or 'master',
+            force=force_send
         )
         if not res.get("started"):
             return jsonify({"error": res.get("error")}), res.get("status_code", 400)

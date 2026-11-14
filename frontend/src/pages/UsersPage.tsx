@@ -135,13 +135,14 @@ export default function UsersPage() {
     }
   }
 
-  async function handleSendGlobalPendingEmails() {
-    if (!emailPreview || emailPreview.eligible_count === 0 || emailPreview.cooldown_active) return;
+  async function handleSendGlobalPendingEmails(force = false) {
+    if (!emailPreview || emailPreview.eligible_count === 0) return;
+    if (!force && emailPreview.cooldown_active) return;
     setSendingGlobalEmails(true);
     setDispatchError(null);
     setDispatchResult(null);
     try {
-      const res = await api.post<DispatchResult>('/api/admin/notify-outdated-profile', {});
+      const res = await api.post<DispatchResult>('/api/admin/notify-outdated-profile', force ? { force: true } : {});
       setDispatchResult(res);
       await refreshPendingPreview();
     } catch (err) {
@@ -681,7 +682,7 @@ export default function UsersPage() {
               Fechar
             </Button>
             <Button
-              onClick={handleSendGlobalPendingEmails}
+              onClick={() => handleSendGlobalPendingEmails(false)}
               disabled={
                 loadingEmailPreview ||
                 sendingGlobalEmails ||
@@ -776,14 +777,28 @@ export default function UsersPage() {
               </div>
 
               {emailPreview.cooldown_active && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
-                  <div className="font-semibold">
-                    Intervalo mínimo de 24h ativo entre disparos globais
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="font-semibold">
+                      Intervalo mínimo de 24h ativo entre disparos globais
+                    </div>
+                    <div className="text-[11px] opacity-90 mt-0.5">
+                      Tempo restante: <strong>{emailPreview.remaining_label}</strong>
+                      {emailPreview.next_allowed_at ? ` • Próximo envio liberado em ${emailPreview.next_allowed_at}` : ''}
+                    </div>
                   </div>
-                  <div className="text-[11px] opacity-90 mt-0.5">
-                    Tempo restante: <strong>{emailPreview.remaining_label}</strong>
-                    {emailPreview.next_allowed_at ? ` • Próximo envio liberado em ${emailPreview.next_allowed_at}` : ''}
-                  </div>
+                  <button
+                    type="button"
+                    disabled={sendingGlobalEmails || !resendStatus?.configured}
+                    onClick={() => {
+                      if (window.confirm('Deseja ignorar a trava de 24h e iniciar um novo disparo global agora?')) {
+                        handleSendGlobalPendingEmails(true);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-100 text-[11px] font-semibold transition disabled:opacity-50"
+                  >
+                    Forçar Novo Envio (Master)
+                  </button>
                 </div>
               )}
 
