@@ -13101,7 +13101,7 @@ def api_grafana_dashboard():
             cf = r["cf"]
             reg = r["regional"]
             ttype = r["ticket_type"]
-            is_qual = bool(r.get("is_qualidade"))
+            is_qual = bool(r.get("is_qualidade")) or (r.get("tipo_ral") or "").strip().upper() == "QUALIDADE"
             is_new = bool(r.get("is_new"))
             sla = _grafana_compute_sla(ttype, r.get("abertura_dt"), now_brt)
 
@@ -13148,9 +13148,9 @@ def api_grafana_dashboard():
                     "sla_status": sla["sla_status"],
                     "sla_label": sla["sla_label"],
                 }
-                if ttype == "RAL":
+                if ttype == "RAL" and not is_qual:
                     new_ral_feed.append(feed_item)
-                else:
+                elif ttype == "REC":
                     new_rec_feed.append(feed_item)
 
         last_sync_iso = meta.get("last_sync_at").strftime("%d/%m/%Y %H:%M:%S") if meta.get("last_sync_at") else None
@@ -13199,11 +13199,11 @@ def api_grafana_tickets():
             where_clauses.append("cf = %s")
             params.append(cf)
         if queue == "RAL":
-            where_clauses.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE)")
+            where_clauses.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE AND UPPER(COALESCE(tipo_ral, '')) <> 'QUALIDADE')")
         elif queue == "REC":
             where_clauses.append("ticket_type = 'REC'")
         elif queue == "QUALIDADE":
-            where_clauses.append("is_qualidade = TRUE")
+            where_clauses.append("(is_qualidade = TRUE OR UPPER(COALESCE(tipo_ral, '')) = 'QUALIDADE')")
         if status_filter:
             where_clauses.append("status_andamento = %s")
             params.append(status_filter)
@@ -13307,11 +13307,11 @@ def api_grafana_cleared():
             where_clauses.append("cf = %s")
             params.append(cf)
         if queue == "RAL":
-            where_clauses.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE)")
+            where_clauses.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE AND UPPER(COALESCE(tipo_ral, '')) <> 'QUALIDADE')")
         elif queue == "REC":
             where_clauses.append("ticket_type = 'REC'")
         elif queue == "QUALIDADE":
-            where_clauses.append("is_qualidade = TRUE")
+            where_clauses.append("(is_qualidade = TRUE OR UPPER(COALESCE(tipo_ral, '')) = 'QUALIDADE')")
         if search:
             like = f"%{search}%"
             where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s)")
@@ -13626,11 +13626,11 @@ def api_grafana_export():
                 wc.append("cf = %s")
                 pr.append(cf)
             if queue == "RAL":
-                wc.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE)")
+                wc.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE AND UPPER(COALESCE(tipo_ral, '')) <> 'QUALIDADE')")
             elif queue == "REC":
                 wc.append("ticket_type = 'REC'")
             elif queue == "QUALIDADE":
-                wc.append("is_qualidade = TRUE")
+                wc.append("(is_qualidade = TRUE OR UPPER(COALESCE(tipo_ral, '')) = 'QUALIDADE')")
             if status_filter:
                 wc.append("status_andamento = %s")
                 pr.append(status_filter)
