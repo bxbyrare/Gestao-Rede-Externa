@@ -10460,8 +10460,12 @@ def api_upload_route_files(route_id):
     try:
         folder_id = request.form.get('folder_id')
         if folder_id:
-            try: folder_id = int(folder_id)
-            except ValueError: folder_id = None
+            try:
+                folder_id = int(folder_id)
+                if folder_id <= 0:
+                    folder_id = None
+            except ValueError:
+                folder_id = None
         else:
             folder_id = None
 
@@ -10485,8 +10489,9 @@ def api_upload_route_files(route_id):
         cur = conn.cursor()
 
         ALLOWED_ROUTE_EXTENSIONS = {
-            'kmz', 'kml', 'pdf', 'zip', 'rar', '7z', 'sor', 'xlsx', 'xls', 'csv',
-            'doc', 'docx', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'dwg', 'dxf'
+            'kmz', 'kml', 'pdf', 'zip', 'rar', '7z', 'sor', 'trc', 'otdr',
+            'xlsx', 'xls', 'csv', 'doc', 'docx', 'ppt', 'pptx',
+            'png', 'jpg', 'jpeg', 'webp', 'txt', 'dwg', 'dxf', 'json', 'xml', 'gpx'
         }
         MAX_ROUTE_FILE_SIZE = 50 * 1024 * 1024  # 50 MB por arquivo
 
