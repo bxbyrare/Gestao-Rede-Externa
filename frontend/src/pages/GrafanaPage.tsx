@@ -208,6 +208,7 @@ export default function GrafanaPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [sortField, setSortField] = useState<SortField>('abertura');
   const [sortAsc, setSortAsc] = useState(true);
+  const [chartMode, setChartMode] = useState<QueueType>('RAL');
 
   // Cleared (Sanadas) drawer/modal
   const [showCleared, setShowCleared] = useState(false);
@@ -510,9 +511,20 @@ export default function GrafanaPage() {
     return list;
   }, [tickets, searchTerm, statusFilter, sortField, sortAsc]);
 
-  const maxQualidade = useMemo(() => {
-    return Math.max(1, ...qualChart.map((item) => item.count));
-  }, [qualChart]);
+  const activeChartSeries = useMemo(() => {
+    if (chartMode === 'QUALIDADE' && cfs.length === 0) {
+      return qualChart;
+    }
+    return cfs.map((item) => ({
+      cf: item.cf,
+      label: item.label,
+      count: chartMode === 'RAL' ? item.ral : chartMode === 'REC' ? item.rec : item.qualidade,
+    }));
+  }, [cfs, qualChart, chartMode]);
+
+  const maxChartValue = useMemo(() => {
+    return Math.max(1, ...activeChartSeries.map((item) => item.count));
+  }, [activeChartSeries]);
 
   const regionGroups: Array<{ key: 'ES' | 'INTERIOR' | 'CAPITAL'; title: string; countLabel: string }> = [
     { key: 'ES', title: 'ES', countLabel: '4 CFs' },
@@ -1263,28 +1275,84 @@ export default function GrafanaPage() {
         </div>
       )}
 
-      {/* Bottom Chart: RAL de Qualidade por área */}
+      {/* Bottom Chart: RAL / REC / RAL de Qualidade por área */}
       <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-violet-400" />
-            <h3 className="text-sm font-bold text-white">RAL de Qualidade por área</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Activity
+                className={`w-4 h-4 ${
+                  chartMode === 'RAL'
+                    ? 'text-emerald-400'
+                    : chartMode === 'REC'
+                    ? 'text-amber-400'
+                    : 'text-violet-400'
+                }`}
+              />
+              <h3 className="text-sm font-bold text-white">
+                {chartMode === 'RAL'
+                  ? 'RAL por área'
+                  : chartMode === 'REC'
+                  ? 'REC por área'
+                  : 'RAL de Qualidade por área'}
+              </h3>
+            </div>
+
+            <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
+              {(
+                [
+                  { id: 'RAL', label: 'RAL', activeCls: 'bg-emerald-500 text-slate-950' },
+                  { id: 'REC', label: 'REC', activeCls: 'bg-amber-400 text-slate-950' },
+                  { id: 'QUALIDADE', label: 'RAL de Qualidade', activeCls: 'bg-violet-500 text-white' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setChartMode(tab.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                    chartMode === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
+
           <span className="text-xs text-slate-400">
-            <strong className="text-white">{totals.ALL?.qualidade ?? 0}</strong> no total · 16 áreas
+            <strong className="text-white">
+              {chartMode === 'RAL'
+                ? totals.ALL?.ral ?? 0
+                : chartMode === 'REC'
+                ? totals.ALL?.rec ?? 0
+                : totals.ALL?.qualidade ?? 0}
+            </strong>{' '}
+            no total · 16 áreas
           </span>
         </div>
 
         <div className="h-52 flex items-end justify-between gap-2 sm:gap-3 pt-6 px-1 border-b border-white/10">
-          {qualChart.map((bar) => {
-            const pct = bar.count > 0 ? Math.max(10, Math.round((bar.count / maxQualidade) * 100)) : 0;
-            const isSelected = selectedCf === bar.cf && selectedQueue === 'QUALIDADE';
+          {activeChartSeries.map((bar) => {
+            const pct = bar.count > 0 ? Math.max(10, Math.round((bar.count / maxChartValue) * 100)) : 0;
+            const isSelected = selectedCf === bar.cf && selectedQueue === chartMode;
+            const barGradient =
+              chartMode === 'RAL'
+                ? 'from-emerald-600/80 via-emerald-500 to-teal-300 shadow-emerald-500/20'
+                : chartMode === 'REC'
+                ? 'from-amber-600/80 via-amber-500 to-yellow-300 shadow-amber-500/20'
+                : 'from-violet-600/80 via-violet-500 to-fuchsia-400 shadow-violet-500/20';
+            const selectedText =
+              chartMode === 'RAL'
+                ? 'text-emerald-300'
+                : chartMode === 'REC'
+                ? 'text-amber-300'
+                : 'text-violet-300';
             return (
               <button
                 key={bar.cf}
-                onClick={() => handleSelectQueue(bar.cf, 'QUALIDADE')}
+                onClick={() => handleSelectQueue(bar.cf, chartMode)}
                 className="flex-1 h-full flex flex-col items-center justify-end group"
-                title={`${bar.cf} (${bar.label}): ${bar.count} RAL(s) de Qualidade`}
+                title={`${bar.cf} (${bar.label}): ${bar.count} ${chartMode}`}
               >
                 <span className="text-[11px] font-bold text-slate-200 mb-1 tabular-nums">
                   {bar.count > 0 ? bar.count : ''}
@@ -1293,7 +1361,7 @@ export default function GrafanaPage() {
                   {bar.count > 0 ? (
                     <div
                       style={{ height: `${pct}%` }}
-                      className={`w-full rounded-t-lg bg-gradient-to-t from-violet-600/80 via-violet-500 to-fuchsia-400 transition-all duration-500 shadow-lg shadow-violet-500/20 group-hover:brightness-125 ${
+                      className={`w-full rounded-t-lg bg-gradient-to-t ${barGradient} transition-all duration-500 shadow-lg group-hover:brightness-125 ${
                         isSelected ? 'ring-2 ring-white' : ''
                       }`}
                     />
@@ -1303,7 +1371,7 @@ export default function GrafanaPage() {
                 </div>
                 <span
                   className={`text-[10px] font-semibold mt-2 ${
-                    isSelected ? 'text-violet-300' : 'text-slate-400 group-hover:text-white'
+                    isSelected ? selectedText : 'text-slate-400 group-hover:text-white'
                   }`}
                 >
                   {bar.cf}
