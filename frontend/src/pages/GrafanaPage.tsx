@@ -127,10 +127,12 @@ interface PersonOption {
 }
 
 interface RalTimelineItem {
+  ticket_type?: 'RAL' | 'REC';
   ticket_number: string;
   cf: string;
   regional: 'ES' | 'INTERIOR' | 'CAPITAL';
   designation: string;
+  cliente?: string;
   abertura_raw: string;
   elapsed_minutes: number | null;
 }
@@ -197,6 +199,7 @@ export default function GrafanaPage() {
   const [cfs, setCfs] = useState<CfSummary[]>([]);
   const [qualChart, setQualChart] = useState<{ cf: string; label: string; count: number }[]>([]);
   const [ralTimeline, setRalTimeline] = useState<RalTimelineItem[]>([]);
+  const [timelineTypeFilter, setTimelineTypeFilter] = useState<'RAL' | 'REC'>('RAL');
   const [timelineAreaFilter, setTimelineAreaFilter] = useState<string>('ALL');
   const [timelineWindowFilter, setTimelineWindowFilter] = useState<'ALL' | 'WITHIN_24H' | 'OVER_24H'>('ALL');
   const [selectedTimelineBucket, setSelectedTimelineBucket] = useState<string | null>(null);
@@ -561,6 +564,7 @@ export default function GrafanaPage() {
 
   const timelineStats = useMemo(() => {
     const areaFiltered = ralTimeline.filter((item) => {
+      if ((item.ticket_type || 'RAL') !== timelineTypeFilter) return false;
       if (timelineAreaFilter === 'ALL') return true;
       if (timelineAreaFilter.startsWith('REG:')) {
         return item.regional === timelineAreaFilter.slice(4);
@@ -570,8 +574,8 @@ export default function GrafanaPage() {
 
     const buckets = [
       { id: '0-2h', label: '0–2h', zone: 'within_24h' as const, min: 0, max: 120, items: [] as RalTimelineItem[] },
-      { id: '2-4h', label: '2–4h', zone: 'within_24h' as const, min: 120, max: 240, items: [] as RalTimelineItem[] },
-      { id: '4-6h', label: '4–6h (SLA)', zone: 'within_24h' as const, min: 240, max: 360, items: [] as RalTimelineItem[] },
+      { id: '2-4h', label: timelineTypeFilter === 'REC' ? '2–4h (SLA)' : '2–4h', zone: 'within_24h' as const, min: 120, max: 240, items: [] as RalTimelineItem[] },
+      { id: '4-6h', label: timelineTypeFilter === 'RAL' ? '4–6h (SLA)' : '4–6h', zone: 'within_24h' as const, min: 240, max: 360, items: [] as RalTimelineItem[] },
       { id: '6-12h', label: '6–12h', zone: 'within_24h' as const, min: 360, max: 720, items: [] as RalTimelineItem[] },
       { id: '12-24h', label: '12–24h', zone: 'within_24h' as const, min: 720, max: 1440, items: [] as RalTimelineItem[] },
       { id: '24-48h', label: '24–48h', zone: 'over_24h' as const, min: 1440, max: 2880, items: [] as RalTimelineItem[] },
@@ -604,7 +608,7 @@ export default function GrafanaPage() {
     const overPct = total > 0 ? 100 - withinPct : 0;
 
     return { buckets: visibleBuckets, maxBucket, within24, over24, total, withinPct, overPct };
-  }, [ralTimeline, timelineAreaFilter, timelineWindowFilter]);
+  }, [ralTimeline, timelineTypeFilter, timelineAreaFilter, timelineWindowFilter]);
 
   const regionGroups: Array<{ key: 'ES' | 'INTERIOR' | 'CAPITAL'; title: string; countLabel: string }> = [
     { key: 'ES', title: 'ES', countLabel: '4 CFs' },
@@ -1462,13 +1466,35 @@ export default function GrafanaPage() {
         </div>
       </div>
 
-      {/* Linha do Tempo · RAL (Dentro de 24h vs Mais de 24h por Área) */}
+      {/* Linha do Tempo · RAL / REC (Dentro de 24h vs Mais de 24h por Área) */}
       <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-5 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-sky-400" />
-              <h3 className="text-sm font-bold text-white">Linha do Tempo · RAL</h3>
+              <Clock className={`w-4 h-4 ${timelineTypeFilter === 'REC' ? 'text-amber-400' : 'text-sky-400'}`} />
+              <h3 className="text-sm font-bold text-white">Linha do Tempo · {timelineTypeFilter}</h3>
+            </div>
+
+            <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
+              {(
+                [
+                  { id: 'RAL', label: 'RAL', activeCls: 'bg-emerald-500 text-slate-950' },
+                  { id: 'REC', label: 'REC', activeCls: 'bg-amber-400 text-slate-950' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setTimelineTypeFilter(tab.id);
+                    setSelectedTimelineBucket(null);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                    timelineTypeFilter === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
@@ -1520,7 +1546,8 @@ export default function GrafanaPage() {
             </select>
 
             <span className="text-xs text-slate-400">
-              <strong className="text-white">{timelineStats.total}</strong> RALs de falha
+              <strong className="text-white">{timelineStats.total}</strong>{' '}
+              {timelineTypeFilter === 'REC' ? 'RECs' : 'RALs de falha'}
             </span>
           </div>
         </div>
@@ -1641,7 +1668,7 @@ export default function GrafanaPage() {
             <div className="rounded-xl bg-[#0d111a] border border-white/10 p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-white">
-                  Faixa {activeBucket.label} · {activeBucket.items.length} RAL(s)
+                  Faixa {activeBucket.label} · {activeBucket.items.length} {timelineTypeFilter}(s)
                 </span>
                 <button
                   onClick={() => setSelectedTimelineBucket(null)}
@@ -1651,13 +1678,15 @@ export default function GrafanaPage() {
                 </button>
               </div>
               {activeBucket.items.length === 0 ? (
-                <p className="text-xs text-slate-500">Nenhuma RAL nesta faixa para a área selecionada.</p>
+                <p className="text-xs text-slate-500">
+                  Nenhuma {timelineTypeFilter} nesta faixa para a área selecionada.
+                </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
                   {activeBucket.items.map((item) => (
                     <button
                       key={item.ticket_number}
-                      onClick={() => handleSelectQueue(item.cf, 'RAL')}
+                      onClick={() => handleSelectQueue(item.cf, timelineTypeFilter)}
                       className="text-left p-2 rounded-lg bg-white/[0.03] hover:bg-white/10 border border-white/10 transition"
                     >
                       <div className="flex items-center justify-between gap-1">
@@ -1669,7 +1698,10 @@ export default function GrafanaPage() {
                       <div className="text-[11px] font-mono text-slate-300 truncate mt-0.5">
                         {item.designation}
                       </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{item.abertura_raw}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 flex items-center justify-between gap-2">
+                        <span>{item.abertura_raw}</span>
+                        {item.cliente && <span className="truncate text-amber-300/90">{item.cliente}</span>}
+                      </div>
                     </button>
                   ))}
                 </div>

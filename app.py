@@ -13094,10 +13094,12 @@ def api_grafana_dashboard():
                         if r.get("abertura_dt"):
                             elapsed_min = max(0, int((now_brt - r["abertura_dt"]).total_seconds() // 60))
                         ral_timeline.append({
+                            "ticket_type": "RAL",
                             "ticket_number": r["ticket_number"],
                             "cf": cf,
                             "regional": reg,
                             "designation": r["designation"],
+                            "cliente": "",
                             "abertura_raw": r["abertura_raw"],
                             "elapsed_minutes": elapsed_min,
                         })
@@ -13110,6 +13112,19 @@ def api_grafana_dashboard():
                         cf_map[cf]["new_rec"] += 1
                     if sla["sla_status"] == "overdue":
                         cf_map[cf]["overdue_rec"] += 1
+                    elapsed_min = None
+                    if r.get("abertura_dt"):
+                        elapsed_min = max(0, int((now_brt - r["abertura_dt"]).total_seconds() // 60))
+                    ral_timeline.append({
+                        "ticket_type": "REC",
+                        "ticket_number": r["ticket_number"],
+                        "cf": cf,
+                        "regional": reg,
+                        "designation": r["designation"],
+                        "cliente": r.get("cliente") or "",
+                        "abertura_raw": r["abertura_raw"],
+                        "elapsed_minutes": elapsed_min,
+                    })
 
             if is_new:
                 feed_item = {
