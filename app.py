@@ -8326,10 +8326,10 @@ def normalize_text_key(txt):
     return "".join([c for c in nfkd if not unicodedata.combining(c)])
 
 
-def parse_fault_searcher_file(filepath, topic):
+def _iter_fault_searcher_rows(filepath, topic):
     ext = os.path.splitext(filepath)[1].lower()
-    raw_rows = []
-    
+    sheet_candidates = [topic, 'RAL', 'REC', 'HFC', 'GPON', 'FALHAS', 'GERAL', 'Analítico', 'Dados', 'Ocorrências', 'Dados_DB', 'Base']
+
     if ext in ['.xlsx', '.xlsm', '.xls']:
         try:
             from python_calamine import CalamineWorkbook
@@ -8337,7 +8337,7 @@ def parse_fault_searcher_file(filepath, topic):
             sheet_names = wb.sheet_names
             target_sheet = sheet_names[0]
             sheet_found = False
-            for candidate in [topic, 'RAL', 'REC', 'HFC', 'GPON', 'FALHAS', 'GERAL', 'Analítico', 'Dados', 'Ocorrências', 'Dados_DB', 'Base']:
+            for candidate in sheet_candidates:
                 for s in sheet_names:
                     if candidate.lower() in s.lower():
                         target_sheet = s
@@ -8347,74 +8347,100 @@ def parse_fault_searcher_file(filepath, topic):
                     break
 
             ws = wb.get_sheet_by_name(target_sheet)
-            raw_rows = ws.to_python()
+            for row in ws.to_python():
+                yield row
+            return
         except Exception as e_cal:
             print("Calamine parse warning, falling back to openpyxl:", e_cal)
-            try:
-                import openpyxl
-                wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
-                sheet_names = wb.sheetnames
-                target_sheet = sheet_names[0]
-                sheet_found = False
-                for candidate in [topic, 'RAL', 'REC', 'HFC', 'GPON', 'FALHAS', 'GERAL', 'Analítico', 'Dados', 'Ocorrências', 'Dados_DB', 'Base']:
-                    for s in sheet_names:
-                        if candidate.lower() in s.lower():
-                            target_sheet = s
-                            sheet_found = True
-                            break
-                    if sheet_found:
+
+        wb = None
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
+            sheet_names = wb.sheetnames
+            target_sheet = sheet_names[0]
+            sheet_found = False
+            for candidate in sheet_candidates:
+                for s in sheet_names:
+                    if candidate.lower() in s.lower():
+                        target_sheet = s
+                        sheet_found = True
                         break
-                ws = wb[target_sheet]
-                raw_rows = list(ws.iter_rows(values_only=True))
-            except Exception as e_opx:
-                print("openpyxl parse warning:", e_opx)
-                raw_rows = []
-    elif ext in ['.csv', '.txt']:
-        content = None
-        for enc in ['utf-8-sig', 'utf-8', 'latin1', 'cp1252']:
-            try:
-                with open(filepath, 'r', encoding=enc) as f:
-                    content = f.read()
-                if content:
+                if sheet_found:
                     break
-            except Exception:
-                continue
-                
-        if content:
-            lines = [line for line in content.splitlines() if line.strip()]
-            if lines:
-                first_line = lines[0]
-                delims = [';', ',', '\t', '|']
-                delim_counts = {d: first_line.count(d) for d in delims}
-                best_delim = max(delim_counts, key=delim_counts.get)
-                if delim_counts[best_delim] == 0:
-                    best_delim = ','
-                import csv
-                import io
-                reader = csv.reader(io.StringIO(content), delimiter=best_delim)
-                raw_rows = list(reader)
+            ws = wb[target_sheet]
+            for row in ws.iter_rows(values_only=True):
+                yield row
+            return
+        except Exception as e_opx:
+            print("openpyxl parse warning:", e_opx)
+        finally:
+            if wb is not None:
+                try:
+                    wb.close()
+                except Exception:
+                    pass
 
-    if not raw_rows:
-        return []
+    # CSV/TXT ou fallback para arquivos .xls salvos como texto/TSV/CSV/HTML
+    content = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin1', 'cp1252']:
+        try:
+            with open(filepath, 'r', encoding=enc) as f:
+                content = f.read()
+            if content:
+                break
+        except Exception:
+            continue
 
-    clean_rows = []
-    for r in raw_rows:
-        if r and any(c is not None and str(c).strip() != '' for c in r):
-            clean_rows.append(r)
+    if not content:
+        return
 
-    if not clean_rows:
-        return []
+    stripped = content.lstrip()
+    if stripped.lower().startswith('<html') or '<table' in stripped[:500].lower():
+        tr_blocks = re.findall(r'<tr[^>]*>(.*?)</tr>', content, flags=re.IGNORECASE | re.DOTALL)
+        for tr in tr_blocks:
+            cells = re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', tr, flags=re.IGNORECASE | re.DOTALL)
+            if cells:
+                yield [re.sub(r'<[^>]+>', '', c).replace('&nbsp;', ' ').strip() for c in cells]
+        return
 
-    header_idx = 0
-    header_map = {}
-    
+    lines = [line for line in content.splitlines() if line.strip()]
+    if not lines:
+        return
+
+    first_line = lines[0]
+    delims = [';', ',', '\t', '|']
+    delim_counts = {d: first_line.count(d) for d in delims}
+    best_delim = max(delim_counts, key=delim_counts.get)
+    if delim_counts[best_delim] == 0:
+        best_delim = ','
+    reader = csv.reader(io.StringIO(content), delimiter=best_delim)
+    for row in reader:
+        yield row
+
+
+def parse_fault_searcher_file(filepath, topic):
     header_keywords = [
         'DESIGNA', 'CHAMADO', 'ROTA', 'RALANO', 'TICKET', 'SUBCLUSTER',
         'DISTANCIA', 'ENDERECO', 'MES', 'OFENSOR', 'OCORRENCIA', 'CAUSA',
         'CIRCUITO', 'REF', 'NUM'
     ]
 
-    for i, r in enumerate(clean_rows[:25]):
+    row_iter = _iter_fault_searcher_rows(filepath, topic)
+    head_buffer = []
+    for raw_r in row_iter:
+        if raw_r and any(c is not None and str(c).strip() != '' for c in raw_r):
+            head_buffer.append(raw_r)
+            if len(head_buffer) >= 25:
+                break
+
+    if not head_buffer:
+        return []
+
+    header_idx = 0
+    header_map = {}
+
+    for i, r in enumerate(head_buffer):
         str_r = [normalize_text_key(c) for c in r]
         concat = ' '.join(str_r)
         matched_count = sum(1 for k in header_keywords if k in concat)
@@ -8425,17 +8451,14 @@ def parse_fault_searcher_file(filepath, topic):
                     header_map[val] = c_idx
             break
 
-    if not header_map and clean_rows:
+    if not header_map:
         header_idx = 0
-        for c_idx, val in enumerate(clean_rows[0]):
+        for c_idx, val in enumerate(head_buffer[0]):
             norm_val = normalize_text_key(val)
             if norm_val:
                 header_map[norm_val] = c_idx
 
-    data_rows = clean_rows[header_idx + 1:] if header_idx < len(clean_rows) - 1 else clean_rows[header_idx:]
-    if data_rows == [clean_rows[header_idx]]:
-        data_rows = clean_rows[header_idx + 1:]
-
+    remaining_head = head_buffer[header_idx + 1:] if header_idx < len(head_buffer) - 1 else []
     parsed_records = []
 
     def find_col_index(candidates, default_pos):
@@ -8446,13 +8469,15 @@ def parse_fault_searcher_file(filepath, topic):
                     return col_i
         return default_pos
 
-    def get_val_at(row, col_i):
+    def get_val_at(row, col_i, max_len=None):
         if 0 <= col_i < len(row):
             v = row[col_i]
             if v is not None:
                 if isinstance(v, (datetime.datetime, datetime.date)):
-                    return v.strftime('%d/%m/%Y %H:%M')
-                return str(v).strip()
+                    s = v.strftime('%d/%m/%Y %H:%M')
+                else:
+                    s = str(v).replace('\x00', '').strip()
+                return s[:max_len] if max_len else s
         return ''
 
     idx_ref = find_col_index(['REF', 'REFERENCIA', 'REF_VAL', 'REFERENCIA_LOCAL'], 999)
@@ -8498,31 +8523,29 @@ def parse_fault_searcher_file(filepath, topic):
         idx8 = find_col_index(['OFENSOR'], 7)
         idx9 = find_col_index(['OCORRENCIA', 'CAUSA'], 4)
 
-    for row_idx, row in enumerate(data_rows):
-        if not any(c is not None and str(c).strip() != '' for c in row):
+    import itertools
+    for row_idx, row in enumerate(itertools.chain(remaining_head, row_iter)):
+        if not row or not any(c is not None and str(c).strip() != '' for c in row):
             continue
 
-        col_ref = get_val_at(row, idx_ref) or '-'
-        col1 = get_val_at(row, idx1)
-        col2 = get_val_at(row, idx2)
-        col3 = get_val_at(row, idx3)
-        col4 = get_val_at(row, idx4)
-        col5 = get_val_at(row, idx5)
+        col_ref = get_val_at(row, idx_ref, 255) or '-'
+        col1 = get_val_at(row, idx1, 255)
+        col2 = get_val_at(row, idx2, 255)
+        col3 = get_val_at(row, idx3, 255)
+        col4 = get_val_at(row, idx4, 255)
+        col5 = get_val_at(row, idx5, 255)
         col6 = get_val_at(row, idx6)
-        col7 = get_val_at(row, idx7)
-        col8 = get_val_at(row, idx8)
-        col9 = get_val_at(row, idx9)
+        col7 = get_val_at(row, idx7, 100)
+        col8 = get_val_at(row, idx8, 255)
+        col9 = get_val_at(row, idx9, 100)
 
         if not col2:
             if col1:
-                col2 = col1
+                col2 = col1[:255]
             else:
-                col2 = f"{topic}_REC_{row_idx + 1}"
+                col2 = f"{topic}_REC_{row_idx + 1}"[:255]
 
         parsed_records.append((topic, col1, col2, col3, col4, col5, col_ref, col6, col7, col8, col9))
-
-    return parsed_records
-
 
     return parsed_records
 
@@ -8724,7 +8747,11 @@ def api_upload_buscador_base():
     if not file or not file.filename:
         return jsonify({"error": "Arquivo inválido."}), 400
 
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    orig_ext = os.path.splitext(file.filename)[1].lower()
     filename = secure_filename(file.filename)
+    if not filename or '.' not in filename:
+        filename = f"base_{topic.lower()}{orig_ext or '.xlsx'}"
     temp_path = os.path.join(UPLOAD_FOLDER, f"temp_{int(time.time())}_{filename}")
     file.save(temp_path)
 
@@ -8776,20 +8803,28 @@ def api_upload_buscador_base():
                 else:
                     final_ref = c_ref or '-'
 
-                final_records.append((t_val, c1, c2, c3, c4, final_c5, final_ref, c6, c7, c8, c9, is_ed))
+                final_records.append((
+                    t_val[:20], (c1 or '')[:255], (c2 or '')[:255], (c3 or '')[:255],
+                    (c4 or '')[:255], (final_c5 or '')[:255], (final_ref or '-')[:255],
+                    c6 or '', (c7 or '')[:100], (c8 or '')[:255], (c9 or '')[:100], is_ed
+                ))
             else:
                 if key:
                     processed_keys.add(key)
                 is_ed = bool(c5 and c5 != '-' and c5 != '')
-                final_records.append((t_val, c1, c2, c3, c4, c5, c_ref or '-', c6, c7, c8, c9, is_ed))
+                final_records.append((
+                    t_val[:20], (c1 or '')[:255], (c2 or '')[:255], (c3 or '')[:255],
+                    (c4 or '')[:255], (c5 or '')[:255], (c_ref or '-')[:255],
+                    c6 or '', (c7 or '')[:100], (c8 or '')[:255], (c9 or '')[:100], is_ed
+                ))
 
         # 3. Retain any historical records in DB that might not be in the new file
         for key, ex in existing_map.items():
             if key not in processed_keys:
                 final_records.append((
-                    topic, ex['col1'] or '', ex['col2'] or '', ex['col3'] or '',
-                    ex['col4'] or '', ex['col5'] or '', ex['ref_val'] or '-', ex['col6'] or '',
-                    ex['col7'] or '', ex['col8'] or '', ex['col9'] or '',
+                    topic[:20], (ex['col1'] or '')[:255], (ex['col2'] or '')[:255], (ex['col3'] or '')[:255],
+                    (ex['col4'] or '')[:255], (ex['col5'] or '')[:255], (ex['ref_val'] or '-')[:255],
+                    ex['col6'] or '', (ex['col7'] or '')[:100], (ex['col8'] or '')[:255], (ex['col9'] or '')[:100],
                     bool(ex.get('is_edited'))
                 ))
 
@@ -8811,7 +8846,7 @@ def api_upload_buscador_base():
                 updated_by = EXCLUDED.updated_by,
                 filename = EXCLUDED.filename,
                 record_count = EXCLUDED.record_count;
-        """, (topic, session['username'], filename, len(final_records)))
+        """, (topic, (session.get('username') or 'sistema')[:150], filename[:255], len(final_records)))
 
         conn.commit()
         cur.close()
@@ -8828,6 +8863,8 @@ def api_upload_buscador_base():
             "record_count": len(final_records)
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         if 'conn' in locals() and conn:
             try:
                 conn.rollback()
@@ -8836,8 +8873,8 @@ def api_upload_buscador_base():
                 pass
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        print("Backend exception:", e)
-        return jsonify({"error": "Ocorreu um erro ao processar a requisição."}), 500
+        print("Backend exception (buscador upload):", type(e).__name__, e)
+        return jsonify({"error": f"Erro ao processar base ({type(e).__name__}): {str(e)[:180]}"}), 500
 
 
 @app.route('/api/buscador/export', methods=['GET'])
