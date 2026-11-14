@@ -79,11 +79,13 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<ManagedUser | null>(null);
   const [form, setForm] = useState<{
     tech_id: string;
+    username: string;
     role: string;
     password: string;
     permissions: string[];
   }>({
     tech_id: '',
+    username: '',
     role: 'Técnico',
     password: '',
     permissions: [],
@@ -222,6 +224,7 @@ export default function UsersPage() {
     setEditing(null);
     setForm({
       tech_id: '',
+      username: '',
       role: 'Técnico',
       password: '',
       permissions: [],
@@ -240,6 +243,7 @@ export default function UsersPage() {
         : [];
     setForm({
       tech_id: u.tech_id ? String(u.tech_id) : '',
+      username: u.username,
       role: u.role,
       password: '',
       permissions: existingPerms,
@@ -315,7 +319,11 @@ export default function UsersPage() {
       } else {
         const tech = technicians.find((t) => String(t.id) === form.tech_id);
         if (!tech) throw new ApiError(400, 'Selecione a pessoa correspondente.');
-        const username = tech.name.trim().toLowerCase().split(/\s+/).slice(0, 2).join('.');
+        const username = (form.username || tech.name.trim().toLowerCase().split(/\s+/).slice(0, 2).join('.')).trim().toLowerCase();
+        if (!username) throw new ApiError(400, 'Informe o login do usuário.');
+        if (!/^[a-z0-9._-]+$/.test(username)) {
+          throw new ApiError(400, 'Não é permitido acentuações especiais.');
+        }
         await api.post('/api/users', {
           username,
           role: form.role,
@@ -556,19 +564,41 @@ export default function UsersPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
           {!editing ? (
-            <Field label="Pessoa">
-              <Select
-                value={form.tech_id}
-                onChange={(e) => setForm((f) => ({ ...f, tech_id: e.target.value }))}
-              >
-                <option value="">Selecione...</option>
-                {availableTechnicians.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <>
+              <Field label="Pessoa">
+                <Select
+                  value={form.tech_id}
+                  onChange={(e) => {
+                    const tid = e.target.value;
+                    const tech = technicians.find((t) => String(t.id) === tid);
+                    const suggested = tech
+                      ? tech.name.trim().toLowerCase().split(/\s+/).slice(0, 2).join('.')
+                      : '';
+                    setForm((f) => ({ ...f, tech_id: tid, username: suggested }));
+                  }}
+                >
+                  <option value="">Selecione...</option>
+                  {availableTechnicians.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Login (usuário)">
+                <Input
+                  value={form.username}
+                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value.toLowerCase() }))}
+                  placeholder="ex: otavio.silva"
+                />
+                {form.username && !/^[a-z0-9._-]+$/.test(form.username) && (
+                  <p className="mt-1.5 text-xs font-medium text-amber-300">
+                    Não é permitido acentuações especiais.
+                  </p>
+                )}
+              </Field>
+            </>
           ) : (
             <Field label="Usuário">
               <Input value={editing.username} disabled />

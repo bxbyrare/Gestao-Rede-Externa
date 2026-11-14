@@ -3432,40 +3432,6 @@ def spa_catch_all(path):
 _ACCOUNT_LOGIN_FAILURES = defaultdict(list)
 _PASSWORD_RESET_FAILURES = defaultdict(int)
 
-def _normalize_login_username(value):
-    raw = str(value or '').strip().lower()
-    if not raw:
-        return ''
-    nfkd = unicodedata.normalize('NFKD', raw)
-    return ''.join(ch for ch in nfkd if not unicodedata.combining(ch))
-
-
-def _find_user_by_login_username(cur, raw_username, exclude_user_id=None):
-    clean = str(raw_username or '').strip().lower()
-    if not clean:
-        return None
-    if exclude_user_id is not None:
-        cur.execute("SELECT * FROM users WHERE LOWER(TRIM(username)) = %s AND id != %s LIMIT 1;", (clean, exclude_user_id))
-    else:
-        cur.execute("SELECT * FROM users WHERE LOWER(TRIM(username)) = %s LIMIT 1;", (clean,))
-    exact = cur.fetchone()
-    if exact:
-        return exact
-
-    norm_target = _normalize_login_username(clean)
-    if not norm_target:
-        return None
-
-    if exclude_user_id is not None:
-        cur.execute("SELECT * FROM users WHERE id != %s;", (exclude_user_id,))
-    else:
-        cur.execute("SELECT * FROM users;")
-    for row in cur.fetchall():
-        if _normalize_login_username(row.get('username')) == norm_target:
-            return row
-    return None
-
-
 @app.route('/api/auth/login', methods=['POST'])
 def api_login():
     # Limpa qualquer sessão residual para garantir login imediato sem bloqueios indevidos
@@ -3479,9 +3445,8 @@ def api_login():
     if not username or not password:
         return jsonify({"error": "Por favor, informe seu usuário e senha."}), 400
 
-    norm_username = _normalize_login_username(username)
     client_ip = get_client_ip()
-    lockout_key = f"{client_ip}:{norm_username or username}"
+    lockout_key = f"{client_ip}:{username}"
 
     now_ts = time.time()
     _ACCOUNT_LOGIN_FAILURES[lockout_key] = [t for t in _ACCOUNT_LOGIN_FAILURES[lockout_key] if now_ts - t < 900]
@@ -3491,7 +3456,8 @@ def api_login():
     try:
         conn = get_db()
         cur = conn.cursor()
-        user = _find_user_by_login_username(cur, username)
+        cur.execute("SELECT * FROM users WHERE username = %s;", (username,))
+        user = cur.fetchone()
         cur.close()
         conn.close()
 
@@ -8123,6 +8089,9 @@ def api_create_user():
 
     if not username or not role:
         return jsonify({"error": "Todos os campos de usuário (exceto senha) são obrigatórios."}), 400
+
+    if not re.fullmatch(r'[a-z0-9._-]+', username):
+        return jsonify({"error": "Não é permitido acentuações especiais."}), 400
         
     if role not in ['Supervisor', 'Técnico', 'Auxiliar', 'Coordenador']:
         return jsonify({"error": "Cargo inválido informado."}), 400
@@ -8142,7 +8111,8 @@ def api_create_user():
             conn.close()
             return jsonify({"error": "A pessoa selecionada não foi encontrada na seção Pessoas (#pessoas). Cadastre-a primeiro."}), 400
 
-        if _find_user_by_login_username(cur, username):
+        cur.execute("SELECT id FROM users WHERE username = %s;", (username,))
+        if cur.fetchone():
             cur.close()
             conn.close()
             return jsonify({"error": "Nome de usuário já está em uso."}), 400
@@ -8289,7 +8259,12 @@ def api_update_user(user_id):
 
         target_username = user['username']
         if not target_is_master and username and username != user['username']:
-            if _find_user_by_login_username(cur, username, exclude_user_id=user_id):
+            if not re.fullmatch(r'[a-z0-9._-]+', username):
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Não é permitido acentuações especiais."}), 400
+            cur.execute("SELECT id FROM users WHERE username = %s AND id != %s;", (username, user_id))
+            if cur.fetchone():
                 cur.close()
                 conn.close()
                 return jsonify({"error": "Nome de usuário (login) já está em uso por outra conta."}), 400
