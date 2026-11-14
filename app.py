@@ -13062,6 +13062,7 @@ def api_grafana_dashboard():
         }
         new_ral_feed = []
         new_rec_feed = []
+        ral_timeline = []
 
         for r in rows:
             cf = r["cf"]
@@ -13089,6 +13090,17 @@ def api_grafana_dashboard():
                             cf_map[cf]["new_ral"] += 1
                         if sla["sla_status"] == "overdue":
                             cf_map[cf]["overdue_ral"] += 1
+                        elapsed_min = None
+                        if r.get("abertura_dt"):
+                            elapsed_min = max(0, int((now_brt - r["abertura_dt"]).total_seconds() // 60))
+                        ral_timeline.append({
+                            "ticket_number": r["ticket_number"],
+                            "cf": cf,
+                            "regional": reg,
+                            "designation": r["designation"],
+                            "abertura_raw": r["abertura_raw"],
+                            "elapsed_minutes": elapsed_min,
+                        })
                 else:
                     cf_map[cf]["rec"] += 1
                     totals["ALL"]["rec"] += 1
@@ -13129,6 +13141,7 @@ def api_grafana_dashboard():
             "totals": totals,
             "cfs": [cf_map[item["cf"]] for item in GRAFANA_CF_LIST],
             "qualidade_chart": [{"cf": item["cf"], "label": item["label"], "count": cf_map[item["cf"]]["qualidade"]} for item in GRAFANA_CF_LIST],
+            "ral_timeline": ral_timeline,
             "new_feed": {"ral": new_ral_feed[:30], "rec": new_rec_feed[:30]},
             "cleared_total": cleared_total,
             "sync": {

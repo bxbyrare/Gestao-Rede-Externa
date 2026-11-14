@@ -126,6 +126,15 @@ interface PersonOption {
   company: string;
 }
 
+interface RalTimelineItem {
+  ticket_number: string;
+  cf: string;
+  regional: 'ES' | 'INTERIOR' | 'CAPITAL';
+  designation: string;
+  abertura_raw: string;
+  elapsed_minutes: number | null;
+}
+
 type QueueType = 'RAL' | 'REC' | 'QUALIDADE';
 type SortField = 'classification' | 'abertura' | 'cliente';
 
@@ -187,6 +196,10 @@ export default function GrafanaPage() {
   });
   const [cfs, setCfs] = useState<CfSummary[]>([]);
   const [qualChart, setQualChart] = useState<{ cf: string; label: string; count: number }[]>([]);
+  const [ralTimeline, setRalTimeline] = useState<RalTimelineItem[]>([]);
+  const [timelineAreaFilter, setTimelineAreaFilter] = useState<string>('ALL');
+  const [timelineWindowFilter, setTimelineWindowFilter] = useState<'ALL' | 'WITHIN_24H' | 'OVER_24H'>('ALL');
+  const [selectedTimelineBucket, setSelectedTimelineBucket] = useState<string | null>(null);
   const [newFeed, setNewFeed] = useState<{ ral: NewFeedItem[]; rec: NewFeedItem[] }>({ ral: [], rec: [] });
   const [clearedTotal, setClearedTotal] = useState(0);
   const [syncMeta, setSyncMeta] = useState<SyncMeta>({
@@ -240,6 +253,7 @@ export default function GrafanaPage() {
       setTotals(data.totals || {});
       setCfs(data.cfs || []);
       setQualChart(data.qualidade_chart || []);
+      setRalTimeline(data.ral_timeline || []);
       setNewFeed(data.new_feed || { ral: [], rec: [] });
       setClearedTotal(data.cleared_total || 0);
       if (data.sync) {
@@ -544,6 +558,53 @@ export default function GrafanaPage() {
   const maxChartValue = useMemo(() => {
     return Math.max(1, ...activeChartSeries.map((item) => item.count));
   }, [activeChartSeries]);
+
+  const timelineStats = useMemo(() => {
+    const areaFiltered = ralTimeline.filter((item) => {
+      if (timelineAreaFilter === 'ALL') return true;
+      if (timelineAreaFilter.startsWith('REG:')) {
+        return item.regional === timelineAreaFilter.slice(4);
+      }
+      return item.cf === timelineAreaFilter;
+    });
+
+    const buckets = [
+      { id: '0-2h', label: '0–2h', zone: 'within_24h' as const, min: 0, max: 120, items: [] as RalTimelineItem[] },
+      { id: '2-4h', label: '2–4h', zone: 'within_24h' as const, min: 120, max: 240, items: [] as RalTimelineItem[] },
+      { id: '4-6h', label: '4–6h (SLA)', zone: 'within_24h' as const, min: 240, max: 360, items: [] as RalTimelineItem[] },
+      { id: '6-12h', label: '6–12h', zone: 'within_24h' as const, min: 360, max: 720, items: [] as RalTimelineItem[] },
+      { id: '12-24h', label: '12–24h', zone: 'within_24h' as const, min: 720, max: 1440, items: [] as RalTimelineItem[] },
+      { id: '24-48h', label: '24–48h', zone: 'over_24h' as const, min: 1440, max: 2880, items: [] as RalTimelineItem[] },
+      { id: '48-72h', label: '48–72h', zone: 'over_24h' as const, min: 2880, max: 4320, items: [] as RalTimelineItem[] },
+      { id: '72h+', label: '+72h', zone: 'over_24h' as const, min: 4320, max: Infinity, items: [] as RalTimelineItem[] },
+    ];
+
+    let within24 = 0;
+    let over24 = 0;
+
+    for (const item of areaFiltered) {
+      const m = item.elapsed_minutes;
+      if (m === null || m === undefined) continue;
+      if (m <= 1440) within24 += 1;
+      else over24 += 1;
+
+      const target = buckets.find((b) => (b.max === Infinity ? m > b.min : m >= b.min && m <= b.max && (b.min === 0 || m > b.min)));
+      if (target) target.items.push(item);
+    }
+
+    const visibleBuckets = buckets.filter((b) => {
+      if (timelineWindowFilter === 'WITHIN_24H') return b.zone === 'within_24h';
+      if (timelineWindowFilter === 'OVER_24H') return b.zone === 'over_24h';
+      return true;
+    });
+
+    const maxBucket = Math.max(1, ...visibleBuckets.map((b) => b.items.length));
+    const total = within24 + over24;
+    const withinPct = total > 0 ? Math.round((within24 / total) * 100) : 0;
+    const overPct = total > 0 ? 100 - withinPct : 0;
+
+    return { buckets: visibleBuckets, maxBucket, within24, over24, total, withinPct, overPct };
+  }, [ralTimeline, timelineAreaFilter, timelineWindowFilter]);
 
   const regionGroups: Array<{ key: 'ES' | 'INTERIOR' | 'CAPITAL'; title: string; countLabel: string }> = [
     { key: 'ES', title: 'ES', countLabel: '4 CFs' },
@@ -1399,6 +1460,223 @@ export default function GrafanaPage() {
             );
           })}
         </div>
+      </div>
+
+      {/* Linha do Tempo · RAL (Dentro de 24h vs Mais de 24h por Área) */}
+      <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-5 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-sky-400" />
+              <h3 className="text-sm font-bold text-white">Linha do Tempo · RAL</h3>
+            </div>
+
+            <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
+              {(
+                [
+                  { id: 'ALL', label: 'Todas', activeCls: 'bg-sky-500 text-slate-950' },
+                  { id: 'WITHIN_24H', label: 'Dentro de 24h', activeCls: 'bg-emerald-500 text-slate-950' },
+                  { id: 'OVER_24H', label: 'Mais de 24h', activeCls: 'bg-[#e20613] text-white' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setTimelineWindowFilter(tab.id);
+                    setSelectedTimelineBucket(null);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                    timelineWindowFilter === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <select
+              value={timelineAreaFilter}
+              onChange={(e) => {
+                setTimelineAreaFilter(e.target.value);
+                setSelectedTimelineBucket(null);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[#0d111a] border border-white/15 text-xs text-slate-200 focus:outline-none focus:border-sky-400"
+            >
+              <option value="ALL">Todas as áreas (16 CFs)</option>
+              <optgroup label="Regionais">
+                <option value="REG:ES">Regional ES (4 CFs)</option>
+                <option value="REG:INTERIOR">Regional INTERIOR (6 CFs)</option>
+                <option value="REG:CAPITAL">Regional CAPITAL (6 CFs)</option>
+              </optgroup>
+              <optgroup label="Centros Funcionais (CF)">
+                {cfs.map((c) => (
+                  <option key={c.cf} value={c.cf}>
+                    {c.cf} — {c.label}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+
+            <span className="text-xs text-slate-400">
+              <strong className="text-white">{timelineStats.total}</strong> RALs de falha
+            </span>
+          </div>
+        </div>
+
+        {/* 24h Split Summary Strip */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={() =>
+              setTimelineWindowFilter((curr) => (curr === 'WITHIN_24H' ? 'ALL' : 'WITHIN_24H'))
+            }
+            className={`text-left rounded-xl p-3 border transition ${
+              timelineWindowFilter === 'WITHIN_24H'
+                ? 'bg-emerald-500/15 border-emerald-400/50'
+                : 'bg-[#0d111a] border-white/10 hover:border-emerald-500/35'
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-emerald-300">Dentro de 24h (≤ 24h)</span>
+              <span className="font-bold text-white tabular-nums">
+                {timelineStats.within24} ({timelineStats.withinPct}%)
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-2">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-300 rounded-full transition-all duration-500"
+                style={{ width: `${timelineStats.withinPct}%` }}
+              />
+            </div>
+          </button>
+
+          <button
+            onClick={() =>
+              setTimelineWindowFilter((curr) => (curr === 'OVER_24H' ? 'ALL' : 'OVER_24H'))
+            }
+            className={`text-left rounded-xl p-3 border transition ${
+              timelineWindowFilter === 'OVER_24H'
+                ? 'bg-[#e20613]/15 border-[#e20613]/50'
+                : 'bg-[#0d111a] border-white/10 hover:border-[#e20613]/35'
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-red-300">Mais de 24h (&gt; 24h)</span>
+              <span className="font-bold text-white tabular-nums">
+                {timelineStats.over24} ({timelineStats.overPct}%)
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-2">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-[#e20613] rounded-full transition-all duration-500"
+                style={{ width: `${timelineStats.overPct}%` }}
+              />
+            </div>
+          </button>
+        </div>
+
+        {/* Timeline Bars */}
+        <div className="h-48 flex items-end justify-between gap-2 sm:gap-3 pt-6 px-1 border-b border-white/10">
+          {timelineStats.buckets.map((b, idx) => {
+            const count = b.items.length;
+            const pct = count > 0 ? Math.max(10, Math.round((count / timelineStats.maxBucket) * 100)) : 0;
+            const isOver = b.zone === 'over_24h';
+            const isSelected = selectedTimelineBucket === b.id;
+            const prevZone = idx > 0 ? timelineStats.buckets[idx - 1].zone : b.zone;
+            const showDivider = idx > 0 && prevZone !== b.zone;
+
+            return (
+              <div key={b.id} className="flex-1 h-full flex items-end gap-2">
+                {showDivider && (
+                  <div
+                    className="h-full w-px border-l border-dashed border-white/20 shrink-0"
+                    title="Limite de 24 horas"
+                  />
+                )}
+                <button
+                  onClick={() => setSelectedTimelineBucket((curr) => (curr === b.id ? null : b.id))}
+                  className="flex-1 h-full flex flex-col items-center justify-end group"
+                  title={`${b.label}: ${count} RAL(s)`}
+                >
+                  <span className="text-[11px] font-bold text-slate-200 mb-1 tabular-nums">
+                    {count > 0 ? count : ''}
+                  </span>
+                  <div className="w-full max-w-[44px] flex-1 flex items-end justify-center">
+                    {count > 0 ? (
+                      <div
+                        style={{ height: `${pct}%` }}
+                        className={`w-full rounded-t-lg bg-gradient-to-t transition-all duration-500 shadow-lg group-hover:brightness-125 ${
+                          isOver
+                            ? 'from-[#e20613]/85 via-red-500 to-amber-400 shadow-[#e20613]/20'
+                            : 'from-sky-600/80 via-emerald-500 to-teal-300 shadow-emerald-500/20'
+                        } ${isSelected ? 'ring-2 ring-white' : ''}`}
+                      />
+                    ) : (
+                      <div className="w-full h-[2px] bg-white/10 rounded-full" />
+                    )}
+                  </div>
+                  <span
+                    className={`text-[10px] font-semibold mt-2 whitespace-nowrap ${
+                      isSelected
+                        ? isOver
+                          ? 'text-red-300'
+                          : 'text-emerald-300'
+                        : 'text-slate-400 group-hover:text-white'
+                    }`}
+                  >
+                    {b.label}
+                  </span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Optional Bucket Drill-down List */}
+        {selectedTimelineBucket && (() => {
+          const activeBucket = timelineStats.buckets.find((b) => b.id === selectedTimelineBucket);
+          if (!activeBucket) return null;
+          return (
+            <div className="rounded-xl bg-[#0d111a] border border-white/10 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-white">
+                  Faixa {activeBucket.label} · {activeBucket.items.length} RAL(s)
+                </span>
+                <button
+                  onClick={() => setSelectedTimelineBucket(null)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {activeBucket.items.length === 0 ? (
+                <p className="text-xs text-slate-500">Nenhuma RAL nesta faixa para a área selecionada.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                  {activeBucket.items.map((item) => (
+                    <button
+                      key={item.ticket_number}
+                      onClick={() => handleSelectQueue(item.cf, 'RAL')}
+                      className="text-left p-2 rounded-lg bg-white/[0.03] hover:bg-white/10 border border-white/10 transition"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                          {item.cf}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-300 truncate mt-0.5">
+                        {item.designation}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{item.abertura_raw}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Cleared Faults (Base Sanadas) Modal */}
