@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity,
   AlertTriangle,
   Archive,
   Check,
@@ -1359,42 +1358,45 @@ export default function GrafanaPage() {
         </div>
       )}
 
-      {/* Bottom Chart: RAL / REC / RAL de Qualidade por área */}
-      <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+      {/* Bottom Chart: Distribuição por Área (RAL / REC / RAL de Qualidade) */}
+      <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Activity
-                className={`w-4 h-4 ${
+            <div className="flex items-center gap-2.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
                   chartMode === 'RAL'
-                    ? 'text-emerald-400'
+                    ? 'bg-emerald-400'
                     : chartMode === 'REC'
-                    ? 'text-amber-400'
-                    : 'text-violet-400'
+                    ? 'bg-amber-400'
+                    : 'bg-violet-400'
                 }`}
               />
-              <h3 className="text-sm font-bold text-white">
-                {chartMode === 'RAL'
-                  ? 'RAL por área'
-                  : chartMode === 'REC'
-                  ? 'REC por área'
-                  : 'RAL de Qualidade por área'}
-              </h3>
+              <div>
+                <h3 className="text-sm font-semibold tracking-tight text-white">
+                  {chartMode === 'RAL'
+                    ? 'RAL de Falha por Área'
+                    : chartMode === 'REC'
+                    ? 'REC por Área'
+                    : 'RAL de Qualidade por Área'}
+                </h3>
+                <p className="text-[11px] text-slate-500">Clique em uma coluna para filtrar o CF</p>
+              </div>
             </div>
 
-            <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
+            <div className="inline-flex rounded-xl bg-[#06080d] p-0.5 border border-white/10">
               {(
                 [
-                  { id: 'RAL', label: 'RAL', activeCls: 'bg-emerald-500 text-slate-950' },
-                  { id: 'REC', label: 'REC', activeCls: 'bg-amber-400 text-slate-950' },
-                  { id: 'QUALIDADE', label: 'RAL de Qualidade', activeCls: 'bg-violet-500 text-white' },
+                  { id: 'RAL', label: 'RAL', activeCls: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' },
+                  { id: 'REC', label: 'REC', activeCls: 'bg-amber-500/20 text-amber-300 border border-amber-500/40' },
+                  { id: 'QUALIDADE', label: 'RAL de Qualidade', activeCls: 'bg-violet-500/20 text-violet-300 border border-violet-500/40' },
                 ] as const
               ).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setChartMode(tab.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                    chartMode === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white'
+                  className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition ${
+                    chartMode === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white border border-transparent'
                   }`}
                 >
                   {tab.label}
@@ -1403,83 +1405,101 @@ export default function GrafanaPage() {
             </div>
           </div>
 
-          <span className="text-xs text-slate-400">
-            <strong className="text-white">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-[#06080d] border border-white/10 text-xs text-slate-400">
+            <strong className="text-white tabular-nums">
               {chartMode === 'RAL'
                 ? totals.ALL?.ral ?? 0
                 : chartMode === 'REC'
                 ? totals.ALL?.rec ?? 0
                 : totals.ALL?.qualidade ?? 0}
-            </strong>{' '}
-            no total · 16 áreas
-          </span>
+            </strong>
+            <span>total · 16 áreas</span>
+          </div>
         </div>
 
-        <div className="h-52 flex items-end justify-between gap-2 sm:gap-3 pt-6 px-1 border-b border-white/10">
-          {activeChartSeries.map((bar) => {
-            const pct = bar.count > 0 ? Math.max(10, Math.round((bar.count / maxChartValue) * 100)) : 0;
-            const isSelected = selectedCf === bar.cf && selectedQueue === chartMode;
-            const barGradient =
-              chartMode === 'RAL'
-                ? 'from-emerald-600/80 via-emerald-500 to-teal-300 shadow-emerald-500/20'
-                : chartMode === 'REC'
-                ? 'from-amber-600/80 via-amber-500 to-yellow-300 shadow-amber-500/20'
-                : 'from-violet-600/80 via-violet-500 to-fuchsia-400 shadow-violet-500/20';
-            const selectedText =
-              chartMode === 'RAL'
-                ? 'text-emerald-300'
-                : chartMode === 'REC'
-                ? 'text-amber-300'
-                : 'text-violet-300';
-            return (
-              <button
-                key={bar.cf}
-                onClick={() => handleSelectQueue(bar.cf, chartMode)}
-                className="flex-1 h-full flex flex-col items-center justify-end group"
-                title={`${bar.cf} (${bar.label}): ${bar.count} ${chartMode}`}
-              >
-                <span className="text-[11px] font-bold text-slate-200 mb-1 tabular-nums">
-                  {bar.count > 0 ? bar.count : ''}
-                </span>
-                <div className="w-full max-w-[34px] flex-1 flex items-end justify-center">
-                  {bar.count > 0 ? (
-                    <div
-                      style={{ height: `${pct}%` }}
-                      className={`w-full rounded-t-lg bg-gradient-to-t ${barGradient} transition-all duration-500 shadow-lg group-hover:brightness-125 ${
-                        isSelected ? 'ring-2 ring-white' : ''
-                      }`}
-                    />
-                  ) : (
-                    <div className="w-full h-[2px] bg-white/10 rounded-full" />
-                  )}
-                </div>
-                <span
-                  className={`text-[10px] font-semibold mt-2 ${
-                    isSelected ? selectedText : 'text-slate-400 group-hover:text-white'
-                  }`}
+        <div className="relative flex gap-3">
+          {/* Y-Axis Scale */}
+          <div className="h-52 flex flex-col justify-between text-[10px] font-mono text-slate-500 pt-5 pb-6 select-none shrink-0 text-right w-6">
+            <span>{maxChartValue}</span>
+            <span>{Math.ceil(maxChartValue / 2)}</span>
+            <span>0</span>
+          </div>
+
+          {/* Chart Canvas with Hairline Grid */}
+          <div className="relative flex-1 h-52 flex items-end justify-between gap-1.5 sm:gap-2.5 pt-5 pb-6 border-b border-white/10">
+            <div className="pointer-events-none absolute inset-x-0 top-5 border-t border-dashed border-white/[0.06]" />
+            <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-white/[0.06]" />
+
+            {activeChartSeries.map((bar) => {
+              const pct = bar.count > 0 ? Math.max(8, Math.round((bar.count / maxChartValue) * 100)) : 0;
+              const isSelected = selectedCf === bar.cf && selectedQueue === chartMode;
+              const barStyle =
+                chartMode === 'RAL'
+                  ? 'from-emerald-500/30 via-emerald-500/75 to-emerald-400 border-t border-emerald-300/70'
+                  : chartMode === 'REC'
+                  ? 'from-amber-500/30 via-amber-500/75 to-amber-400 border-t border-amber-200/70'
+                  : 'from-violet-500/30 via-violet-500/75 to-violet-400 border-t border-violet-300/70';
+              const selectedText =
+                chartMode === 'RAL'
+                  ? 'text-emerald-300'
+                  : chartMode === 'REC'
+                  ? 'text-amber-300'
+                  : 'text-violet-300';
+              return (
+                <button
+                  key={bar.cf}
+                  onClick={() => handleSelectQueue(bar.cf, chartMode)}
+                  className="relative flex-1 h-full flex flex-col items-center justify-end group rounded-lg hover:bg-white/[0.025] transition px-0.5"
+                  title={`${bar.cf} (${bar.label}): ${bar.count} ${chartMode}`}
                 >
-                  {bar.cf}
-                </span>
-              </button>
-            );
-          })}
+                  <span className="text-[11px] font-semibold text-slate-300 mb-1 tabular-nums h-4 leading-4">
+                    {bar.count > 0 ? bar.count : ''}
+                  </span>
+                  <div className="w-full max-w-[30px] flex-1 flex items-end justify-center">
+                    {bar.count > 0 ? (
+                      <div
+                        style={{ height: `${pct}%` }}
+                        className={`w-full rounded-t-md bg-gradient-to-t ${barStyle} transition-all duration-500 group-hover:brightness-115 ${
+                          isSelected ? 'ring-1 ring-white/80' : ''
+                        }`}
+                      />
+                    ) : (
+                      <div className="w-full h-[2px] bg-white/[0.08] rounded-full" />
+                    )}
+                  </div>
+                  <span
+                    className={`absolute -bottom-5 text-[10px] font-medium tracking-tight ${
+                      isSelected ? selectedText : 'text-slate-400 group-hover:text-white'
+                    }`}
+                  >
+                    {bar.cf}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Linha do Tempo · RAL / REC (Dentro de 24h vs Mais de 24h por Área) */}
-      <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-5 space-y-4">
+      <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-6 space-y-5 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Clock className={`w-4 h-4 ${timelineTypeFilter === 'REC' ? 'text-amber-400' : 'text-sky-400'}`} />
-              <h3 className="text-sm font-bold text-white">Linha do Tempo · {timelineTypeFilter}</h3>
+            <div className="flex items-center gap-2.5">
+              <span className={`w-2 h-2 rounded-full ${timelineTypeFilter === 'REC' ? 'bg-amber-400' : 'bg-sky-400'}`} />
+              <div>
+                <h3 className="text-sm font-semibold tracking-tight text-white">
+                  Linha do Tempo · {timelineTypeFilter}
+                </h3>
+                <p className="text-[11px] text-slate-500">Distribuição por tempo decorrido (≤ 24h vs &gt; 24h)</p>
+              </div>
             </div>
 
-            <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
+            <div className="inline-flex rounded-xl bg-[#06080d] p-0.5 border border-white/10">
               {(
                 [
-                  { id: 'RAL', label: 'RAL', activeCls: 'bg-emerald-500 text-slate-950' },
-                  { id: 'REC', label: 'REC', activeCls: 'bg-amber-400 text-slate-950' },
+                  { id: 'RAL', label: 'RAL', activeCls: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' },
+                  { id: 'REC', label: 'REC', activeCls: 'bg-amber-500/20 text-amber-300 border border-amber-500/40' },
                 ] as const
               ).map((tab) => (
                 <button
@@ -1488,8 +1508,8 @@ export default function GrafanaPage() {
                     setTimelineTypeFilter(tab.id);
                     setSelectedTimelineBucket(null);
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                    timelineTypeFilter === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white'
+                  className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition ${
+                    timelineTypeFilter === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white border border-transparent'
                   }`}
                 >
                   {tab.label}
@@ -1497,12 +1517,12 @@ export default function GrafanaPage() {
               ))}
             </div>
 
-            <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
+            <div className="inline-flex rounded-xl bg-[#06080d] p-0.5 border border-white/10">
               {(
                 [
-                  { id: 'ALL', label: 'Todas', activeCls: 'bg-sky-500 text-slate-950' },
-                  { id: 'WITHIN_24H', label: 'Dentro de 24h', activeCls: 'bg-emerald-500 text-slate-950' },
-                  { id: 'OVER_24H', label: 'Mais de 24h', activeCls: 'bg-[#e20613] text-white' },
+                  { id: 'ALL', label: 'Todas', activeCls: 'bg-white/10 text-white border border-white/15' },
+                  { id: 'WITHIN_24H', label: '≤ 24h', activeCls: 'bg-sky-500/20 text-sky-300 border border-sky-500/40' },
+                  { id: 'OVER_24H', label: '> 24h', activeCls: 'bg-[#e20613]/20 text-red-300 border border-[#e20613]/40' },
                 ] as const
               ).map((tab) => (
                 <button
@@ -1511,8 +1531,8 @@ export default function GrafanaPage() {
                     setTimelineWindowFilter(tab.id);
                     setSelectedTimelineBucket(null);
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                    timelineWindowFilter === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white'
+                  className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition ${
+                    timelineWindowFilter === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white border border-transparent'
                   }`}
                 >
                   {tab.label}
@@ -1528,7 +1548,7 @@ export default function GrafanaPage() {
                 setTimelineAreaFilter(e.target.value);
                 setSelectedTimelineBucket(null);
               }}
-              className="px-3 py-1.5 rounded-xl bg-[#0d111a] border border-white/15 text-xs text-slate-200 focus:outline-none focus:border-sky-400"
+              className="px-3 py-1.5 rounded-xl bg-[#06080d] border border-white/10 text-xs text-slate-200 focus:outline-none focus:border-white/30"
             >
               <option value="ALL">Todas as áreas (16 CFs)</option>
               <optgroup label="Regionais">
@@ -1545,10 +1565,10 @@ export default function GrafanaPage() {
               </optgroup>
             </select>
 
-            <span className="text-xs text-slate-400">
-              <strong className="text-white">{timelineStats.total}</strong>{' '}
-              {timelineTypeFilter === 'REC' ? 'RECs' : 'RALs de falha'}
-            </span>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#06080d] border border-white/10 text-xs text-slate-400">
+              <strong className="text-white tabular-nums">{timelineStats.total}</strong>
+              <span>{timelineTypeFilter === 'REC' ? 'RECs' : 'RALs de falha'}</span>
+            </div>
           </div>
         </div>
 
@@ -1558,21 +1578,21 @@ export default function GrafanaPage() {
             onClick={() =>
               setTimelineWindowFilter((curr) => (curr === 'WITHIN_24H' ? 'ALL' : 'WITHIN_24H'))
             }
-            className={`text-left rounded-xl p-3 border transition ${
+            className={`text-left rounded-xl p-3.5 border transition ${
               timelineWindowFilter === 'WITHIN_24H'
-                ? 'bg-emerald-500/15 border-emerald-400/50'
-                : 'bg-[#0d111a] border-white/10 hover:border-emerald-500/35'
+                ? 'bg-sky-500/10 border-sky-400/45'
+                : 'bg-[#06080d]/70 border-white/10 hover:border-sky-500/30'
             }`}
           >
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-emerald-300">Dentro de 24h (≤ 24h)</span>
-              <span className="font-bold text-white tabular-nums">
-                {timelineStats.within24} ({timelineStats.withinPct}%)
+              <span className="font-medium text-sky-300">Dentro de 24h (≤ 24h)</span>
+              <span className="font-semibold text-white tabular-nums">
+                {timelineStats.within24} <span className="text-slate-400 font-normal">({timelineStats.withinPct}%)</span>
               </span>
             </div>
-            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-2">
+            <div className="h-1.5 w-full bg-white/[0.06] rounded-full overflow-hidden mt-2.5">
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-300 rounded-full transition-all duration-500"
+                className="h-full bg-gradient-to-r from-sky-500 to-cyan-300 rounded-full transition-all duration-500"
                 style={{ width: `${timelineStats.withinPct}%` }}
               />
             </div>
@@ -1582,19 +1602,19 @@ export default function GrafanaPage() {
             onClick={() =>
               setTimelineWindowFilter((curr) => (curr === 'OVER_24H' ? 'ALL' : 'OVER_24H'))
             }
-            className={`text-left rounded-xl p-3 border transition ${
+            className={`text-left rounded-xl p-3.5 border transition ${
               timelineWindowFilter === 'OVER_24H'
-                ? 'bg-[#e20613]/15 border-[#e20613]/50'
-                : 'bg-[#0d111a] border-white/10 hover:border-[#e20613]/35'
+                ? 'bg-[#e20613]/10 border-[#e20613]/45'
+                : 'bg-[#06080d]/70 border-white/10 hover:border-[#e20613]/30'
             }`}
           >
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-red-300">Mais de 24h (&gt; 24h)</span>
-              <span className="font-bold text-white tabular-nums">
-                {timelineStats.over24} ({timelineStats.overPct}%)
+              <span className="font-medium text-red-300">Mais de 24h (&gt; 24h)</span>
+              <span className="font-semibold text-white tabular-nums">
+                {timelineStats.over24} <span className="text-slate-400 font-normal">({timelineStats.overPct}%)</span>
               </span>
             </div>
-            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-2">
+            <div className="h-1.5 w-full bg-white/[0.06] rounded-full overflow-hidden mt-2.5">
               <div
                 className="h-full bg-gradient-to-r from-amber-500 to-[#e20613] rounded-full transition-all duration-500"
                 style={{ width: `${timelineStats.overPct}%` }}
@@ -1603,61 +1623,76 @@ export default function GrafanaPage() {
           </button>
         </div>
 
-        {/* Timeline Bars */}
-        <div className="h-48 flex items-end justify-between gap-2 sm:gap-3 pt-6 px-1 border-b border-white/10">
-          {timelineStats.buckets.map((b, idx) => {
-            const count = b.items.length;
-            const pct = count > 0 ? Math.max(10, Math.round((count / timelineStats.maxBucket) * 100)) : 0;
-            const isOver = b.zone === 'over_24h';
-            const isSelected = selectedTimelineBucket === b.id;
-            const prevZone = idx > 0 ? timelineStats.buckets[idx - 1].zone : b.zone;
-            const showDivider = idx > 0 && prevZone !== b.zone;
+        {/* Timeline Bars with Y-Axis & Hairline Grid */}
+        <div className="relative flex gap-3">
+          <div className="h-48 flex flex-col justify-between text-[10px] font-mono text-slate-500 pt-5 pb-6 select-none shrink-0 text-right w-6">
+            <span>{timelineStats.maxBucket}</span>
+            <span>{Math.ceil(timelineStats.maxBucket / 2)}</span>
+            <span>0</span>
+          </div>
 
-            return (
-              <div key={b.id} className="flex-1 h-full flex items-end gap-2">
-                {showDivider && (
-                  <div
-                    className="h-full w-px border-l border-dashed border-white/20 shrink-0"
-                    title="Limite de 24 horas"
-                  />
-                )}
-                <button
-                  onClick={() => setSelectedTimelineBucket((curr) => (curr === b.id ? null : b.id))}
-                  className="flex-1 h-full flex flex-col items-center justify-end group"
-                  title={`${b.label}: ${count} RAL(s)`}
-                >
-                  <span className="text-[11px] font-bold text-slate-200 mb-1 tabular-nums">
-                    {count > 0 ? count : ''}
-                  </span>
-                  <div className="w-full max-w-[44px] flex-1 flex items-end justify-center">
-                    {count > 0 ? (
-                      <div
-                        style={{ height: `${pct}%` }}
-                        className={`w-full rounded-t-lg bg-gradient-to-t transition-all duration-500 shadow-lg group-hover:brightness-125 ${
-                          isOver
-                            ? 'from-[#e20613]/85 via-red-500 to-amber-400 shadow-[#e20613]/20'
-                            : 'from-sky-600/80 via-emerald-500 to-teal-300 shadow-emerald-500/20'
-                        } ${isSelected ? 'ring-2 ring-white' : ''}`}
-                      />
-                    ) : (
-                      <div className="w-full h-[2px] bg-white/10 rounded-full" />
-                    )}
-                  </div>
-                  <span
-                    className={`text-[10px] font-semibold mt-2 whitespace-nowrap ${
-                      isSelected
-                        ? isOver
-                          ? 'text-red-300'
-                          : 'text-emerald-300'
-                        : 'text-slate-400 group-hover:text-white'
-                    }`}
+          <div className="relative flex-1 h-48 flex items-end justify-between gap-2 sm:gap-3 pt-5 pb-6 border-b border-white/10">
+            <div className="pointer-events-none absolute inset-x-0 top-5 border-t border-dashed border-white/[0.06]" />
+            <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-white/[0.06]" />
+
+            {timelineStats.buckets.map((b, idx) => {
+              const count = b.items.length;
+              const pct = count > 0 ? Math.max(8, Math.round((count / timelineStats.maxBucket) * 100)) : 0;
+              const isOver = b.zone === 'over_24h';
+              const isSelected = selectedTimelineBucket === b.id;
+              const prevZone = idx > 0 ? timelineStats.buckets[idx - 1].zone : b.zone;
+              const showDivider = idx > 0 && prevZone !== b.zone;
+
+              return (
+                <div key={b.id} className="relative flex-1 h-full flex items-end gap-2">
+                  {showDivider && (
+                    <div
+                      className="h-full w-px border-l border-dashed border-white/20 shrink-0 relative"
+                      title="Limite de 24 horas"
+                    >
+                      <span className="absolute -top-4 -left-2.5 text-[9px] font-mono text-slate-500 bg-[#090C13] px-1">
+                        24h
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setSelectedTimelineBucket((curr) => (curr === b.id ? null : b.id))}
+                    className="relative flex-1 h-full flex flex-col items-center justify-end group rounded-lg hover:bg-white/[0.025] transition px-0.5"
+                    title={`${b.label}: ${count} ${timelineTypeFilter}(s)`}
                   >
-                    {b.label}
-                  </span>
-                </button>
-              </div>
-            );
-          })}
+                    <span className="text-[11px] font-semibold text-slate-300 mb-1 tabular-nums h-4 leading-4">
+                      {count > 0 ? count : ''}
+                    </span>
+                    <div className="w-full max-w-[38px] flex-1 flex items-end justify-center">
+                      {count > 0 ? (
+                        <div
+                          style={{ height: `${pct}%` }}
+                          className={`w-full rounded-t-md bg-gradient-to-t transition-all duration-500 group-hover:brightness-115 ${
+                            isOver
+                              ? 'from-[#e20613]/30 via-[#e20613]/75 to-red-400 border-t border-red-300/70'
+                              : 'from-sky-500/30 via-sky-500/75 to-sky-400 border-t border-sky-300/70'
+                          } ${isSelected ? 'ring-1 ring-white/80' : ''}`}
+                        />
+                      ) : (
+                        <div className="w-full h-[2px] bg-white/[0.08] rounded-full" />
+                      )}
+                    </div>
+                    <span
+                      className={`absolute -bottom-5 text-[10px] font-medium whitespace-nowrap tracking-tight ${
+                        isSelected
+                          ? isOver
+                            ? 'text-red-300'
+                            : 'text-sky-300'
+                          : 'text-slate-400 group-hover:text-white'
+                      }`}
+                    >
+                      {b.label}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Optional Bucket Drill-down List */}
