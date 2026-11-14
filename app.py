@@ -12676,8 +12676,27 @@ def _has_admin_notify_access(auth):
     )
 
 
+def _is_date_missing_or_expired(exp_val, today_date):
+    if not exp_val:
+        return "ausente"
+    try:
+        if isinstance(exp_val, datetime.datetime):
+            d = exp_val.date()
+        elif isinstance(exp_val, datetime.date):
+            d = exp_val
+        else:
+            d = datetime.date.fromisoformat(str(exp_val)[:10])
+        if d < today_date:
+            return "vencido"
+        return None
+    except Exception:
+        return None
+
+
 def _compute_pending_fields_from_row(row):
     missing = []
+    today_date = datetime.date.today()
+
     name_val = (row.get('tech_name') or row.get('username') or '').strip()
     cpf_raw = (row.get('cpf') or '').strip()
     cpf_digits = re.sub(r'\D', '', cpf_raw)
@@ -12685,7 +12704,9 @@ def _compute_pending_fields_from_row(row):
     dob_val = row.get('dob')
     phone_val = (row.get('tech_phone') or row.get('user_phone') or '').strip()
     company_val = (row.get('tech_company') or row.get('user_company') or '').strip()
+    role_val = (row.get('tech_role') or row.get('user_role') or '').strip()
 
+    # Identificação & Contato
     if not name_val:
         missing.append("Nome completo")
     if len(cpf_digits) != 11:
@@ -12696,8 +12717,60 @@ def _compute_pending_fields_from_row(row):
         missing.append("Data de Nascimento")
     if not phone_val:
         missing.append("Telefone / WhatsApp com DDD")
+
+    # Vínculo & Operação
     if not company_val:
         missing.append("Empresa parceira / prestadora")
+    if not role_val:
+        missing.append("Cargo / Função")
+    if not (row.get('area') or '').strip():
+        missing.append("Área de atuação")
+    if not (row.get('team_type') or '').strip():
+        missing.append("Tipo de equipe (Fusão / Lançamento)")
+    if not (row.get('team') or '').strip():
+        missing.append("Equipe")
+    if not (row.get('registration_claro') or '').strip():
+        missing.append("Matrícula Claro")
+    if not (row.get('registration_third') or '').strip():
+        missing.append("Matrícula Terceira")
+    if not (row.get('toa_login') or '').strip():
+        missing.append("Login TOA")
+
+    # Equipamento / Celular Corporativo
+    if not (row.get('phone_model') or '').strip():
+        missing.append("Modelo do celular corporativo")
+    if not (row.get('imei_1') or '').strip():
+        missing.append("IMEI 1 do aparelho")
+
+    # Tamanhos de Uniforme / EPI
+    if not (row.get('shirt_size') or '').strip():
+        missing.append("Tamanho da Camisa")
+    if not (row.get('pants_size') or '').strip():
+        missing.append("Tamanho da Calça")
+    if not (row.get('boot_size') or '').strip():
+        missing.append("Tamanho da Bota")
+    if not (row.get('jacket_size') or '').strip():
+        missing.append("Tamanho da Jaqueta")
+
+    # NRs e Verificações de Segurança / Saúde (ASO)
+    nr_checks = [
+        ("NR-06 (EPI)", "nr6_expiration", "nr6_file"),
+        ("NR-10 (Elétrica)", "nr10_expiration", "nr10_file"),
+        ("NR-35 (Altura)", "nr35_expiration", "nr35_file"),
+        ("ASO (Saúde Ocupacional)", "aso_expiration", "aso_file"),
+    ]
+    for label, exp_col, file_col in nr_checks:
+        exp_state = _is_date_missing_or_expired(row.get(exp_col), today_date)
+        has_file = bool((row.get(file_col) or '').strip())
+        if exp_state == "vencido":
+            missing.append(f"{label} — Validade vencida")
+        elif exp_state == "ausente" and not has_file:
+            missing.append(f"{label} — Validade e certificado pendentes")
+        elif exp_state == "ausente":
+            missing.append(f"{label} — Data de validade pendente")
+        elif not has_file:
+            missing.append(f"{label} — Comprovante/certificado pendente")
+
     return missing
 
 
@@ -12721,7 +12794,27 @@ def _collect_pending_email_recipients(target_user_id=None, target_email=None):
             t.phone AS tech_phone,
             t.company AS tech_company,
             t.email AS tech_email,
-            t.role AS tech_role
+            t.role AS tech_role,
+            t.area,
+            t.team_type,
+            t.team,
+            t.registration_claro,
+            t.registration_third,
+            t.toa_login,
+            t.phone_model,
+            t.imei_1,
+            t.shirt_size,
+            t.pants_size,
+            t.boot_size,
+            t.jacket_size,
+            t.nr6_expiration,
+            t.nr10_expiration,
+            t.nr35_expiration,
+            t.aso_expiration,
+            t.nr6_file,
+            t.nr10_file,
+            t.nr35_file,
+            t.aso_file
         FROM technicians t
         FULL OUTER JOIN users u ON u.tech_id = t.id
         ORDER BY COALESCE(t.name, u.username, '') ASC;
