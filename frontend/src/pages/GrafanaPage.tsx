@@ -430,22 +430,41 @@ export default function GrafanaPage() {
   }
 
   function formatSingleWhatsapp(t: GrafanaTicket): string {
-    if (t.ticket_type === 'REC') {
-      return [
-        `🏷 *${t.ticket_number}* — 📍 CF ${t.cf}`,
-        `📋 Designação: ${t.designation || '-'}`,
-        `👤 Cliente: ${t.cliente || '-'}`,
-        `📅 Abertura: ${t.abertura_raw || '-'}`,
-        `⏳ SLA: ${t.sla_whatsapp}`,
-      ].join('\n');
+    const lines =
+      t.ticket_type === 'REC'
+        ? [
+            `🏷 *${t.ticket_number}* — 📍 CF ${t.cf}`,
+            `📋 Designação: ${t.designation || '-'}`,
+            `👤 Cliente: ${t.cliente || '-'}`,
+            `📅 Abertura: ${t.abertura_raw || '-'}`,
+            `⏳ SLA: ${t.sla_whatsapp}`,
+          ]
+        : [
+            `🏷 *${t.ticket_number}* — 📍 CF ${t.cf}`,
+            `📋 Designação: ${t.designation || '-'}`,
+            `🛠 Tipo: ${t.tipo_ral || '-'}`,
+            `📅 Abertura: ${t.abertura_raw || '-'}`,
+            `⏳ SLA: ${t.sla_whatsapp}`,
+          ];
+
+    if (t.status_andamento && t.status_andamento !== 'Sem classificação') {
+      lines.push(`📌 Status: ${t.status_andamento}`);
     }
-    return [
-      `🏷 *${t.ticket_number}* — 📍 CF ${t.cf}`,
-      `📋 Designação: ${t.designation || '-'}`,
-      `🛠 Tipo: ${t.tipo_ral || '-'}`,
-      `📅 Abertura: ${t.abertura_raw || '-'}`,
-      `⏳ SLA: ${t.sla_whatsapp}`,
-    ].join('\n');
+    if (t.responsible_name) {
+      lines.push(`👷 Acionado / Responsável: ${t.responsible_name}`);
+    }
+    if (t.notes && t.notes.length > 0) {
+      if (t.notes.length === 1) {
+        const n = t.notes[0];
+        lines.push(`📝 Observação: ${n.content} _(${n.author_name} · ${n.created_at})_`);
+      } else {
+        lines.push('📝 Observações:');
+        for (const n of t.notes) {
+          lines.push(`  • ${n.content} _(${n.author_name} · ${n.created_at})_`);
+        }
+      }
+    }
+    return lines.join('\n');
   }
 
   function copyText(key: string, text: string) {
