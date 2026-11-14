@@ -4,7 +4,7 @@ import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, FolderKanban, FileText, Route as RouteIcon, BarChart3,
   Settings, Menu, X, LogOut, BellRing, ShieldCheck, CheckSquare,
-  UserCheck, AlertTriangle, ArrowRight, CalendarCheck, FileCheck2,
+  UserCheck, AlertTriangle, ArrowRight, CalendarCheck, FileCheck2, Activity,
 } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import GsapSecurityBackground from './GsapSecurityBackground';
@@ -37,6 +37,7 @@ function companyLogoNeedsWhiteBg(company: string | null | undefined): boolean {
 }
 
 const NAV_ITEMS = [
+  { to: '/grafana', label: 'Grafana', icon: Activity },
   { to: '/', label: 'Favoritos', icon: Star, end: true },
   { to: '/area-de-trabalho', label: 'Área de Trabalho', icon: Briefcase },
   { to: '/pessoas', label: 'Pessoas', icon: Users },

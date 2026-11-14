@@ -2252,6 +2252,94 @@ def init_db():
         except Exception:
             conn.rollback()
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS grafana_tickets (
+                id SERIAL PRIMARY KEY,
+                ticket_key VARCHAR(80) UNIQUE NOT NULL,
+                ticket_type VARCHAR(10) NOT NULL,
+                ticket_number VARCHAR(60) NOT NULL,
+                cf VARCHAR(10) NOT NULL,
+                regional VARCHAR(20) NOT NULL,
+                cf_exec_raw VARCHAR(120),
+                designation VARCHAR(255),
+                tipo_ral VARCHAR(100),
+                is_qualidade BOOLEAN DEFAULT FALSE,
+                cliente VARCHAR(180),
+                anorm VARCHAR(80),
+                abertura_raw VARCHAR(60),
+                abertura_dt TIMESTAMP,
+                duracao_raw VARCHAR(60),
+                resp_code VARCHAR(40),
+                tecnico_csv VARCHAR(120),
+                anatel VARCHAR(30),
+                prejuizo VARCHAR(30),
+                status_andamento VARCHAR(60) DEFAULT 'Sem classificação',
+                responsible_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                responsible_name VARCHAR(150),
+                first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_new BOOLEAN DEFAULT FALSE,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS grafana_cleared_tickets (
+                id SERIAL PRIMARY KEY,
+                ticket_key VARCHAR(80) NOT NULL,
+                ticket_type VARCHAR(10) NOT NULL,
+                ticket_number VARCHAR(60) NOT NULL,
+                cf VARCHAR(10) NOT NULL,
+                regional VARCHAR(20) NOT NULL,
+                cf_exec_raw VARCHAR(120),
+                designation VARCHAR(255),
+                tipo_ral VARCHAR(100),
+                is_qualidade BOOLEAN DEFAULT FALSE,
+                cliente VARCHAR(180),
+                abertura_raw VARCHAR(60),
+                abertura_dt TIMESTAMP,
+                status_andamento VARCHAR(60),
+                responsible_name VARCHAR(150),
+                notes_snapshot JSONB DEFAULT '[]'::jsonb,
+                first_seen_at TIMESTAMP,
+                cleared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS grafana_ticket_notes (
+                id SERIAL PRIMARY KEY,
+                ticket_key VARCHAR(80) NOT NULL,
+                content TEXT NOT NULL,
+                author_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                author_name VARCHAR(150) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS grafana_sync_meta (
+                id INT PRIMARY KEY DEFAULT 1,
+                last_sync_at TIMESTAMP,
+                last_sync_status VARCHAR(30),
+                last_sync_error TEXT,
+                ral_count INT DEFAULT 0,
+                rec_count INT DEFAULT 0,
+                qualidade_count INT DEFAULT 0,
+                new_count INT DEFAULT 0,
+                cleared_count INT DEFAULT 0
+            );
+        """)
+        for idx_sql in [
+            "CREATE INDEX IF NOT EXISTS idx_grafana_tickets_cf_type ON grafana_tickets(cf, ticket_type);",
+            "CREATE INDEX IF NOT EXISTS idx_grafana_tickets_qualidade ON grafana_tickets(is_qualidade);",
+            "CREATE INDEX IF NOT EXISTS idx_grafana_cleared_at ON grafana_cleared_tickets(cleared_at DESC);",
+            "CREATE INDEX IF NOT EXISTS idx_grafana_cleared_cf ON grafana_cleared_tickets(cf, ticket_type);",
+            "CREATE INDEX IF NOT EXISTS idx_grafana_notes_ticket_key ON grafana_ticket_notes(ticket_key);",
+        ]:
+            try:
+                cur.execute(idx_sql)
+            except Exception:
+                conn.rollback()
+
         cur.execute("SELECT COUNT(*) AS count FROM users;")
         if cur.fetchone()['count'] == 0:
             seed_username = os.environ.get('ADMIN_SEED_USERNAME')
@@ -2373,6 +2461,7 @@ ALL_PERMISSIONS = [
     'gerenciamento.create', 'gerenciamento.edit', 'gerenciamento.delete',
     'pos_eventos.create', 'pos_eventos.edit', 'pos_eventos.delete',
     'ral_qualidade.create', 'ral_qualidade.edit', 'ral_qualidade.delete',
+    'grafana.create', 'grafana.edit', 'grafana.delete',
 ]
 
 def is_coordenador_role(username, role):
@@ -2610,6 +2699,18 @@ def _resolve_required_permission(path, method):
         return 'ral_qualidade.edit'
     if p.startswith('/api/ral-qualidade/') and method == 'DELETE':
         return 'ral_qualidade.delete'
+
+    # Grafana (COP REDE - RAL / REC / RAL de Qualidade)
+    if p == '/api/grafana/sync' and method == 'POST':
+        return 'grafana.edit'
+    if p.startswith('/api/grafana/tickets/') and p.endswith('/notes') and method == 'POST':
+        return 'grafana.create'
+    if p.startswith('/api/grafana/tickets/') and method in ('PUT', 'POST'):
+        return 'grafana.edit'
+    if p.startswith('/api/grafana/notes/') and method == 'PUT':
+        return 'grafana.edit'
+    if p.startswith('/api/grafana/notes/') and method == 'DELETE':
+        return 'grafana.delete'
 
     return None
 
@@ -12586,6 +12687,1044 @@ def api_notify_outdated_profile():
         return jsonify({"error": str(e)}), 500
 
 
+
+
+# --------------------------------------------------------------------------
+# GRAFANA COP REDE (RAL / REC / RAL DE QUALIDADE) — REAL-TIME SYNC & API
+# --------------------------------------------------------------------------
+GRAFANA_RAL_CSV_URL = "https://raw.githubusercontent.com/cpralonrj-pralon/embratel-sir/refs/heads/main/dados_ral.csv"
+GRAFANA_REC_CSV_URL = "https://raw.githubusercontent.com/cpralonrj-pralon/embratel-sir/refs/heads/main/dados_rec.csv"
+GRAFANA_SYNC_INTERVAL_SECONDS = 300
+GRAFANA_BRT_TZ = timezone(timedelta(hours=-3))
+
+GRAFANA_CF_LIST = [
+    {"cf": "MTN", "label": "Metropolitana Norte - ES", "regional": "ES", "expected_prefix": "VTA"},
+    {"cf": "MTS", "label": "Metropolitana Sul - ES", "regional": "ES", "expected_prefix": "VTA"},
+    {"cf": "NOR", "label": "Norte - ES", "regional": "ES", "expected_prefix": "VTA"},
+    {"cf": "SUL", "label": "Sul - ES", "regional": "ES", "expected_prefix": "VTA"},
+    {"cf": "SUF", "label": "Sul Fluminense - RJ", "regional": "INTERIOR", "expected_prefix": "RJO"},
+    {"cf": "SEF", "label": "Serra Fluminense - RJ", "regional": "INTERIOR", "expected_prefix": "RJO"},
+    {"cf": "NOF", "label": "Norte Fluminense - RJ", "regional": "INTERIOR", "expected_prefix": "RJO"},
+    {"cf": "LGS", "label": "Região dos Lagos - RJ", "regional": "INTERIOR", "expected_prefix": "RJO"},
+    {"cf": "BX1", "label": "Baixada Fluminense - RJ", "regional": "INTERIOR", "expected_prefix": "RJO"},
+    {"cf": "MTP", "label": "Metropolitana - RJ", "regional": "INTERIOR", "expected_prefix": "RJO"},
+    {"cf": "NO1", "label": "Norte 1 - RJ", "regional": "CAPITAL", "expected_prefix": "RJO"},
+    {"cf": "NO2", "label": "Norte 2 - RJ", "regional": "CAPITAL", "expected_prefix": "RJO"},
+    {"cf": "NO3", "label": "Norte 3 - RJ", "regional": "CAPITAL", "expected_prefix": "RJO"},
+    {"cf": "OE1", "label": "Oeste - RJ", "regional": "CAPITAL", "expected_prefix": "RJO"},
+    {"cf": "SU2", "label": "Sul 2 - RJ", "regional": "CAPITAL", "expected_prefix": "RJO"},
+    {"cf": "CZS", "label": "Centro Zona Sul - RJ", "regional": "CAPITAL", "expected_prefix": "RJO"},
+]
+GRAFANA_CF_META = {item["cf"]: item for item in GRAFANA_CF_LIST}
+
+GRAFANA_ALLOWED_STATUSES = [
+    "Equipe acionada",
+    "Transferir",
+    "Falha concorrente",
+    "Validação",
+    "Conjunta",
+    "Área de Risco",
+    "Pendencia Encerramento",
+    "Acesso",
+    "Indisp. Técnica",
+    "Capex",
+    "Sem classificação",
+]
+
+def _grafana_now_brt():
+    return datetime.now(GRAFANA_BRT_TZ).replace(tzinfo=None)
+
+def _grafana_parse_abertura(raw_val):
+    s = (raw_val or "").strip()
+    if not s:
+        return None
+    for fmt in ("%d/%m/%Y - %H:%M", "%d/%m/%Y %H:%M", "%d/%m/%Y %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+def _grafana_extract_cf(cf_exec_raw):
+    parts = [p.strip().upper() for p in (cf_exec_raw or "").split("/")]
+    if len(parts) < 3:
+        return None
+    area_prefix = parts[1]
+    cf_code = parts[2]
+    meta = GRAFANA_CF_META.get(cf_code)
+    if not meta:
+        return None
+    if area_prefix != meta["expected_prefix"]:
+        return None
+    return meta
+
+def _grafana_compute_sla(ticket_type, abertura_dt, now_brt=None):
+    sla_hours = 6 if ticket_type == "RAL" else 4
+    sla_limit_min = sla_hours * 60
+    if not abertura_dt:
+        return {
+            "sla_hours": sla_hours,
+            "sla_status": "unknown",
+            "sla_label": f"Sem data ({sla_hours}h)",
+            "sla_whatsapp": f"⏳ Sem data ({sla_hours}h)",
+            "sla_delta_minutes": 0,
+        }
+    ref = now_brt or _grafana_now_brt()
+    elapsed_min = int((ref - abertura_dt).total_seconds() // 60)
+    if elapsed_min > sla_limit_min:
+        over = elapsed_min - sla_limit_min
+        h, m = divmod(over, 60)
+        return {
+            "sla_hours": sla_hours,
+            "sla_status": "overdue",
+            "sla_label": f"SLA PERDIDO (+{h}h{m:02d}m)",
+            "sla_whatsapp": f"⛔️ SLA PERDIDO (+{h}h{m:02d})",
+            "sla_delta_minutes": -over,
+        }
+    rem = max(0, sla_limit_min - elapsed_min)
+    h, m = divmod(rem, 60)
+    return {
+        "sla_hours": sla_hours,
+        "sla_status": "ok",
+        "sla_label": f"{h}h{m:02d}m restantes ({sla_hours}h)",
+        "sla_whatsapp": f"🟢 {h}h{m:02d} restantes ({sla_hours}h)",
+        "sla_delta_minutes": rem,
+    }
+
+def _sync_grafana_data(force=False):
+    conn = None
+    cur = None
+    locked = False
+    now_brt = _grafana_now_brt()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("SELECT last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count, qualidade_count, new_count, cleared_count FROM grafana_sync_meta WHERE id = 1;")
+        meta_row = cur.fetchone()
+        if meta_row and meta_row.get("last_sync_at"):
+            age = (now_brt - meta_row["last_sync_at"]).total_seconds()
+            min_age = 15 if force else GRAFANA_SYNC_INTERVAL_SECONDS
+            if age < min_age:
+                return {"synced": False, "cached": True, "meta": meta_row}
+
+        cur.execute("SELECT pg_try_advisory_lock(984512) AS locked;")
+        lock_row = cur.fetchone()
+        locked = bool(lock_row and lock_row.get("locked"))
+        if not locked:
+            return {"synced": False, "cached": True, "meta": meta_row}
+
+        # Re-check inside lock in case another worker just finished syncing
+        cur.execute("SELECT last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count, qualidade_count, new_count, cleared_count FROM grafana_sync_meta WHERE id = 1;")
+        meta_row = cur.fetchone()
+        if meta_row and meta_row.get("last_sync_at"):
+            age = (now_brt - meta_row["last_sync_at"]).total_seconds()
+            min_age = 15 if force else GRAFANA_SYNC_INTERVAL_SECONDS
+            if age < min_age:
+                return {"synced": False, "cached": True, "meta": meta_row}
+
+        # Fetch hardcoded GitHub raw CSVs (no user-supplied URL -> SSRF-safe)
+        import requests as _req
+        ral_resp = _req.get(GRAFANA_RAL_CSV_URL, timeout=20)
+        rec_resp = _req.get(GRAFANA_REC_CSV_URL, timeout=20)
+        ral_resp.raise_for_status()
+        rec_resp.raise_for_status()
+
+        ral_text = ral_resp.content.decode("utf-8-sig", errors="replace")
+        rec_text = rec_resp.content.decode("utf-8-sig", errors="replace")
+
+        ral_reader = csv.DictReader(io.StringIO(ral_text), delimiter=";")
+        rec_reader = csv.DictReader(io.StringIO(rec_text), delimiter=";")
+
+        parsed_tickets = {}
+        ral_raw_rows = 0
+        rec_raw_rows = 0
+
+        for row in ral_reader:
+            ral_raw_rows += 1
+            num = (row.get("Num.Recup.") or "").strip()
+            if not num:
+                continue
+            cf_meta = _grafana_extract_cf(row.get("CF Exec."))
+            if not cf_meta:
+                continue
+            tipo_ral = (row.get("Tipo Ral") or "").strip()
+            is_qual = tipo_ral.upper() == "QUALIDADE"
+            abertura_raw = (row.get("Abertura") or "").strip()
+            tkey = f"RAL:{num}"
+            parsed_tickets[tkey] = {
+                "ticket_key": tkey,
+                "ticket_type": "RAL",
+                "ticket_number": num[:60],
+                "cf": cf_meta["cf"],
+                "regional": cf_meta["regional"],
+                "cf_exec_raw": (row.get("CF Exec.") or "").strip()[:120],
+                "designation": (row.get("Designação") or "").strip()[:255],
+                "tipo_ral": tipo_ral[:100],
+                "is_qualidade": is_qual,
+                "cliente": "",
+                "anorm": (row.get("Anorm.") or "").strip()[:80],
+                "abertura_raw": abertura_raw[:60],
+                "abertura_dt": _grafana_parse_abertura(abertura_raw),
+                "duracao_raw": (row.get("Duração") or "").strip()[:60],
+                "resp_code": (row.get("Resp.") or "").strip()[:40],
+                "tecnico_csv": (row.get("Técn.") or "").strip()[:120],
+                "anatel": (row.get("Anatel") or "").strip()[:30],
+                "prejuizo": (row.get("Prejuízo") or "").strip()[:30],
+            }
+
+        for row in rec_reader:
+            rec_raw_rows += 1
+            num = (row.get("Num.Recup.") or "").strip()
+            if not num:
+                continue
+            cf_meta = _grafana_extract_cf(row.get("CF Exec."))
+            if not cf_meta:
+                continue
+            abertura_raw = (row.get("Abertura") or "").strip()
+            tkey = f"REC:{num}"
+            parsed_tickets[tkey] = {
+                "ticket_key": tkey,
+                "ticket_type": "REC",
+                "ticket_number": num[:60],
+                "cf": cf_meta["cf"],
+                "regional": cf_meta["regional"],
+                "cf_exec_raw": (row.get("CF Exec.") or "").strip()[:120],
+                "designation": (row.get("Designação") or "").strip()[:255],
+                "tipo_ral": "REC",
+                "is_qualidade": False,
+                "cliente": (row.get("Cliente") or "").strip()[:180],
+                "anorm": "",
+                "abertura_raw": abertura_raw[:60],
+                "abertura_dt": _grafana_parse_abertura(abertura_raw),
+                "duracao_raw": "",
+                "resp_code": (row.get("Resp.") or "").strip()[:40],
+                "tecnico_csv": (row.get("Técnico") or "").strip()[:120],
+                "anatel": "",
+                "prejuizo": "",
+            }
+
+        if ral_raw_rows == 0 or rec_raw_rows == 0:
+            raise ValueError("CSV retornado vazio; sincronização abortada para proteger base ativa.")
+
+        cur.execute("SELECT ticket_key, first_seen_at FROM grafana_tickets;")
+        existing_rows = cur.fetchall()
+        existing_keys = {r["ticket_key"] for r in existing_rows}
+        had_existing = len(existing_keys) > 0
+
+        new_keys = set(parsed_tickets.keys()) - existing_keys
+        removed_keys = list(existing_keys - set(parsed_tickets.keys()))
+
+        # Clear "is_new" on tickets older than 15 minutes
+        cutoff_new = now_brt - timedelta(minutes=15)
+        cur.execute("UPDATE grafana_tickets SET is_new = FALSE WHERE is_new = TRUE AND first_seen_at < %s;", (cutoff_new,))
+
+        # Move cleared/removed tickets into grafana_cleared_tickets with notes snapshot
+        cleared_now = 0
+        if removed_keys:
+            cur.execute("SELECT * FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
+            to_archive = cur.fetchall()
+            cur.execute("""
+                SELECT ticket_key, id, content, author_name, created_at
+                FROM grafana_ticket_notes
+                WHERE ticket_key = ANY(%s)
+                ORDER BY created_at ASC;
+            """, (removed_keys,))
+            notes_by_key = {}
+            for n in cur.fetchall():
+                notes_by_key.setdefault(n["ticket_key"], []).append({
+                    "id": n["id"],
+                    "content": n["content"],
+                    "author_name": n["author_name"],
+                    "created_at": n["created_at"].strftime("%d/%m %H:%M") if n.get("created_at") else "",
+                })
+            for t in to_archive:
+                cur.execute("""
+                    INSERT INTO grafana_cleared_tickets (
+                        ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
+                        designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
+                        status_andamento, responsible_name, notes_snapshot, first_seen_at, cleared_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s);
+                """, (
+                    t["ticket_key"], t["ticket_type"], t["ticket_number"], t["cf"], t["regional"], t["cf_exec_raw"],
+                    t["designation"], t["tipo_ral"], t["is_qualidade"], t["cliente"], t["abertura_raw"], t["abertura_dt"],
+                    t["status_andamento"], t["responsible_name"],
+                    json.dumps(notes_by_key.get(t["ticket_key"], []), ensure_ascii=False),
+                    t["first_seen_at"], now_brt
+                ))
+                cleared_now += 1
+            cur.execute("DELETE FROM grafana_ticket_notes WHERE ticket_key = ANY(%s);", (removed_keys,))
+            cur.execute("DELETE FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
+
+        # Upsert all active tickets
+        for tkey, item in parsed_tickets.items():
+            mark_new = bool(had_existing and tkey in new_keys)
+            cur.execute("""
+                INSERT INTO grafana_tickets (
+                    ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
+                    designation, tipo_ral, is_qualidade, cliente, anorm, abertura_raw,
+                    abertura_dt, duracao_raw, resp_code, tecnico_csv, anatel, prejuizo,
+                    first_seen_at, last_seen_at, is_new, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s
+                )
+                ON CONFLICT (ticket_key) DO UPDATE SET
+                    cf = EXCLUDED.cf,
+                    regional = EXCLUDED.regional,
+                    cf_exec_raw = EXCLUDED.cf_exec_raw,
+                    designation = EXCLUDED.designation,
+                    tipo_ral = EXCLUDED.tipo_ral,
+                    is_qualidade = EXCLUDED.is_qualidade,
+                    cliente = EXCLUDED.cliente,
+                    anorm = EXCLUDED.anorm,
+                    abertura_raw = EXCLUDED.abertura_raw,
+                    abertura_dt = EXCLUDED.abertura_dt,
+                    duracao_raw = EXCLUDED.duracao_raw,
+                    resp_code = EXCLUDED.resp_code,
+                    tecnico_csv = EXCLUDED.tecnico_csv,
+                    anatel = EXCLUDED.anatel,
+                    prejuizo = EXCLUDED.prejuizo,
+                    last_seen_at = EXCLUDED.last_seen_at,
+                    updated_at = EXCLUDED.updated_at;
+            """, (
+                item["ticket_key"], item["ticket_type"], item["ticket_number"], item["cf"], item["regional"], item["cf_exec_raw"],
+                item["designation"], item["tipo_ral"], item["is_qualidade"], item["cliente"], item["anorm"], item["abertura_raw"],
+                item["abertura_dt"], item["duracao_raw"], item["resp_code"], item["tecnico_csv"], item["anatel"], item["prejuizo"],
+                now_brt, now_brt, mark_new, now_brt
+            ))
+
+        ral_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "RAL")
+        rec_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "REC")
+        qual_count = sum(1 for v in parsed_tickets.values() if v["is_qualidade"])
+        new_active = len(new_keys) if had_existing else 0
+
+        cur.execute("""
+            INSERT INTO grafana_sync_meta (id, last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count, qualidade_count, new_count, cleared_count)
+            VALUES (1, %s, 'ok', NULL, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                last_sync_at = EXCLUDED.last_sync_at,
+                last_sync_status = 'ok',
+                last_sync_error = NULL,
+                ral_count = EXCLUDED.ral_count,
+                rec_count = EXCLUDED.rec_count,
+                qualidade_count = EXCLUDED.qualidade_count,
+                new_count = EXCLUDED.new_count,
+                cleared_count = grafana_sync_meta.cleared_count + EXCLUDED.cleared_count;
+        """, (now_brt, ral_count, rec_count, qual_count, new_active, cleared_now))
+        conn.commit()
+        return {"synced": True, "cached": False, "new_count": new_active, "cleared_now": cleared_now}
+    except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+                if cur:
+                    cur.execute("""
+                        INSERT INTO grafana_sync_meta (id, last_sync_at, last_sync_status, last_sync_error)
+                        VALUES (1, %s, 'error', %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            last_sync_status = 'error',
+                            last_sync_error = EXCLUDED.last_sync_error;
+                    """, (now_brt, str(e)[:300]))
+                    conn.commit()
+            except Exception:
+                pass
+        print("[GRAFANA SYNC ERROR]", e)
+        return {"synced": False, "error": str(e)}
+    finally:
+        if locked and cur and conn:
+            try:
+                cur.execute("SELECT pg_advisory_unlock(984512);")
+                conn.commit()
+            except Exception:
+                pass
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+@app.route('/api/grafana/dashboard', methods=['GET'])
+@login_required
+def api_grafana_dashboard():
+    try:
+        _sync_grafana_data(force=False)
+        conn = get_db()
+        cur = conn.cursor()
+        now_brt = _grafana_now_brt()
+
+        cur.execute("""
+            SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, designation,
+                   tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
+                   status_andamento, responsible_name, is_new, first_seen_at
+            FROM grafana_tickets
+            ORDER BY abertura_dt ASC NULLS LAST, id ASC;
+        """)
+        rows = cur.fetchall()
+
+        cur.execute("SELECT COUNT(*) AS c FROM grafana_cleared_tickets;")
+        cleared_total = (cur.fetchone() or {}).get("c", 0)
+
+        cur.execute("SELECT last_sync_at, last_sync_status, last_sync_error FROM grafana_sync_meta WHERE id = 1;")
+        meta = cur.fetchone() or {}
+        cur.close()
+
+        cf_map = {}
+        for item in GRAFANA_CF_LIST:
+            cf_map[item["cf"]] = {
+                "cf": item["cf"],
+                "label": item["label"],
+                "regional": item["regional"],
+                "ral": 0,
+                "rec": 0,
+                "qualidade": 0,
+                "new_ral": 0,
+                "new_rec": 0,
+                "new_qualidade": 0,
+                "overdue_ral": 0,
+                "overdue_rec": 0,
+            }
+
+        totals = {
+            "ALL": {"ral": 0, "rec": 0, "qualidade": 0},
+            "ES": {"ral": 0, "rec": 0, "qualidade": 0},
+            "INTERIOR": {"ral": 0, "rec": 0, "qualidade": 0},
+            "CAPITAL": {"ral": 0, "rec": 0, "qualidade": 0},
+        }
+        new_ral_feed = []
+        new_rec_feed = []
+
+        for r in rows:
+            cf = r["cf"]
+            reg = r["regional"]
+            ttype = r["ticket_type"]
+            is_qual = bool(r.get("is_qualidade"))
+            is_new = bool(r.get("is_new"))
+            sla = _grafana_compute_sla(ttype, r.get("abertura_dt"), now_brt)
+
+            if cf in cf_map:
+                if ttype == "RAL":
+                    cf_map[cf]["ral"] += 1
+                    totals["ALL"]["ral"] += 1
+                    if reg in totals:
+                        totals[reg]["ral"] += 1
+                    if is_new:
+                        cf_map[cf]["new_ral"] += 1
+                    if sla["sla_status"] == "overdue":
+                        cf_map[cf]["overdue_ral"] += 1
+                    if is_qual:
+                        cf_map[cf]["qualidade"] += 1
+                        totals["ALL"]["qualidade"] += 1
+                        if reg in totals:
+                            totals[reg]["qualidade"] += 1
+                        if is_new:
+                            cf_map[cf]["new_qualidade"] += 1
+                else:
+                    cf_map[cf]["rec"] += 1
+                    totals["ALL"]["rec"] += 1
+                    if reg in totals:
+                        totals[reg]["rec"] += 1
+                    if is_new:
+                        cf_map[cf]["new_rec"] += 1
+                    if sla["sla_status"] == "overdue":
+                        cf_map[cf]["overdue_rec"] += 1
+
+            if is_new:
+                feed_item = {
+                    "id": r["id"],
+                    "ticket_number": r["ticket_number"],
+                    "ticket_type": ttype,
+                    "cf": cf,
+                    "regional": reg,
+                    "designation": r["designation"],
+                    "cliente": r["cliente"],
+                    "tipo_ral": r["tipo_ral"],
+                    "is_qualidade": is_qual,
+                    "abertura_raw": r["abertura_raw"],
+                    "sla_status": sla["sla_status"],
+                    "sla_label": sla["sla_label"],
+                }
+                if ttype == "RAL":
+                    new_ral_feed.append(feed_item)
+                else:
+                    new_rec_feed.append(feed_item)
+
+        last_sync_iso = meta.get("last_sync_at").strftime("%d/%m/%Y %H:%M:%S") if meta.get("last_sync_at") else None
+        seconds_to_next = GRAFANA_SYNC_INTERVAL_SECONDS
+        if meta.get("last_sync_at"):
+            elapsed = (now_brt - meta["last_sync_at"]).total_seconds()
+            seconds_to_next = max(0, int(GRAFANA_SYNC_INTERVAL_SECONDS - elapsed))
+
+        return jsonify({
+            "totals": totals,
+            "cfs": [cf_map[item["cf"]] for item in GRAFANA_CF_LIST],
+            "qualidade_chart": [{"cf": item["cf"], "label": item["label"], "count": cf_map[item["cf"]]["qualidade"]} for item in GRAFANA_CF_LIST],
+            "new_feed": {"ral": new_ral_feed[:30], "rec": new_rec_feed[:30]},
+            "cleared_total": cleared_total,
+            "sync": {
+                "last_sync_at": last_sync_iso,
+                "status": meta.get("last_sync_status") or "pending",
+                "error": meta.get("last_sync_error"),
+                "interval_seconds": GRAFANA_SYNC_INTERVAL_SECONDS,
+                "seconds_to_next": seconds_to_next,
+            },
+            "server_time_brt": now_brt.strftime("%d/%m, %H:%M"),
+        })
+    except Exception as e:
+        print("[GRAFANA DASHBOARD ERROR]", e)
+        return jsonify({"error": "Falha ao carregar painel Grafana."}), 500
+
+@app.route('/api/grafana/sync', methods=['POST'])
+@login_required
+def api_grafana_sync():
+    res = _sync_grafana_data(force=True)
+    return jsonify({"success": "error" not in res, **res})
+
+@app.route('/api/grafana/tickets', methods=['GET'])
+@login_required
+def api_grafana_tickets():
+    try:
+        cf = (request.args.get("cf") or "").strip().upper()
+        queue = (request.args.get("queue") or "ALL").strip().upper()
+        status_filter = (request.args.get("status") or "").strip()
+        search = (request.args.get("search") or "").strip().lower()
+
+        where_clauses = []
+        params = []
+        if cf and cf in GRAFANA_CF_META:
+            where_clauses.append("cf = %s")
+            params.append(cf)
+        if queue == "RAL":
+            where_clauses.append("ticket_type = 'RAL'")
+        elif queue == "REC":
+            where_clauses.append("ticket_type = 'REC'")
+        elif queue == "QUALIDADE":
+            where_clauses.append("is_qualidade = TRUE")
+        if status_filter:
+            where_clauses.append("status_andamento = %s")
+            params.append(status_filter)
+        if search:
+            like = f"%{search}%"
+            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(tipo_ral) LIKE %s OR LOWER(COALESCE(responsible_name, '')) LIKE %s)")
+            params.extend([like, like, like, like, like])
+
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
+                   designation, tipo_ral, is_qualidade, cliente, anorm, abertura_raw, abertura_dt,
+                   duracao_raw, resp_code, tecnico_csv, anatel, prejuizo,
+                   status_andamento, responsible_user_id, responsible_name, is_new, first_seen_at
+            FROM grafana_tickets
+            {where_sql}
+            ORDER BY abertura_dt ASC NULLS LAST, id ASC;
+        """, tuple(params))
+        rows = cur.fetchall()
+
+        keys = [r["ticket_key"] for r in rows]
+        notes_by_key = {}
+        if keys:
+            cur.execute("""
+                SELECT id, ticket_key, content, author_user_id, author_name, created_at, updated_at
+                FROM grafana_ticket_notes
+                WHERE ticket_key = ANY(%s)
+                ORDER BY created_at ASC, id ASC;
+            """, (keys,))
+            for n in cur.fetchall():
+                notes_by_key.setdefault(n["ticket_key"], []).append({
+                    "id": n["id"],
+                    "content": n["content"],
+                    "author_user_id": n["author_user_id"],
+                    "author_name": n["author_name"],
+                    "created_at": n["created_at"].strftime("%d/%m %H:%M") if n.get("created_at") else "",
+                    "updated_at": n["updated_at"].strftime("%d/%m %H:%M") if n.get("updated_at") else "",
+                })
+        cur.close()
+
+        now_brt = _grafana_now_brt()
+        tickets = []
+        for r in rows:
+            sla = _grafana_compute_sla(r["ticket_type"], r.get("abertura_dt"), now_brt)
+            tickets.append({
+                "id": r["id"],
+                "ticket_key": r["ticket_key"],
+                "ticket_type": r["ticket_type"],
+                "ticket_number": r["ticket_number"],
+                "cf": r["cf"],
+                "cf_label": (GRAFANA_CF_META.get(r["cf"]) or {}).get("label", r["cf"]),
+                "regional": r["regional"],
+                "cf_exec_raw": r["cf_exec_raw"],
+                "designation": r["designation"],
+                "tipo_ral": r["tipo_ral"],
+                "is_qualidade": bool(r.get("is_qualidade")),
+                "cliente": r["cliente"],
+                "anorm": r["anorm"],
+                "abertura_raw": r["abertura_raw"],
+                "abertura_iso": r["abertura_dt"].isoformat() if r.get("abertura_dt") else None,
+                "duracao_raw": r["duracao_raw"],
+                "resp_code": r["resp_code"],
+                "tecnico_csv": r["tecnico_csv"],
+                "anatel": r["anatel"],
+                "prejuizo": r["prejuizo"],
+                "status_andamento": r["status_andamento"] or "Sem classificação",
+                "responsible_user_id": r["responsible_user_id"],
+                "responsible_name": r["responsible_name"] or "",
+                "is_new": bool(r.get("is_new")),
+                "notes": notes_by_key.get(r["ticket_key"], []),
+                **sla,
+            })
+
+        return jsonify({
+            "tickets": tickets,
+            "server_time_brt": now_brt.strftime("%d/%m, %H:%M"),
+            "statuses": GRAFANA_ALLOWED_STATUSES,
+        })
+    except Exception as e:
+        print("[GRAFANA TICKETS ERROR]", e)
+        return jsonify({"error": "Falha ao listar atividades."}), 500
+
+@app.route('/api/grafana/cleared', methods=['GET'])
+@login_required
+def api_grafana_cleared():
+    try:
+        cf = (request.args.get("cf") or "").strip().upper()
+        queue = (request.args.get("queue") or "ALL").strip().upper()
+        search = (request.args.get("search") or "").strip().lower()
+        try:
+            limit = min(500, max(10, int(request.args.get("limit") or 200)))
+        except (TypeError, ValueError):
+            limit = 200
+
+        where_clauses = []
+        params = []
+        if cf and cf in GRAFANA_CF_META:
+            where_clauses.append("cf = %s")
+            params.append(cf)
+        if queue == "RAL":
+            where_clauses.append("ticket_type = 'RAL'")
+        elif queue == "REC":
+            where_clauses.append("ticket_type = 'REC'")
+        elif queue == "QUALIDADE":
+            where_clauses.append("is_qualidade = TRUE")
+        if search:
+            like = f"%{search}%"
+            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s)")
+            params.extend([like, like, like])
+
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, designation,
+                   tipo_ral, is_qualidade, cliente, abertura_raw, status_andamento,
+                   responsible_name, notes_snapshot, first_seen_at, cleared_at
+            FROM grafana_cleared_tickets
+            {where_sql}
+            ORDER BY cleared_at DESC, id DESC
+            LIMIT %s;
+        """, tuple(params + [limit]))
+        rows = cur.fetchall()
+        cur.close()
+
+        items = []
+        for r in rows:
+            items.append({
+                "id": r["id"],
+                "ticket_type": r["ticket_type"],
+                "ticket_number": r["ticket_number"],
+                "cf": r["cf"],
+                "regional": r["regional"],
+                "designation": r["designation"],
+                "tipo_ral": r["tipo_ral"],
+                "is_qualidade": bool(r.get("is_qualidade")),
+                "cliente": r["cliente"],
+                "abertura_raw": r["abertura_raw"],
+                "status_andamento": r["status_andamento"] or "Sem classificação",
+                "responsible_name": r["responsible_name"] or "",
+                "notes": r.get("notes_snapshot") or [],
+                "cleared_at": r["cleared_at"].strftime("%d/%m/%Y %H:%M") if r.get("cleared_at") else "",
+            })
+        return jsonify({"cleared": items})
+    except Exception as e:
+        print("[GRAFANA CLEARED ERROR]", e)
+        return jsonify({"error": "Falha ao listar falhas sanadas."}), 500
+
+@app.route('/api/grafana/tickets/<int:ticket_id>/status', methods=['PUT'])
+@login_required
+def api_grafana_update_status(ticket_id):
+    data = request.get_json(silent=True) or {}
+    status_val = (data.get("status_andamento") or "").strip()
+    if status_val not in GRAFANA_ALLOWED_STATUSES:
+        return jsonify({"error": "Status de andamento inválido."}), 400
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE grafana_tickets
+            SET status_andamento = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            RETURNING id, ticket_number, status_andamento;
+        """, (status_val, ticket_id))
+        updated = cur.fetchone()
+        if not updated:
+            cur.close()
+            return jsonify({"error": "Atividade não encontrada."}), 404
+        conn.commit()
+        cur.close()
+        log_action(session['user_id'], session.get('username'), f"Grafana status {updated['ticket_number']} -> {status_val}")
+        return jsonify({"success": True, "status_andamento": updated["status_andamento"]})
+    except Exception as e:
+        print("[GRAFANA STATUS ERROR]", e)
+        return jsonify({"error": "Falha ao atualizar status."}), 500
+
+@app.route('/api/grafana/tickets/<int:ticket_id>/responsible', methods=['PUT'])
+@login_required
+def api_grafana_update_responsible(ticket_id):
+    data = request.get_json(silent=True) or {}
+    target_uid = data.get("user_id")
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        resp_name = None
+        clean_uid = None
+        if target_uid is not None and str(target_uid).strip() != "":
+            try:
+                clean_uid = int(target_uid)
+            except (TypeError, ValueError):
+                cur.close()
+                return jsonify({"error": "ID de responsável inválido."}), 400
+            cur.execute("""
+                SELECT u.id, u.username, t.name AS tech_name
+                FROM users u
+                LEFT JOIN technicians t ON u.tech_id = t.id
+                WHERE u.id = %s;
+            """, (clean_uid,))
+            urow = cur.fetchone()
+            if not urow:
+                cur.close()
+                return jsonify({"error": "Usuário responsável não encontrado."}), 404
+            raw_display = urow.get("tech_name") or (urow.get("username") or "").replace(".", " ")
+            resp_name = format_person_name(raw_display)
+
+        cur.execute("""
+            UPDATE grafana_tickets
+            SET responsible_user_id = %s, responsible_name = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            RETURNING id, ticket_number, responsible_user_id, responsible_name;
+        """, (clean_uid, resp_name, ticket_id))
+        updated = cur.fetchone()
+        if not updated:
+            cur.close()
+            return jsonify({"error": "Atividade não encontrada."}), 404
+        conn.commit()
+        cur.close()
+        log_action(session['user_id'], session.get('username'), f"Grafana responsável {updated['ticket_number']} -> {resp_name or 'Removido'}")
+        return jsonify({
+            "success": True,
+            "responsible_user_id": updated["responsible_user_id"],
+            "responsible_name": updated["responsible_name"] or "",
+        })
+    except Exception as e:
+        print("[GRAFANA RESPONSIBLE ERROR]", e)
+        return jsonify({"error": "Falha ao definir responsável."}), 500
+
+@app.route('/api/grafana/tickets/<int:ticket_id>/notes', methods=['POST'])
+@login_required
+def api_grafana_add_note(ticket_id):
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "O texto da nota não pode ficar vazio."}), 400
+    if len(content) > 1500:
+        return jsonify({"error": "A nota deve ter no máximo 1500 caracteres."}), 400
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT ticket_key, ticket_number FROM grafana_tickets WHERE id = %s;", (ticket_id,))
+        trow = cur.fetchone()
+        if not trow:
+            cur.close()
+            return jsonify({"error": "Atividade não encontrada."}), 404
+
+        cur.execute("""
+            SELECT u.username, t.name AS tech_name
+            FROM users u
+            LEFT JOIN technicians t ON u.tech_id = t.id
+            WHERE u.id = %s;
+        """, (session['user_id'],))
+        urow = cur.fetchone() or {}
+        author_name = format_person_name(urow.get("tech_name") or (urow.get("username") or session.get("username") or "Operador").replace(".", " "))
+
+        now_brt = _grafana_now_brt()
+        cur.execute("""
+            INSERT INTO grafana_ticket_notes (ticket_key, content, author_user_id, author_name, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, content, author_user_id, author_name, created_at, updated_at;
+        """, (trow["ticket_key"], content, session['user_id'], author_name, now_brt, now_brt))
+        note = cur.fetchone()
+        conn.commit()
+        cur.close()
+        log_action(session['user_id'], session.get('username'), f"Grafana nota adicionada em {trow['ticket_number']}")
+        return jsonify({
+            "success": True,
+            "note": {
+                "id": note["id"],
+                "content": note["content"],
+                "author_user_id": note["author_user_id"],
+                "author_name": note["author_name"],
+                "created_at": note["created_at"].strftime("%d/%m %H:%M"),
+                "updated_at": note["updated_at"].strftime("%d/%m %H:%M"),
+            }
+        }), 201
+    except Exception as e:
+        print("[GRAFANA ADD NOTE ERROR]", e)
+        return jsonify({"error": "Falha ao adicionar nota."}), 500
+
+@app.route('/api/grafana/notes/<int:note_id>', methods=['PUT'])
+@login_required
+def api_grafana_edit_note(note_id):
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "O texto da nota não pode ficar vazio."}), 400
+    if len(content) > 1500:
+        return jsonify({"error": "A nota deve ter no máximo 1500 caracteres."}), 400
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT id, author_user_id FROM grafana_ticket_notes WHERE id = %s;", (note_id,))
+        existing = cur.fetchone()
+        if not existing:
+            cur.close()
+            return jsonify({"error": "Nota não encontrada."}), 404
+        auth = get_current_user_auth()
+        if existing["author_user_id"] != session['user_id'] and not (auth and auth.get("is_coordenador")):
+            cur.close()
+            return jsonify({"error": "Você só pode editar suas próprias notas."}), 403
+
+        now_brt = _grafana_now_brt()
+        cur.execute("""
+            UPDATE grafana_ticket_notes
+            SET content = %s, updated_at = %s
+            WHERE id = %s
+            RETURNING id, content, author_user_id, author_name, created_at, updated_at;
+        """, (content, now_brt, note_id))
+        note = cur.fetchone()
+        conn.commit()
+        cur.close()
+        return jsonify({
+            "success": True,
+            "note": {
+                "id": note["id"],
+                "content": note["content"],
+                "author_user_id": note["author_user_id"],
+                "author_name": note["author_name"],
+                "created_at": note["created_at"].strftime("%d/%m %H:%M"),
+                "updated_at": note["updated_at"].strftime("%d/%m %H:%M"),
+            }
+        })
+    except Exception as e:
+        print("[GRAFANA EDIT NOTE ERROR]", e)
+        return jsonify({"error": "Falha ao editar nota."}), 500
+
+@app.route('/api/grafana/notes/<int:note_id>', methods=['DELETE'])
+@login_required
+def api_grafana_delete_note(note_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT id, author_user_id, ticket_key FROM grafana_ticket_notes WHERE id = %s;", (note_id,))
+        existing = cur.fetchone()
+        if not existing:
+            cur.close()
+            return jsonify({"error": "Nota não encontrada."}), 404
+        auth = get_current_user_auth()
+        if existing["author_user_id"] != session['user_id'] and not (auth and auth.get("is_coordenador")):
+            cur.close()
+            return jsonify({"error": "Você só pode remover suas próprias notas."}), 403
+        cur.execute("DELETE FROM grafana_ticket_notes WHERE id = %s;", (note_id,))
+        conn.commit()
+        cur.close()
+        log_action(session['user_id'], session.get('username'), f"Grafana nota #{note_id} removida ({existing['ticket_key']})")
+        return jsonify({"success": True})
+    except Exception as e:
+        print("[GRAFANA DELETE NOTE ERROR]", e)
+        return jsonify({"error": "Falha ao remover nota."}), 500
+
+@app.route('/api/grafana/people', methods=['GET'])
+@login_required
+def api_grafana_people():
+    try:
+        q = (request.args.get("q") or "").strip().lower()
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.username, u.role, t.name AS tech_name, t.company
+            FROM users u
+            LEFT JOIN technicians t ON u.tech_id = t.id
+            ORDER BY COALESCE(t.name, u.username) ASC;
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        people = []
+        for r in rows:
+            name = format_person_name(r.get("tech_name") or (r.get("username") or "").replace(".", " "))
+            if q and q not in name.lower() and q not in (r.get("username") or "").lower():
+                continue
+            people.append({
+                "id": r["id"],
+                "name": name,
+                "username": r["username"],
+                "role": r["role"],
+                "company": r.get("company") or "",
+            })
+        return jsonify({"people": people[:50]})
+    except Exception as e:
+        print("[GRAFANA PEOPLE ERROR]", e)
+        return jsonify({"error": "Falha ao listar pessoas."}), 500
+
+@app.route('/api/grafana/export', methods=['GET'])
+@login_required
+def api_grafana_export():
+    try:
+        scope = (request.args.get("scope") or "active").strip().lower()
+        if scope not in ("active", "cleared", "all"):
+            scope = "active"
+        cf = (request.args.get("cf") or "").strip().upper()
+        if cf not in GRAFANA_CF_META:
+            cf = ""
+        queue = (request.args.get("queue") or "ALL").strip().upper()
+        if queue not in ("RAL", "REC", "QUALIDADE", "ALL"):
+            queue = "ALL"
+        status_filter = (request.args.get("status") or "").strip()
+        search = (request.args.get("search") or "").strip().lower()
+
+        conn = get_db()
+        cur = conn.cursor()
+        output = io.StringIO()
+        output.write("\ufeff")
+        writer = safe_csv_writer(output, delimiter=";")
+
+        writer.writerow([
+            "Base", "Tipo", "Numero", "Regional", "CF", "CF Exec.", "Designacao",
+            "Tipo RAL", "Qualidade", "Cliente", "Abertura", "SLA",
+            "Status Andamento", "Responsavel", "Notas", "Sanada Em"
+        ])
+
+        now_brt = _grafana_now_brt()
+
+        def _build_filters():
+            wc = []
+            pr = []
+            if cf and cf in GRAFANA_CF_META:
+                wc.append("cf = %s")
+                pr.append(cf)
+            if queue == "RAL":
+                wc.append("ticket_type = 'RAL'")
+            elif queue == "REC":
+                wc.append("ticket_type = 'REC'")
+            elif queue == "QUALIDADE":
+                wc.append("is_qualidade = TRUE")
+            if status_filter:
+                wc.append("status_andamento = %s")
+                pr.append(status_filter)
+            if search:
+                lk = f"%{search}%"
+                wc.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s)")
+                pr.extend([lk, lk, lk])
+            return ("WHERE " + " AND ".join(wc)) if wc else "", tuple(pr)
+
+        where_sql, params = _build_filters()
+
+        if scope in ("active", "all"):
+            cur.execute(f"""
+                SELECT ticket_key, ticket_type, ticket_number, regional, cf, cf_exec_raw,
+                       designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
+                       status_andamento, responsible_name
+                FROM grafana_tickets
+                {where_sql}
+                ORDER BY regional, cf, abertura_dt ASC NULLS LAST;
+            """, params)
+            active_rows = cur.fetchall()
+            keys = [r["ticket_key"] for r in active_rows]
+            notes_map = {}
+            if keys:
+                cur.execute("SELECT ticket_key, author_name, content FROM grafana_ticket_notes WHERE ticket_key = ANY(%s) ORDER BY created_at ASC;", (keys,))
+                for n in cur.fetchall():
+                    notes_map.setdefault(n["ticket_key"], []).append(f"{n['author_name']}: {n['content']}")
+            for r in active_rows:
+                sla = _grafana_compute_sla(r["ticket_type"], r.get("abertura_dt"), now_brt)
+                writer.writerow([
+                    "ATIVA",
+                    r["ticket_type"],
+                    r["ticket_number"],
+                    r["regional"],
+                    r["cf"],
+                    r["cf_exec_raw"] or "",
+                    r["designation"] or "",
+                    r["tipo_ral"] or "",
+                    "SIM" if r.get("is_qualidade") else "NAO",
+                    r["cliente"] or "",
+                    r["abertura_raw"] or "",
+                    sla["sla_label"],
+                    r["status_andamento"] or "Sem classificação",
+                    r["responsible_name"] or "",
+                    " | ".join(notes_map.get(r["ticket_key"], [])),
+                    "",
+                ])
+
+        if scope in ("cleared", "all"):
+            cur.execute(f"""
+                SELECT ticket_type, ticket_number, regional, cf, cf_exec_raw,
+                       designation, tipo_ral, is_qualidade, cliente, abertura_raw,
+                       status_andamento, responsible_name, notes_snapshot, cleared_at
+                FROM grafana_cleared_tickets
+                {where_sql}
+                ORDER BY cleared_at DESC;
+            """, params)
+            for r in cur.fetchall():
+                snap = r.get("notes_snapshot") or []
+                notes_txt = " | ".join([f"{n.get('author_name', '')}: {n.get('content', '')}" for n in snap if isinstance(n, dict)])
+                writer.writerow([
+                    "SANADA",
+                    r["ticket_type"],
+                    r["ticket_number"],
+                    r["regional"],
+                    r["cf"],
+                    r["cf_exec_raw"] or "",
+                    r["designation"] or "",
+                    r["tipo_ral"] or "",
+                    "SIM" if r.get("is_qualidade") else "NAO",
+                    r["cliente"] or "",
+                    r["abertura_raw"] or "",
+                    "SANADA",
+                    r["status_andamento"] or "Sem classificação",
+                    r["responsible_name"] or "",
+                    notes_txt,
+                    r["cleared_at"].strftime("%d/%m/%Y %H:%M") if r.get("cleared_at") else "",
+                ])
+
+        cur.close()
+        csv_bytes = output.getvalue().encode("utf-8")
+        fname_parts = ["grafana", scope]
+        if cf:
+            fname_parts.append(cf.lower())
+        if queue != "ALL":
+            fname_parts.append(queue.lower())
+        filename = "_".join(fname_parts) + f"_{now_brt.strftime('%Y%m%d_%H%M')}.csv"
+
+        return Response(
+            csv_bytes,
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        print("[GRAFANA EXPORT ERROR]", e)
+        return jsonify({"error": "Falha ao exportar CSV."}), 500
 
 
 # --------------------------------------------------------------------------

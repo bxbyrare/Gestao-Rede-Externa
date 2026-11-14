@@ -1,0 +1,1412 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  AlertTriangle,
+  Archive,
+  Check,
+  ChevronDown,
+  Clock,
+  Copy,
+  Download,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Sparkles,
+  UserCheck,
+  X,
+} from 'lucide-react';
+import { api } from '../api/client';
+
+interface SyncMeta {
+  last_sync_at: string | null;
+  status: string;
+  error: string | null;
+  interval_seconds: number;
+  seconds_to_next: number;
+}
+
+interface RegionalTotals {
+  ral: number;
+  rec: number;
+  qualidade: number;
+}
+
+interface CfSummary {
+  cf: string;
+  label: string;
+  regional: 'ES' | 'INTERIOR' | 'CAPITAL';
+  ral: number;
+  rec: number;
+  qualidade: number;
+  new_ral: number;
+  new_rec: number;
+  new_qualidade: number;
+  overdue_ral: number;
+  overdue_rec: number;
+}
+
+interface NewFeedItem {
+  id: number;
+  ticket_number: string;
+  ticket_type: 'RAL' | 'REC';
+  cf: string;
+  regional: string;
+  designation: string;
+  cliente: string;
+  tipo_ral: string;
+  is_qualidade: boolean;
+  abertura_raw: string;
+  sla_status: string;
+  sla_label: string;
+}
+
+interface TicketNote {
+  id: number;
+  content: string;
+  author_user_id: number | null;
+  author_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface GrafanaTicket {
+  id: number;
+  ticket_key: string;
+  ticket_type: 'RAL' | 'REC';
+  ticket_number: string;
+  cf: string;
+  cf_label: string;
+  regional: string;
+  cf_exec_raw: string;
+  designation: string;
+  tipo_ral: string;
+  is_qualidade: boolean;
+  cliente: string;
+  anorm: string;
+  abertura_raw: string;
+  abertura_iso: string | null;
+  duracao_raw: string;
+  status_andamento: string;
+  responsible_user_id: number | null;
+  responsible_name: string;
+  is_new: boolean;
+  notes: TicketNote[];
+  sla_hours: number;
+  sla_status: 'ok' | 'overdue' | 'unknown';
+  sla_label: string;
+  sla_whatsapp: string;
+  sla_delta_minutes: number;
+}
+
+interface ClearedTicket {
+  id: number;
+  ticket_type: 'RAL' | 'REC';
+  ticket_number: string;
+  cf: string;
+  regional: string;
+  designation: string;
+  tipo_ral: string;
+  is_qualidade: boolean;
+  cliente: string;
+  abertura_raw: string;
+  status_andamento: string;
+  responsible_name: string;
+  notes: TicketNote[];
+  cleared_at: string;
+}
+
+interface PersonOption {
+  id: number;
+  name: string;
+  username: string;
+  role: string;
+  company: string;
+}
+
+type QueueType = 'RAL' | 'REC' | 'QUALIDADE';
+type SortField = 'classification' | 'abertura' | 'cliente';
+
+const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; border: string }> = {
+  'Equipe acionada': { bg: 'bg-[#3b82f6]', text: 'text-white', dot: 'bg-[#3b82f6]', border: 'border-[#3b82f6]/50' },
+  'Transferir': { bg: 'bg-[#c4b5fd]', text: 'text-slate-950', dot: 'bg-[#c4b5fd]', border: 'border-[#c4b5fd]/50' },
+  'Falha concorrente': { bg: 'bg-[#fed7aa]', text: 'text-slate-950', dot: 'bg-[#fed7aa]', border: 'border-[#fed7aa]/50' },
+  'Validação': { bg: 'bg-[#fde047]', text: 'text-slate-950', dot: 'bg-[#fde047]', border: 'border-[#fde047]/50' },
+  'Conjunta': { bg: 'bg-[#fb923c]', text: 'text-slate-950', dot: 'bg-[#fb923c]', border: 'border-[#fb923c]/50' },
+  'Área de Risco': { bg: 'bg-[#ef4444]', text: 'text-white', dot: 'bg-[#ef4444]', border: 'border-[#ef4444]/50' },
+  'Pendencia Encerramento': { bg: 'bg-[#bef264]', text: 'text-slate-950', dot: 'bg-[#bef264]', border: 'border-[#bef264]/50' },
+  'Acesso': { bg: 'bg-[#9ca3af]', text: 'text-white', dot: 'bg-[#9ca3af]', border: 'border-[#9ca3af]/50' },
+  'Indisp. Técnica': { bg: 'bg-[#b91c1c]', text: 'text-white', dot: 'bg-[#b91c1c]', border: 'border-[#b91c1c]/50' },
+  'Capex': { bg: 'bg-[#06b6d4]', text: 'text-slate-950', dot: 'bg-[#06b6d4]', border: 'border-[#06b6d4]/50' },
+  'Sem classificação': { bg: 'bg-white/10', text: 'text-slate-300', dot: 'bg-slate-400', border: 'border-white/15' },
+};
+
+const ALL_STATUSES = [
+  'Equipe acionada',
+  'Transferir',
+  'Falha concorrente',
+  'Validação',
+  'Conjunta',
+  'Área de Risco',
+  'Pendencia Encerramento',
+  'Acesso',
+  'Indisp. Técnica',
+  'Capex',
+  'Sem classificação',
+];
+
+function formatCountdown(sec: number): string {
+  const s = Math.max(0, sec);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+}
+
+function getCountTone(count: number, type: QueueType): string {
+  if (count === 0) return 'bg-white/[0.03] border-white/5 text-slate-500';
+  if (type === 'QUALIDADE') {
+    return count >= 5
+      ? 'bg-violet-500/20 border-violet-400/40 text-violet-200'
+      : 'bg-violet-500/10 border-violet-500/25 text-violet-300';
+  }
+  if (count >= 10) return 'bg-[#e20613]/20 border-[#e20613]/45 text-red-200';
+  if (count >= 5) return 'bg-amber-500/18 border-amber-400/40 text-amber-200';
+  return 'bg-emerald-500/14 border-emerald-500/30 text-emerald-300';
+}
+
+export default function GrafanaPage() {
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [totals, setTotals] = useState<Record<string, RegionalTotals>>({
+    ALL: { ral: 0, rec: 0, qualidade: 0 },
+    ES: { ral: 0, rec: 0, qualidade: 0 },
+    INTERIOR: { ral: 0, rec: 0, qualidade: 0 },
+    CAPITAL: { ral: 0, rec: 0, qualidade: 0 },
+  });
+  const [cfs, setCfs] = useState<CfSummary[]>([]);
+  const [qualChart, setQualChart] = useState<{ cf: string; label: string; count: number }[]>([]);
+  const [newFeed, setNewFeed] = useState<{ ral: NewFeedItem[]; rec: NewFeedItem[] }>({ ral: [], rec: [] });
+  const [clearedTotal, setClearedTotal] = useState(0);
+  const [syncMeta, setSyncMeta] = useState<SyncMeta>({
+    last_sync_at: null,
+    status: 'pending',
+    error: null,
+    interval_seconds: 300,
+    seconds_to_next: 300,
+  });
+  const [countdown, setCountdown] = useState(300);
+  const [serverTime, setServerTime] = useState('');
+
+  // Drill-down selection
+  const [selectedCf, setSelectedCf] = useState<string | null>(null);
+  const [selectedQueue, setSelectedQueue] = useState<QueueType>('RAL');
+  const [tickets, setTickets] = useState<GrafanaTicket[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortField, setSortField] = useState<SortField>('abertura');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  // Cleared (Sanadas) drawer/modal
+  const [showCleared, setShowCleared] = useState(false);
+  const [clearedList, setClearedList] = useState<ClearedTicket[]>([]);
+  const [clearedSearch, setClearedSearch] = useState('');
+  const [loadingCleared, setLoadingCleared] = useState(false);
+
+  // Export menu
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Per-ticket UI state
+  const [openStatusFor, setOpenStatusFor] = useState<number | null>(null);
+  const [addingNoteFor, setAddingNoteFor] = useState<number | null>(null);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editNoteText, setEditNoteText] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // People autocomplete
+  const [peopleList, setPeopleList] = useState<PersonOption[]>([]);
+  const [respEditingFor, setRespEditingFor] = useState<number | null>(null);
+  const [respQuery, setRespQuery] = useState('');
+
+  const fetchDashboard = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const data = await api.get<any>('/api/grafana/dashboard');
+      setTotals(data.totals || {});
+      setCfs(data.cfs || []);
+      setQualChart(data.qualidade_chart || []);
+      setNewFeed(data.new_feed || { ral: [], rec: [] });
+      setClearedTotal(data.cleared_total || 0);
+      if (data.sync) {
+        setSyncMeta(data.sync);
+        setCountdown(data.sync.seconds_to_next ?? 300);
+      }
+      if (data.server_time_brt) setServerTime(data.server_time_brt);
+    } catch (err) {
+      console.error('Erro ao carregar Grafana:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchTickets = useCallback(async (cf: string, queue: QueueType) => {
+    setLoadingTickets(true);
+    try {
+      const data = await api.get<any>('/api/grafana/tickets', { cf, queue });
+      setTickets(data.tickets || []);
+      if (data.server_time_brt) setServerTime(data.server_time_brt);
+    } catch (err) {
+      console.error('Erro ao carregar tickets:', err);
+    } finally {
+      setLoadingTickets(false);
+    }
+  }, []);
+
+  const fetchPeople = useCallback(async () => {
+    try {
+      const data = await api.get<any>('/api/grafana/people');
+      setPeopleList(data.people || []);
+    } catch (err) {
+      console.error('Erro ao carregar pessoas:', err);
+    }
+  }, []);
+
+  const fetchCleared = useCallback(async (q = '') => {
+    setLoadingCleared(true);
+    try {
+      const data = await api.get<any>('/api/grafana/cleared', q ? { search: q } : undefined);
+      setClearedList(data.cleared || []);
+    } catch (err) {
+      console.error('Erro ao carregar base sanadas:', err);
+    } finally {
+      setLoadingCleared(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+    fetchPeople();
+  }, [fetchDashboard, fetchPeople]);
+
+  // 1-second countdown + automatic 5-minute refresh
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetchDashboard(true);
+          if (selectedCf) fetchTickets(selectedCf, selectedQueue);
+          return 300;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [fetchDashboard, fetchTickets, selectedCf, selectedQueue]);
+
+  useEffect(() => {
+    function handleOutsideClick(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  async function handleManualSync() {
+    setSyncing(true);
+    try {
+      await api.post('/api/grafana/sync');
+      await fetchDashboard(true);
+      if (selectedCf) await fetchTickets(selectedCf, selectedQueue);
+    } catch (err) {
+      console.error('Erro ao sincronizar:', err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function handleSelectQueue(cf: string, queue: QueueType) {
+    setSelectedCf(cf);
+    setSelectedQueue(queue);
+    setSearchTerm('');
+    setStatusFilter('');
+    setOpenStatusFor(null);
+    setAddingNoteFor(null);
+    setRespEditingFor(null);
+    fetchTickets(cf, queue);
+  }
+
+  async function handleUpdateStatus(ticketId: number, statusVal: string) {
+    setOpenStatusFor(null);
+    try {
+      await api.put(`/api/grafana/tickets/${ticketId}/status`, { status_andamento: statusVal });
+      setTickets((prev) =>
+        prev.map((t) => (t.id === ticketId ? { ...t, status_andamento: statusVal } : t))
+      );
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+    }
+  }
+
+  async function handleSetResponsible(ticketId: number, person: PersonOption | null) {
+    setRespEditingFor(null);
+    setRespQuery('');
+    try {
+      const data = await api.put<any>(`/api/grafana/tickets/${ticketId}/responsible`, {
+        user_id: person ? person.id : null,
+      });
+      setTickets((prev) =>
+        prev.map((t) =>
+          t.id === ticketId
+            ? {
+                ...t,
+                responsible_user_id: data.responsible_user_id ?? null,
+                responsible_name: data.responsible_name ?? '',
+              }
+            : t
+        )
+      );
+    } catch (err) {
+      console.error('Erro ao definir responsável:', err);
+    }
+  }
+
+  async function handleAddNote(ticketId: number) {
+    const content = newNoteText.trim();
+    if (!content) return;
+    try {
+      const data = await api.post<any>(`/api/grafana/tickets/${ticketId}/notes`, { content });
+      if (data.note) {
+        setTickets((prev) =>
+          prev.map((t) => (t.id === ticketId ? { ...t, notes: [...t.notes, data.note] } : t))
+        );
+      }
+      setAddingNoteFor(null);
+      setNewNoteText('');
+    } catch (err) {
+      console.error('Erro ao adicionar nota:', err);
+    }
+  }
+
+  async function handleSaveEditNote(ticketId: number, noteId: number) {
+    const content = editNoteText.trim();
+    if (!content) return;
+    try {
+      const data = await api.put<any>(`/api/grafana/notes/${noteId}`, { content });
+      if (data.note) {
+        setTickets((prev) =>
+          prev.map((t) =>
+            t.id === ticketId
+              ? { ...t, notes: t.notes.map((n) => (n.id === noteId ? data.note : n)) }
+              : t
+          )
+        );
+      }
+      setEditingNoteId(null);
+      setEditNoteText('');
+    } catch (err) {
+      console.error('Erro ao editar nota:', err);
+    }
+  }
+
+  async function handleDeleteNote(ticketId: number, noteId: number) {
+    try {
+      await api.delete(`/api/grafana/notes/${noteId}`);
+      setTickets((prev) =>
+        prev.map((t) =>
+          t.id === ticketId ? { ...t, notes: t.notes.filter((n) => n.id !== noteId) } : t
+        )
+      );
+    } catch (err) {
+      console.error('Erro ao remover nota:', err);
+    }
+  }
+
+  function formatSingleWhatsapp(t: GrafanaTicket): string {
+    if (t.ticket_type === 'REC') {
+      return [
+        `🏷 *${t.ticket_number}* — 📍 CF ${t.cf}`,
+        `📋 Designação: ${t.designation || '-'}`,
+        `👤 Cliente: ${t.cliente || '-'}`,
+        `📅 Abertura: ${t.abertura_raw || '-'}`,
+        `⏳ SLA: ${t.sla_whatsapp}`,
+      ].join('\n');
+    }
+    return [
+      `🏷 *${t.ticket_number}* — 📍 CF ${t.cf}`,
+      `📋 Designação: ${t.designation || '-'}`,
+      `🛠 Tipo: ${t.tipo_ral || '-'}`,
+      `📅 Abertura: ${t.abertura_raw || '-'}`,
+      `⏳ SLA: ${t.sla_whatsapp}`,
+    ].join('\n');
+  }
+
+  function copyText(key: string, text: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedId(key);
+    setTimeout(() => setCopiedId((curr) => (curr === key ? null : curr)), 2000);
+  }
+
+  function handleCopyAllArea() {
+    if (!selectedCf || filteredTickets.length === 0) return;
+    const cfInfo = cfs.find((c) => c.cf === selectedCf);
+    const cfLabel = cfInfo ? `${selectedCf} - ${cfInfo.label}` : selectedCf;
+    const isRec = selectedQueue === 'REC';
+    const typePlural = isRec ? "REC's" : "RAL's";
+    const countLabel = isRec ? 'RECs' : 'RALs';
+    const stamp = serverTime || new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const header = `🚨 *COP REDE — ${typePlural} em tela no CF ${cfLabel}*\n📊 ${filteredTickets.length} ${countLabel} · 📅 ${stamp}`;
+    const body = filteredTickets.map(formatSingleWhatsapp).join('\n\n');
+    copyText('batch', `${header}\n\n${body}`);
+  }
+
+  function handleExportCsv(scope: 'active' | 'filtered' | 'cleared' | 'all') {
+    setShowExportMenu(false);
+    const params = new URLSearchParams();
+    if (scope === 'filtered') {
+      params.set('scope', 'active');
+      if (selectedCf) params.set('cf', selectedCf);
+      if (selectedCf) params.set('queue', selectedQueue);
+      if (statusFilter) params.set('status', statusFilter);
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
+    } else {
+      params.set('scope', scope);
+    }
+    window.open(`/api/grafana/export?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  }
+
+  const filteredTickets = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const list = tickets.filter((t) => {
+      if (statusFilter && t.status_andamento !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        t.ticket_number.toLowerCase().includes(q) ||
+        (t.designation || '').toLowerCase().includes(q) ||
+        (t.cliente || '').toLowerCase().includes(q) ||
+        (t.tipo_ral || '').toLowerCase().includes(q) ||
+        (t.responsible_name || '').toLowerCase().includes(q)
+      );
+    });
+
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'classification') {
+        cmp = (a.status_andamento || '').localeCompare(b.status_andamento || '', 'pt-BR');
+      } else if (sortField === 'cliente') {
+        cmp = (a.cliente || a.tipo_ral || '').localeCompare(b.cliente || b.tipo_ral || '', 'pt-BR');
+      } else {
+        cmp = (a.abertura_iso || '').localeCompare(b.abertura_iso || '');
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+
+    return list;
+  }, [tickets, searchTerm, statusFilter, sortField, sortAsc]);
+
+  const maxQualidade = useMemo(() => {
+    return Math.max(1, ...qualChart.map((item) => item.count));
+  }, [qualChart]);
+
+  const regionGroups: Array<{ key: 'ES' | 'INTERIOR' | 'CAPITAL'; title: string; countLabel: string }> = [
+    { key: 'ES', title: 'ES', countLabel: '4 CFs' },
+    { key: 'INTERIOR', title: 'INTERIOR', countLabel: '6 CFs' },
+    { key: 'CAPITAL', title: 'CAPITAL', countLabel: '6 CFs' },
+  ];
+
+  const selectedCfMeta = cfs.find((c) => c.cf === selectedCf);
+
+  return (
+    <div className="space-y-6 pb-10">
+      {/* Header Bar */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-[#090C13]/90 border border-white/10 rounded-2xl p-5 backdrop-blur-xl">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+              Grafana · COP REDE
+            </h1>
+            <span className="text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300">
+              RAL 6h · REC 4h
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              Última sincronização: <strong className="text-slate-200">{syncMeta.last_sync_at || 'Aguardando...'}</strong>
+            </span>
+            <span className="text-slate-500">•</span>
+            <span>
+              Auto-atualização em <strong className="text-emerald-400 font-mono">{formatCountdown(countdown)}</strong>
+            </span>
+            {syncMeta.status === 'error' && (
+              <span className="text-red-400 inline-flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" /> Falha na última leitura CSV
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleManualSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 transition disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Atualizar Agora'}
+          </button>
+
+          <button
+            onClick={() => {
+              setShowCleared(true);
+              fetchCleared();
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 transition"
+          >
+            <Archive className="w-3.5 h-3.5 text-amber-400" />
+            Sanadas
+            <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px]">
+              {clearedTotal}
+            </span>
+          </button>
+
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              onClick={() => setShowExportMenu((v) => !v)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#e20613] hover:bg-[#c80510] text-white transition shadow-lg shadow-[#e20613]/20"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Exportar CSV
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-60 rounded-xl bg-[#10141d] border border-white/15 shadow-2xl p-1.5 z-50">
+                <button
+                  onClick={() => handleExportCsv('active')}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-white/10 transition"
+                >
+                  Base Ativa Completa (RAL + REC)
+                </button>
+                {selectedCf && (
+                  <button
+                    onClick={() => handleExportCsv('filtered')}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs text-emerald-300 hover:bg-white/10 transition"
+                  >
+                    Exportar Parcial ({selectedCf} · {selectedQueue})
+                  </button>
+                )}
+                <button
+                  onClick={() => handleExportCsv('cleared')}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs text-amber-300 hover:bg-white/10 transition"
+                >
+                  Base Apartada (Falhas Sanadas)
+                </button>
+                <button
+                  onClick={() => handleExportCsv('all')}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-white/10 transition border-t border-white/10 mt-1 pt-2"
+                >
+                  Tudo (Ativas + Sanadas)
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Top KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+        {[
+          { key: 'ALL', title: 'TOTAL RRE' },
+          { key: 'ES', title: 'ES' },
+          { key: 'INTERIOR', title: 'INTERIOR' },
+          { key: 'CAPITAL', title: 'CAPITAL' },
+        ].map((card) => {
+          const t = totals[card.key] || { ral: 0, rec: 0, qualidade: 0 };
+          return (
+            <div
+              key={card.key}
+              className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-4 flex flex-col justify-between"
+            >
+              <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400">
+                {card.title}
+              </span>
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                <div className="bg-white/[0.03] border border-white/5 rounded-xl px-2.5 py-2">
+                  <div className="text-[10px] font-semibold text-slate-400">RAL</div>
+                  <div className="text-xl font-bold text-white tabular-nums">{t.ral}</div>
+                </div>
+                <div className="bg-white/[0.03] border border-white/5 rounded-xl px-2.5 py-2">
+                  <div className="text-[10px] font-semibold text-slate-400">REC</div>
+                  <div className="text-xl font-bold text-amber-300 tabular-nums">{t.rec}</div>
+                </div>
+                <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl px-2.5 py-2">
+                  <div className="text-[10px] font-semibold text-violet-300">QUALID.</div>
+                  <div className="text-xl font-bold text-violet-200 tabular-nums">{t.qualidade}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Main Board: 16 CFs Grid + Right New Faults Panel */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+        <div className="xl:col-span-9 space-y-3">
+          {loading ? (
+            <div className="bg-[#090C13]/90 border border-white/10 rounded-2xl p-10 text-center text-sm text-slate-400">
+              Sincronizando quadro COP REDE...
+            </div>
+          ) : (
+            regionGroups.map((group) => {
+              const groupCfs = cfs.filter((c) => c.regional === group.key);
+              return (
+                <div
+                  key={group.key}
+                  className="bg-[#090C13]/90 border border-white/10 rounded-2xl p-3.5 flex flex-col lg:flex-row gap-3"
+                >
+                  <div className="lg:w-28 shrink-0 border-l-2 border-[#3b82f6] pl-3 flex flex-row lg:flex-col justify-between lg:justify-center">
+                    <span className="text-xs font-bold tracking-wider text-white uppercase">
+                      {group.title}
+                    </span>
+                    <span className="text-[11px] text-slate-400">{group.countLabel}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 flex-1">
+                    {groupCfs.map((cfItem) => {
+                      const hasNew = cfItem.new_ral > 0 || cfItem.new_rec > 0 || cfItem.new_qualidade > 0;
+                      const isCfActive = selectedCf === cfItem.cf;
+                      return (
+                        <div
+                          key={cfItem.cf}
+                          className={`relative rounded-xl p-2.5 border transition ${
+                            isCfActive
+                              ? 'bg-[#121826] border-[#e20613]/70 shadow-lg shadow-[#e20613]/10'
+                              : 'bg-[#0d111a] border-white/10 hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1 mb-2">
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+                                {cfItem.cf}
+                                {hasNew && (
+                                  <span className="px-1.5 py-0.2 rounded-full bg-[#e20613] text-white text-[9px] font-bold uppercase animate-pulse">
+                                    Novo
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate" title={cfItem.label}>
+                                {cfItem.label}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1">
+                            <button
+                              onClick={() => handleSelectQueue(cfItem.cf, 'RAL')}
+                              className={`rounded-lg py-1.5 px-1 border text-center transition hover:brightness-125 ${getCountTone(
+                                cfItem.ral,
+                                'RAL'
+                              )} ${
+                                isCfActive && selectedQueue === 'RAL' ? 'ring-1 ring-white/70' : ''
+                              }`}
+                              title={`Ver RALs de ${cfItem.cf}`}
+                            >
+                              <div className="text-[9px] font-semibold uppercase opacity-80">RAL</div>
+                              <div className="text-sm font-bold tabular-nums">{cfItem.ral}</div>
+                            </button>
+
+                            <button
+                              onClick={() => handleSelectQueue(cfItem.cf, 'REC')}
+                              className={`rounded-lg py-1.5 px-1 border text-center transition hover:brightness-125 ${getCountTone(
+                                cfItem.rec,
+                                'REC'
+                              )} ${
+                                isCfActive && selectedQueue === 'REC' ? 'ring-1 ring-white/70' : ''
+                              }`}
+                              title={`Ver RECs de ${cfItem.cf}`}
+                            >
+                              <div className="text-[9px] font-semibold uppercase opacity-80">REC</div>
+                              <div className="text-sm font-bold tabular-nums">{cfItem.rec}</div>
+                            </button>
+
+                            <button
+                              onClick={() => handleSelectQueue(cfItem.cf, 'QUALIDADE')}
+                              className={`rounded-lg py-1.5 px-1 border text-center transition hover:brightness-125 ${getCountTone(
+                                cfItem.qualidade,
+                                'QUALIDADE'
+                              )} ${
+                                isCfActive && selectedQueue === 'QUALIDADE'
+                                  ? 'ring-1 ring-violet-300'
+                                  : ''
+                              }`}
+                              title={`Ver RAL de Qualidade de ${cfItem.cf}`}
+                            >
+                              <div className="text-[9px] font-semibold uppercase opacity-80">QUAL</div>
+                              <div className="text-sm font-bold tabular-nums">{cfItem.qualidade}</div>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Right Panel: New Faults Signal */}
+        <div className="xl:col-span-3 bg-[#090C13]/95 border border-white/10 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#e20613]" />
+              Novas Falhas
+            </span>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-slate-200">
+              {newFeed.ral.length + newFeed.rec.length}
+            </span>
+          </div>
+
+          <div className="divide-y divide-white/10">
+            <div className="p-3">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-2">
+                <span>RAL</span>
+                <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-400">
+                  {newFeed.ral.length}
+                </span>
+              </div>
+              {newFeed.ral.length === 0 ? (
+                <p className="text-xs italic text-slate-500 py-3 text-center">
+                  Nenhuma nova RAL nas suas áreas.
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {newFeed.ral.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() =>
+                        handleSelectQueue(item.cf, item.is_qualidade ? 'QUALIDADE' : 'RAL')
+                      }
+                      className="w-full text-left p-2 rounded-xl bg-white/[0.03] hover:bg-white/10 border border-white/10 transition"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#e20613]/20 text-red-300">
+                          {item.cf}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                        {item.designation}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-3">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-2">
+                <span>REC</span>
+                <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-400">
+                  {newFeed.rec.length}
+                </span>
+              </div>
+              {newFeed.rec.length === 0 ? (
+                <p className="text-xs italic text-slate-500 py-3 text-center">
+                  Nenhuma nova REC nas suas áreas.
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {newFeed.rec.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelectQueue(item.cf, 'REC')}
+                      className="w-full text-left p-2 rounded-xl bg-white/[0.03] hover:bg-white/10 border border-white/10 transition"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                          {item.cf}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                        {item.cliente || item.designation}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Drill-down Tickets Panel */}
+      {selectedCf && (
+        <div className="bg-[#090C13]/95 border border-white/15 rounded-2xl p-5 space-y-4 shadow-2xl">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-base sm:text-lg font-bold text-white">
+                {selectedQueue === 'REC'
+                  ? "REC's"
+                  : selectedQueue === 'QUALIDADE'
+                  ? 'RAL de Qualidade'
+                  : "RAL's"}{' '}
+                em tela no CF {selectedCf} - {selectedCfMeta?.label || selectedCf}
+              </h2>
+
+              <div className="inline-flex rounded-xl bg-white/5 p-0.5 border border-white/10">
+                {(['RAL', 'REC', 'QUALIDADE'] as QueueType[]).map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => handleSelectQueue(selectedCf, q)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                      selectedQueue === q
+                        ? 'bg-[#e20613] text-white'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {q === 'QUALIDADE' ? 'RAL Qualidade' : q}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyAllArea}
+                disabled={filteredTickets.length === 0}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 transition disabled:opacity-40"
+              >
+                {copiedId === 'batch' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedId === 'batch' ? 'COPIADO!' : 'COPIAR ATIVIDADES'}
+              </button>
+              <button
+                onClick={() => setSelectedCf(null)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
+                title="Fechar painel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Sort Bar */}
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Filtrar tickets por número, designação, cliente ou responsável..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0d111a] border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#e20613]"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-[#0d111a] border border-white/10 text-xs text-slate-200 focus:outline-none focus:border-[#e20613]"
+              >
+                <option value="">Todos os status</option>
+                {ALL_STATUSES.map((st) => (
+                  <option key={st} value={st}>
+                    {st}
+                  </option>
+                ))}
+              </select>
+
+              <span className="text-xs text-slate-500 ml-1">Ordenar:</span>
+              {(
+                [
+                  { id: 'classification', label: 'CLASSIFICAÇÃO' },
+                  { id: 'abertura', label: 'ABERTURA' },
+                  { id: 'cliente', label: 'CLIENTE' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => {
+                    if (sortField === opt.id) setSortAsc((v) => !v);
+                    else {
+                      setSortField(opt.id);
+                      setSortAsc(true);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition ${
+                    sortField === opt.id
+                      ? 'bg-white/15 border-white/30 text-white'
+                      : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {opt.label} {sortField === opt.id ? (sortAsc ? '↑' : '↓') : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tickets Grid */}
+          {loadingTickets ? (
+            <div className="py-10 text-center text-sm text-slate-400">Carregando atividades...</div>
+          ) : filteredTickets.length === 0 ? (
+            <div className="py-10 text-center text-sm text-slate-500">
+              Nenhuma atividade encontrada neste filtro.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredTickets.map((t) => {
+                const stStyle = STATUS_STYLES[t.status_andamento] || STATUS_STYLES['Sem classificação'];
+                const filteredPeople = peopleList
+                  .filter((p) => {
+                    const q = respQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    return p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q);
+                  })
+                  .slice(0, 8);
+
+                return (
+                  <div
+                    key={t.id}
+                    className="relative bg-[#0d111a] border border-white/10 rounded-2xl p-4 flex flex-col justify-between gap-3"
+                  >
+                    <div className="space-y-2.5">
+                      {/* Card Top */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-3 h-3 rounded-full shrink-0 ${stStyle.dot}`} />
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                            {t.cf}
+                          </span>
+                          <span className="text-sm font-bold text-white truncate">
+                            {t.ticket_number}
+                          </span>
+                          {t.is_new && (
+                            <span className="px-1.5 py-0.5 rounded bg-[#e20613] text-white text-[9px] font-bold uppercase">
+                              Novo
+                            </span>
+                          )}
+                        </div>
+
+                        <span
+                          className={`shrink-0 px-2.5 py-1 rounded-xl text-[11px] font-bold text-center leading-tight ${
+                            t.sla_status === 'overdue'
+                              ? 'bg-[#e20613]/15 text-red-300 border border-[#e20613]/35'
+                              : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          }`}
+                        >
+                          {t.sla_label}
+                        </span>
+                      </div>
+
+                      {/* Designation & Metadata */}
+                      <div>
+                        <div className="text-sm font-mono font-semibold text-slate-100 break-all">
+                          {t.designation || '-'}
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-slate-400 mt-1 gap-2">
+                          <span>{t.abertura_raw || '-'}</span>
+                          <span className="font-semibold text-slate-300 truncate">
+                            {t.ticket_type === 'REC' ? t.cliente || '-' : t.tipo_ral || '-'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Status Badge */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-[11px] font-bold border ${stStyle.bg} ${stStyle.text} ${stStyle.border}`}
+                        >
+                          {t.status_andamento}
+                        </span>
+                      </div>
+
+                      {/* Responsible Autocomplete */}
+                      <div className="relative">
+                        {respEditingFor === t.id ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={respQuery}
+                                onChange={(e) => setRespQuery(e.target.value)}
+                                placeholder="Digite o nome do responsável..."
+                                className="flex-1 px-2.5 py-1.5 rounded-lg bg-[#090C13] border border-[#3b82f6] text-xs text-white focus:outline-none"
+                              />
+                              <button
+                                onClick={() => {
+                                  setRespEditingFor(null);
+                                  setRespQuery('');
+                                }}
+                                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-xl bg-[#10141d] border border-white/15 shadow-2xl z-40 divide-y divide-white/5">
+                              {t.responsible_name && (
+                                <button
+                                  onClick={() => handleSetResponsible(t.id, null)}
+                                  className="w-full text-left px-3 py-1.5 text-xs text-red-300 hover:bg-white/10"
+                                >
+                                  Remover responsável
+                                </button>
+                              )}
+                              {filteredPeople.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-slate-500">
+                                  Nenhuma pessoa encontrada.
+                                </div>
+                              ) : (
+                                filteredPeople.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => handleSetResponsible(t.id, p)}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 flex items-center justify-between"
+                                  >
+                                    <span>{p.name}</span>
+                                    <span className="text-[10px] text-slate-500">{p.role}</span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setRespEditingFor(t.id);
+                              setRespQuery('');
+                            }}
+                            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 text-xs text-slate-300 transition"
+                          >
+                            <span className="inline-flex items-center gap-1.5 truncate">
+                              <UserCheck className="w-3.5 h-3.5 text-[#3b82f6] shrink-0" />
+                              {t.responsible_name || 'Atribuir responsável...'}
+                            </span>
+                            <Pencil className="w-3 h-3 text-slate-500 shrink-0" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Notes List */}
+                      <div className="space-y-1.5">
+                        {t.notes.map((n) => (
+                          <div
+                            key={n.id}
+                            className="rounded-xl bg-[#090C13] border-l-2 border-[#3b82f6] border border-white/10 px-3 py-2"
+                          >
+                            {editingNoteId === n.id ? (
+                              <div className="space-y-1.5">
+                                <textarea
+                                  rows={2}
+                                  value={editNoteText}
+                                  onChange={(e) => setEditNoteText(e.target.value)}
+                                  className="w-full px-2 py-1.5 rounded-lg bg-[#0d111a] border border-white/15 text-xs text-white focus:outline-none"
+                                />
+                                <div className="flex justify-end gap-1.5">
+                                  <button
+                                    onClick={() => setEditingNoteId(null)}
+                                    className="px-2 py-1 rounded text-[11px] text-slate-400 hover:text-white"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    onClick={() => handleSaveEditNote(t.id, n.id)}
+                                    className="px-2.5 py-1 rounded bg-[#3b82f6] text-white text-[11px] font-semibold"
+                                  >
+                                    Salvar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-xs text-slate-200 whitespace-pre-wrap break-words">
+                                    {n.content}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500 mt-1">
+                                    {n.author_name} · {n.created_at}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      setEditingNoteId(n.id);
+                                      setEditNoteText(n.content);
+                                    }}
+                                    className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white"
+                                    title="Editar nota"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteNote(t.id, n.id)}
+                                    className="p-1 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-300"
+                                    title="Apagar nota"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        {addingNoteFor === t.id ? (
+                          <div className="space-y-1.5 pt-1">
+                            <textarea
+                              rows={2}
+                              autoFocus
+                              value={newNoteText}
+                              onChange={(e) => setNewNoteText(e.target.value)}
+                              placeholder="Escreva a nota de tratativa..."
+                              className="w-full px-2.5 py-1.5 rounded-xl bg-[#090C13] border border-[#3b82f6] text-xs text-white focus:outline-none"
+                            />
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setAddingNoteFor(null);
+                                  setNewNoteText('');
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-[11px] text-slate-400 hover:text-white"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={() => handleAddNote(t.id)}
+                                className="px-3 py-1 rounded-lg bg-[#3b82f6] text-white text-[11px] font-semibold"
+                              >
+                                Salvar Nota
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setAddingNoteFor(t.id);
+                              setNewNoteText('');
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/10 border border-white/10 text-[11px] font-medium text-slate-300 transition"
+                          >
+                            <Pencil className="w-3 h-3 text-[#3b82f6]" />
+                            <Plus className="w-3 h-3" />
+                            Nota
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card Footer Actions */}
+                    <div className="flex items-center justify-between pt-2 border-t border-white/10 relative">
+                      <button
+                        onClick={() => copyText(`ticket-${t.id}`, formatSingleWhatsapp(t))}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-semibold transition"
+                      >
+                        {copiedId === `ticket-${t.id}` ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                        {copiedId === `ticket-${t.id}` ? 'COPIADO' : 'COPIAR'}
+                      </button>
+
+                      <div className="relative">
+                        <button
+                          onClick={() =>
+                            setOpenStatusFor((curr) => (curr === t.id ? null : t.id))
+                          }
+                          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-300 transition"
+                          title="Classificar andamento do ticket"
+                        >
+                          ··· Status
+                        </button>
+
+                        {openStatusFor === t.id && (
+                          <div className="absolute right-0 bottom-10 w-56 rounded-2xl bg-[#10141d] border border-white/20 shadow-2xl p-2 z-50 space-y-1">
+                            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Classificar Ticket
+                            </div>
+                            {ALL_STATUSES.map((st) => {
+                              const style = STATUS_STYLES[st] || STATUS_STYLES['Sem classificação'];
+                              const active = t.status_andamento === st;
+                              return (
+                                <button
+                                  key={st}
+                                  onClick={() => handleUpdateStatus(t.id, st)}
+                                  className={`w-full px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide flex items-center justify-between transition hover:brightness-110 ${style.bg} ${style.text}`}
+                                >
+                                  <span>{st}</span>
+                                  {active && <Check className="w-3.5 h-3.5" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom Chart: RAL de Qualidade por área */}
+      <div className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-violet-400" />
+            <h3 className="text-sm font-bold text-white">RAL de Qualidade por área</h3>
+          </div>
+          <span className="text-xs text-slate-400">
+            <strong className="text-white">{totals.ALL?.qualidade ?? 0}</strong> no total · 16 áreas
+          </span>
+        </div>
+
+        <div className="h-52 flex items-end justify-between gap-2 sm:gap-3 pt-6 px-1 border-b border-white/10">
+          {qualChart.map((bar) => {
+            const pct = bar.count > 0 ? Math.max(10, Math.round((bar.count / maxQualidade) * 100)) : 0;
+            const isSelected = selectedCf === bar.cf && selectedQueue === 'QUALIDADE';
+            return (
+              <button
+                key={bar.cf}
+                onClick={() => handleSelectQueue(bar.cf, 'QUALIDADE')}
+                className="flex-1 h-full flex flex-col items-center justify-end group"
+                title={`${bar.cf} (${bar.label}): ${bar.count} RAL(s) de Qualidade`}
+              >
+                <span className="text-[11px] font-bold text-slate-200 mb-1 tabular-nums">
+                  {bar.count > 0 ? bar.count : ''}
+                </span>
+                <div className="w-full max-w-[34px] flex-1 flex items-end justify-center">
+                  {bar.count > 0 ? (
+                    <div
+                      style={{ height: `${pct}%` }}
+                      className={`w-full rounded-t-lg bg-gradient-to-t from-violet-600/80 via-violet-500 to-fuchsia-400 transition-all duration-500 shadow-lg shadow-violet-500/20 group-hover:brightness-125 ${
+                        isSelected ? 'ring-2 ring-white' : ''
+                      }`}
+                    />
+                  ) : (
+                    <div className="w-full h-[2px] bg-white/10 rounded-full" />
+                  )}
+                </div>
+                <span
+                  className={`text-[10px] font-semibold mt-2 ${
+                    isSelected ? 'text-violet-300' : 'text-slate-400 group-hover:text-white'
+                  }`}
+                >
+                  {bar.cf}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Cleared Faults (Base Sanadas) Modal */}
+      {showCleared && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0d111a] border border-white/15 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl">
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Archive className="w-4 h-4 text-amber-400" />
+                  Base Apartada — Falhas Sanadas ({clearedTotal})
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Falhas removidas da base ativa automaticamente. Não entram nos gráficos nem nos contadores ativos.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportCsv('cleared')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 text-xs font-semibold"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Exportar Sanadas
+                </button>
+                <button
+                  onClick={() => setShowCleared(false)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 border-b border-white/10 flex gap-2">
+              <input
+                type="text"
+                value={clearedSearch}
+                onChange={(e) => setClearedSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchCleared(clearedSearch)}
+                placeholder="Buscar na base sanadas por número, designação ou cliente..."
+                className="flex-1 px-3.5 py-2 rounded-xl bg-[#090C13] border border-white/10 text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+              <button
+                onClick={() => fetchCleared(clearedSearch)}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white"
+              >
+                Buscar
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {loadingCleared ? (
+                <div className="py-10 text-center text-xs text-slate-400">Carregando base sanadas...</div>
+              ) : clearedList.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-500">
+                  Nenhuma falha sanada registrada até o momento.
+                </div>
+              ) : (
+                clearedList.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl bg-[#090C13] border border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold text-slate-200">
+                          {item.ticket_type}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-[10px] font-bold text-indigo-300">
+                          {item.cf}
+                        </span>
+                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
+                        <span className="text-[11px] text-slate-400">
+                          {item.cliente || item.tipo_ral}
+                        </span>
+                      </div>
+                      <div className="text-xs font-mono text-slate-300 truncate mt-1">
+                        {item.designation}
+                      </div>
+                      {item.responsible_name && (
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Responsável: {item.responsible_name}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[11px] font-semibold text-amber-300">
+                        Sanada em {item.cleared_at}
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Status final: {item.status_andamento}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

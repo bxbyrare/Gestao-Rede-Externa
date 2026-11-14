@@ -27,6 +27,7 @@ import RotasPage from './pages/RotasPage';
 import NotificacoesPage from './pages/NotificacoesPage';
 import ProfilePage from './pages/ProfilePage';
 import FormResponderPage from './pages/FormResponderPage';
+import GrafanaPage from './pages/GrafanaPage';
 
 export default function App() {
   const location = useLocation();
@@ -56,6 +57,7 @@ export default function App() {
             }
           >
             <Route index element={<FavoritesPage />} />
+            <Route path="grafana" element={<GrafanaPage />} />
             <Route path="area-de-trabalho" element={<WorkspacePage />} />
             <Route path="pessoas" element={<PessoasPage />} />
             <Route path="veiculos" element={<VehiclesPage />} />
