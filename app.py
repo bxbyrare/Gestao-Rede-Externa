@@ -283,6 +283,7 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
     current_year = datetime.datetime.now().year
     now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
     banner_url = html.escape(get_portal_url('/email-banner-claro.png'), quote=True)
+    claro_icon_url = html.escape(get_portal_url('/claro-icon.png'), quote=True)
 
     return f'''<!DOCTYPE html>
 <html lang="pt-BR">
@@ -303,7 +304,7 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
                             <tr>
                                 <td>
                                     <div style="display: inline-block; vertical-align: middle;">
-                                        <span style="display: inline-block; width: 14px; height: 14px; background-color: #E11D48; border-radius: 50%; margin-right: 8px; vertical-align: middle;"></span>
+                                        <img src="{claro_icon_url}" alt="Claro" width="26" height="26" style="display: inline-block; width: 26px; height: 26px; vertical-align: middle; margin-right: 10px; border: 0;" />
                                         <span style="font-size: 18px; font-weight: 800; color: #FFFFFF; letter-spacing: 0.5px; vertical-align: middle;">Gestão <span style="color: #E11D48;">REDE EXTERNA</span></span>
                                     </div>
                                     <div style="font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; font-weight: 600;">Claro Brasil &bull; Operações de Campo</div>
