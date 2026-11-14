@@ -13024,6 +13024,15 @@ def _get_global_email_cooldown_info():
         cur.close()
         conn.close()
 
+    def _fmt_brt(dt_val):
+        if not dt_val:
+            return None
+        try:
+            # Postgres CURRENT_TIMESTAMP na ShardCloud está em UTC; converte para BRT (UTC-3)
+            return (dt_val - datetime.timedelta(hours=3)).strftime('%d/%m/%Y às %H:%M:%S')
+        except Exception:
+            return str(dt_val)
+
     cooldown_active = False
     remaining_seconds = 0
     next_allowed_at = None
@@ -13037,7 +13046,7 @@ def _get_global_email_cooldown_info():
             remaining_seconds = int(GLOBAL_EMAIL_COOLDOWN_SECONDS - elapsed)
         if row.get('created_at'):
             try:
-                next_dt = row['created_at'] + datetime.timedelta(seconds=GLOBAL_EMAIL_COOLDOWN_SECONDS)
+                next_dt = (row['created_at'] - datetime.timedelta(hours=3)) + datetime.timedelta(seconds=GLOBAL_EMAIL_COOLDOWN_SECONDS)
                 next_allowed_at = next_dt.strftime('%d/%m/%Y às %H:%M')
             except Exception:
                 pass
@@ -13059,8 +13068,8 @@ def _get_global_email_cooldown_info():
             "sent_count": int(latest_any.get('sent_count') or 0),
             "failed_count": int(latest_any.get('failed_count') or 0),
             "results": details if isinstance(details, list) else [],
-            "created_at": latest_any['created_at'].strftime('%d/%m/%Y às %H:%M:%S') if latest_any.get('created_at') else None,
-            "completed_at": latest_any['completed_at'].strftime('%d/%m/%Y às %H:%M:%S') if latest_any.get('completed_at') else None,
+            "created_at": _fmt_brt(latest_any.get('created_at')),
+            "completed_at": _fmt_brt(latest_any.get('completed_at')),
         }
 
     return {
@@ -13108,6 +13117,19 @@ def _execute_global_email_dispatch_worker(log_id, recipients):
                     if sent_count == 0:
                         final_status = 'failed'
                     break
+            if (idx + 1) % 10 == 0:
+                try:
+                    c_prog = get_db()
+                    cur_prog = c_prog.cursor()
+                    cur_prog.execute(
+                        "UPDATE global_email_dispatch_log SET sent_count = %s, failed_count = %s WHERE id = %s;",
+                        (sent_count, failed_count, log_id)
+                    )
+                    c_prog.commit()
+                    cur_prog.close()
+                    c_prog.close()
+                except Exception:
+                    pass
     except Exception as ex:
         print("[GLOBAL EMAIL WORKER ERROR]", ex)
         if sent_count == 0:
