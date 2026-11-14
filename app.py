@@ -12997,7 +12997,7 @@ def _sync_grafana_data(force=False):
                 now_brt, now_brt, mark_new, now_brt
             ))
 
-        ral_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "RAL")
+        ral_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "RAL" and not v["is_qualidade"])
         rec_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "REC")
         qual_count = sum(1 for v in parsed_tickets.values() if v["is_qualidade"])
         new_active = len(new_keys) if had_existing else 0
@@ -13107,14 +13107,6 @@ def api_grafana_dashboard():
 
             if cf in cf_map:
                 if ttype == "RAL":
-                    cf_map[cf]["ral"] += 1
-                    totals["ALL"]["ral"] += 1
-                    if reg in totals:
-                        totals[reg]["ral"] += 1
-                    if is_new:
-                        cf_map[cf]["new_ral"] += 1
-                    if sla["sla_status"] == "overdue":
-                        cf_map[cf]["overdue_ral"] += 1
                     if is_qual:
                         cf_map[cf]["qualidade"] += 1
                         totals["ALL"]["qualidade"] += 1
@@ -13122,6 +13114,15 @@ def api_grafana_dashboard():
                             totals[reg]["qualidade"] += 1
                         if is_new:
                             cf_map[cf]["new_qualidade"] += 1
+                    else:
+                        cf_map[cf]["ral"] += 1
+                        totals["ALL"]["ral"] += 1
+                        if reg in totals:
+                            totals[reg]["ral"] += 1
+                        if is_new:
+                            cf_map[cf]["new_ral"] += 1
+                        if sla["sla_status"] == "overdue":
+                            cf_map[cf]["overdue_ral"] += 1
                 else:
                     cf_map[cf]["rec"] += 1
                     totals["ALL"]["rec"] += 1
@@ -13198,7 +13199,7 @@ def api_grafana_tickets():
             where_clauses.append("cf = %s")
             params.append(cf)
         if queue == "RAL":
-            where_clauses.append("ticket_type = 'RAL'")
+            where_clauses.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE)")
         elif queue == "REC":
             where_clauses.append("ticket_type = 'REC'")
         elif queue == "QUALIDADE":
@@ -13306,7 +13307,7 @@ def api_grafana_cleared():
             where_clauses.append("cf = %s")
             params.append(cf)
         if queue == "RAL":
-            where_clauses.append("ticket_type = 'RAL'")
+            where_clauses.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE)")
         elif queue == "REC":
             where_clauses.append("ticket_type = 'REC'")
         elif queue == "QUALIDADE":
@@ -13625,7 +13626,7 @@ def api_grafana_export():
                 wc.append("cf = %s")
                 pr.append(cf)
             if queue == "RAL":
-                wc.append("ticket_type = 'RAL'")
+                wc.append("(ticket_type = 'RAL' AND COALESCE(is_qualidade, FALSE) = FALSE)")
             elif queue == "REC":
                 wc.append("ticket_type = 'REC'")
             elif queue == "QUALIDADE":
