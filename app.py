@@ -342,7 +342,7 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
                         <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
                             <tr>
                                 <td style="font-size: 11px; color: #64748B; line-height: 1.5;">
-                                    <strong style="color: #94A3B8;">Aviso de Segurança:</strong> Este comunicado operacional é oficial e confidencial da plataforma Claro Gestão Rede Externa. Nunca compartilhe suas senhas de acesso.
+                                    <strong style="color: #94A3B8;">Aviso de Segurança:</strong> Este comunicado operacional é oficial e confidencial da plataforma Claro Gestão Rede Externa. O Gestão Rede Externa nunca vai enviar e-mails ou mensagens via WhatsApp ou qualquer plataforma de mensagens solicitando seu nome de usuário, e-mail ou senhas de acesso; caso isso aconteça, contate um coordenador e reporte imediatamente esta ação.
                                 </td>
                             </tr>
                         </table>
