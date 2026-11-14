@@ -11,10 +11,9 @@ def load_env():
 
 load_env()
 
-DATABASE_URL = os.environ.get(
-    'DATABASE_URL', 
-    'postgresql://postgres:postgres@localhost:5432/gestao_rede'
-)
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL não configurada no ambiente.")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 

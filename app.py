@@ -4803,7 +4803,7 @@ def api_upload_project_file(p_id):
         return jsonify({"success": True, "uploaded_count": uploaded_count, "message": f"{uploaded_count} arquivo(s) anexado(s) com sucesso!"})
     except Exception as e:
         print("Error uploading file to project:", e)
-        return jsonify({"error": f"Erro ao anexar arquivo: {str(e)}"}), 500
+        return jsonify({"error": "Erro interno ao anexar arquivo ao projeto."}), 500
 
 # --- FAVORITES API ---
 @app.route('/api/favorites', methods=['GET'])
@@ -8520,7 +8520,7 @@ def api_get_buscador_records():
             "total_records": 0,
             "routes": [],
             "records": [],
-            "error": str(e)
+            "error": "Falha temporária ao carregar os registros."
         }), 200
 
 @app.route('/api/buscador/records/<int:record_id>', methods=['PUT'])
@@ -12564,7 +12564,7 @@ def api_ral_qualidade_import():
             except Exception: pass
         print("Error importing ral_qualidade:", e)
         traceback.print_exc()
-        return jsonify({"error": f"Erro ao processar importação: {str(e)}"}), 500
+        return jsonify({"error": "Erro interno ao processar importação."}), 500
 
 
 
@@ -12650,7 +12650,7 @@ def api_notify_outdated_profile():
         })
     except Exception as e:
         print("[NOTIFY OUTDATED PROFILE ERROR]", e)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Falha interna ao notificar colaboradores."}), 500
 
 
 
@@ -12999,7 +12999,7 @@ def _sync_grafana_data(force=False):
             except Exception:
                 pass
         print("[GRAFANA SYNC ERROR]", e)
-        return {"synced": False, "error": str(e)}
+        return {"synced": False, "error": "Falha ao sincronizar base remota."}
     finally:
         if locked and cur and conn:
             try:
