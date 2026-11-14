@@ -12731,7 +12731,7 @@ def _compute_pending_fields_from_row(row):
     if not (row.get('area') or '').strip():
         missing.append("Área de atuação")
     if not (row.get('team_type') or '').strip():
-        missing.append("Tipo de equipe (Fusão / Lançamento)")
+        missing.append("Tipo de equipe (Fusão / Lançamento / Construção)")
     if not (row.get('team') or '').strip():
         missing.append("Equipe")
     if not (row.get('registration_claro') or '').strip():

@@ -25,6 +25,7 @@ const COMPANIES = ['Claro', 'FFA', 'Procisa', 'Servilog'];
 const TEAM_TYPES = [
   { value: 'Fusão', label: 'Fusão (Emenda Fibra)' },
   { value: 'Lançamento', label: 'Lançamento (Cabeamento)' },
+  { value: 'Construção', label: 'Construção' },
   { value: 'MDU', label: 'MDU' },
   { value: 'Coaxial', label: 'Coaxial' },
   { value: 'Vistoriador Estático', label: 'Vistoriador Estático' },
