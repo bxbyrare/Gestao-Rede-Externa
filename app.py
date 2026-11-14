@@ -12695,7 +12695,8 @@ def api_notify_outdated_profile():
 GRAFANA_RAL_CSV_URL = "https://raw.githubusercontent.com/cpralonrj-pralon/embratel-sir/refs/heads/main/dados_ral.csv"
 GRAFANA_REC_CSV_URL = "https://raw.githubusercontent.com/cpralonrj-pralon/embratel-sir/refs/heads/main/dados_rec.csv"
 GRAFANA_SYNC_INTERVAL_SECONDS = 300
-GRAFANA_BRT_TZ = timezone(timedelta(hours=-3))
+from datetime import datetime, timedelta, timezone as _grafana_timezone
+GRAFANA_BRT_TZ = _grafana_timezone(timedelta(hours=-3))
 
 GRAFANA_CF_LIST = [
     {"cf": "MTN", "label": "Metropolitana Norte - ES", "regional": "ES", "expected_prefix": "VTA"},
