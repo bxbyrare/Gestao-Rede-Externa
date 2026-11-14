@@ -7,6 +7,7 @@ import {
   Clock,
   Copy,
   Download,
+  Layers,
   Pencil,
   Plus,
   RefreshCw,
@@ -16,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
+import { useAuth } from '../state/AuthContext';
 
 interface SyncMeta {
   last_sync_at: string | null;
@@ -187,6 +189,31 @@ function getCountTone(count: number, type: QueueType): string {
 }
 
 export default function GrafanaPage() {
+  const { user: currentUser } = useAuth();
+  const myAreasStorageKey = useMemo(() => {
+    const uid = currentUser?.id ?? currentUser?.username ?? 'anon';
+    return `grafana_my_areas_${uid}`;
+  }, [currentUser?.id, currentUser?.username]);
+  const myAreasActiveKey = useMemo(() => `${myAreasStorageKey}_active`, [myAreasStorageKey]);
+
+  const [myAreas, setMyAreas] = useState<string[]>([]);
+  const [myAreasActive, setMyAreasActive] = useState<boolean>(false);
+  const [showMyAreasModal, setShowMyAreasModal] = useState<boolean>(false);
+  const [draftMyAreas, setDraftMyAreas] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(myAreasStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setMyAreas(Array.isArray(parsed) ? parsed : []);
+      const rawActive = localStorage.getItem(myAreasActiveKey);
+      setMyAreasActive(rawActive === 'true' && Array.isArray(parsed) && parsed.length > 0);
+    } catch {
+      setMyAreas([]);
+      setMyAreasActive(false);
+    }
+  }, [myAreasStorageKey, myAreasActiveKey]);
+
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [totals, setTotals] = useState<Record<string, RegionalTotals>>({
@@ -546,16 +573,85 @@ export default function GrafanaPage() {
     return list;
   }, [tickets, searchTerm, statusFilter, sortField, sortAsc]);
 
+  const myAreaSet = useMemo(() => new Set(myAreas), [myAreas]);
+  const isMyAreasFiltered = myAreasActive && myAreas.length > 0;
+
+  const visibleCfs = useMemo(() => {
+    if (!isMyAreasFiltered) return cfs;
+    return cfs.filter((c) => myAreaSet.has(c.cf));
+  }, [cfs, isMyAreasFiltered, myAreaSet]);
+
+  const visibleTotals = useMemo<Record<string, RegionalTotals>>(() => {
+    if (!isMyAreasFiltered) return totals;
+    const base: Record<string, RegionalTotals> = {
+      ALL: { ral: 0, rec: 0, qualidade: 0 },
+      ES: { ral: 0, rec: 0, qualidade: 0 },
+      INTERIOR: { ral: 0, rec: 0, qualidade: 0 },
+      CAPITAL: { ral: 0, rec: 0, qualidade: 0 },
+    };
+    for (const c of visibleCfs) {
+      base.ALL.ral += c.ral;
+      base.ALL.rec += c.rec;
+      base.ALL.qualidade += c.qualidade;
+      if (base[c.regional]) {
+        base[c.regional].ral += c.ral;
+        base[c.regional].rec += c.rec;
+        base[c.regional].qualidade += c.qualidade;
+      }
+    }
+    return base;
+  }, [isMyAreasFiltered, totals, visibleCfs]);
+
+  const visibleNewFeed = useMemo(() => {
+    if (!isMyAreasFiltered) return newFeed;
+    return {
+      ral: newFeed.ral.filter((item) => myAreaSet.has(item.cf)),
+      rec: newFeed.rec.filter((item) => myAreaSet.has(item.cf)),
+    };
+  }, [isMyAreasFiltered, newFeed, myAreaSet]);
+
+  function openMyAreasSelector() {
+    setDraftMyAreas(myAreas);
+    setShowMyAreasModal(true);
+  }
+
+  function applyMyAreas(nextAreas: string[], activate = true) {
+    const clean = Array.from(new Set(nextAreas));
+    setMyAreas(clean);
+    const shouldActivate = activate && clean.length > 0;
+    setMyAreasActive(shouldActivate);
+    try {
+      localStorage.setItem(myAreasStorageKey, JSON.stringify(clean));
+      localStorage.setItem(myAreasActiveKey, String(shouldActivate));
+    } catch {
+      // ignore storage errors
+    }
+    if (shouldActivate && selectedCf && !clean.includes(selectedCf)) {
+      setSelectedCf(null);
+    }
+    setShowMyAreasModal(false);
+  }
+
+  function toggleMyAreasOff() {
+    setMyAreasActive(false);
+    try {
+      localStorage.setItem(myAreasActiveKey, 'false');
+    } catch {
+      // ignore storage errors
+    }
+    setShowMyAreasModal(false);
+  }
+
   const activeChartSeries = useMemo(() => {
     if (chartMode === 'QUALIDADE' && cfs.length === 0) {
-      return qualChart;
+      return isMyAreasFiltered ? qualChart.filter((q) => myAreaSet.has(q.cf)) : qualChart;
     }
-    return cfs.map((item) => ({
+    return visibleCfs.map((item) => ({
       cf: item.cf,
       label: item.label,
       count: chartMode === 'RAL' ? item.ral : chartMode === 'REC' ? item.rec : item.qualidade,
     }));
-  }, [cfs, qualChart, chartMode]);
+  }, [cfs.length, visibleCfs, qualChart, chartMode, isMyAreasFiltered, myAreaSet]);
 
   const maxChartValue = useMemo(() => {
     return Math.max(1, ...activeChartSeries.map((item) => item.count));
@@ -564,6 +660,7 @@ export default function GrafanaPage() {
   const timelineStats = useMemo(() => {
     const areaFiltered = ralTimeline.filter((item) => {
       if ((item.ticket_type || 'RAL') !== timelineTypeFilter) return false;
+      if (isMyAreasFiltered && !myAreaSet.has(item.cf)) return false;
       if (timelineAreaFilter === 'ALL') return true;
       if (timelineAreaFilter.startsWith('REG:')) {
         return item.regional === timelineAreaFilter.slice(4);
@@ -607,7 +704,7 @@ export default function GrafanaPage() {
     const overPct = total > 0 ? 100 - withinPct : 0;
 
     return { buckets: visibleBuckets, maxBucket, within24, over24, total, withinPct, overPct };
-  }, [ralTimeline, timelineTypeFilter, timelineAreaFilter, timelineWindowFilter]);
+  }, [ralTimeline, timelineTypeFilter, timelineAreaFilter, timelineWindowFilter, isMyAreasFiltered, myAreaSet]);
 
   const regionGroups: Array<{ key: 'ES' | 'INTERIOR' | 'CAPITAL'; title: string; countLabel: string }> = [
     { key: 'ES', title: 'ES', countLabel: '4 CFs' },
@@ -649,6 +746,30 @@ export default function GrafanaPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={openMyAreasSelector}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition ${
+              isMyAreasFiltered
+                ? 'bg-[#3b82f6]/15 border-[#3b82f6]/60 text-blue-200 hover:bg-[#3b82f6]/25 shadow-lg shadow-blue-500/10'
+                : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
+            }`}
+            title="Selecionar suas áreas (CFs) personalizadas"
+          >
+            <Layers className={`w-3.5 h-3.5 ${isMyAreasFiltered ? 'text-blue-300' : 'text-slate-300'}`} />
+            MINHAS ÁREAS
+            {myAreas.length > 0 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                  isMyAreasFiltered
+                    ? 'bg-blue-500/30 text-blue-100'
+                    : 'bg-white/10 text-slate-300'
+                }`}
+              >
+                {myAreas.length}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={handleManualSync}
             disabled={syncing}
@@ -718,21 +839,52 @@ export default function GrafanaPage() {
 
       {/* Top KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
-        {[
-          { key: 'ALL', title: 'TOTAL RRE' },
-          { key: 'ES', title: 'ES' },
-          { key: 'INTERIOR', title: 'INTERIOR' },
-          { key: 'CAPITAL', title: 'CAPITAL' },
-        ].map((card) => {
-          const t = totals[card.key] || { ral: 0, rec: 0, qualidade: 0 };
+        {(isMyAreasFiltered
+          ? [
+              { key: 'ALL', title: 'MINHAS ÁREAS', isCustom: true },
+              ...regionGroups
+                .filter((g) => visibleCfs.some((c) => c.regional === g.key))
+                .map((g) => ({ key: g.key, title: g.title, isCustom: false })),
+            ]
+          : [
+              { key: 'ALL', title: 'TOTAL RRE', isCustom: false },
+              { key: 'ES', title: 'ES', isCustom: false },
+              { key: 'INTERIOR', title: 'INTERIOR', isCustom: false },
+              { key: 'CAPITAL', title: 'CAPITAL', isCustom: false },
+            ]
+        ).map((card) => {
+          const t = visibleTotals[card.key] || { ral: 0, rec: 0, qualidade: 0 };
           return (
             <div
               key={card.key}
-              className="bg-[#090C13]/95 border border-white/10 rounded-2xl p-4 flex flex-col justify-between"
+              className={`bg-[#090C13]/95 rounded-2xl p-4 flex flex-col justify-between border ${
+                card.isCustom ? 'border-[#3b82f6]/50 shadow-lg shadow-blue-500/5' : 'border-white/10'
+              }`}
             >
-              <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400">
-                {card.title}
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                {card.isCustom ? (
+                  <button
+                    onClick={openMyAreasSelector}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wider uppercase text-blue-300 hover:text-blue-200 transition"
+                    title="Alterar áreas selecionadas"
+                  >
+                    {card.title}
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400">
+                    {card.title}
+                  </span>
+                )}
+                {card.isCustom && (
+                  <button
+                    onClick={toggleMyAreasOff}
+                    className="text-[10px] font-semibold text-slate-400 hover:text-white underline underline-offset-2 transition"
+                  >
+                    Ver Todas
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-3 gap-2 mt-3">
                 <div className="bg-white/[0.03] border border-white/5 rounded-xl px-2.5 py-2">
                   <div className="text-[10px] font-semibold text-slate-400">RAL</div>
@@ -761,7 +913,8 @@ export default function GrafanaPage() {
             </div>
           ) : (
             regionGroups.map((group) => {
-              const groupCfs = cfs.filter((c) => c.regional === group.key);
+              const groupCfs = visibleCfs.filter((c) => c.regional === group.key);
+              if (isMyAreasFiltered && groupCfs.length === 0) return null;
               return (
                 <div
                   key={group.key}
@@ -771,7 +924,9 @@ export default function GrafanaPage() {
                     <span className="text-xs font-bold tracking-wider text-white uppercase">
                       {group.title}
                     </span>
-                    <span className="text-[11px] text-slate-400">{group.countLabel}</span>
+                    <span className="text-[11px] text-slate-400">
+                      {groupCfs.length} {groupCfs.length === 1 ? 'CF' : 'CFs'}
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 flex-1">
@@ -866,7 +1021,7 @@ export default function GrafanaPage() {
               Novas Falhas
             </span>
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-slate-200">
-              {newFeed.ral.length + newFeed.rec.length}
+              {visibleNewFeed.ral.length + visibleNewFeed.rec.length}
             </span>
           </div>
 
@@ -875,16 +1030,16 @@ export default function GrafanaPage() {
               <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-2">
                 <span>RAL</span>
                 <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-400">
-                  {newFeed.ral.length}
+                  {visibleNewFeed.ral.length}
                 </span>
               </div>
-              {newFeed.ral.length === 0 ? (
+              {visibleNewFeed.ral.length === 0 ? (
                 <p className="text-xs italic text-slate-500 py-3 text-center">
                   Nenhuma nova RAL nas suas áreas.
                 </p>
               ) : (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {newFeed.ral.map((item) => (
+                  {visibleNewFeed.ral.map((item) => (
                     <button
                       key={item.id}
                       onClick={() =>
@@ -911,16 +1066,16 @@ export default function GrafanaPage() {
               <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-2">
                 <span>REC</span>
                 <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-400">
-                  {newFeed.rec.length}
+                  {visibleNewFeed.rec.length}
                 </span>
               </div>
-              {newFeed.rec.length === 0 ? (
+              {visibleNewFeed.rec.length === 0 ? (
                 <p className="text-xs italic text-slate-500 py-3 text-center">
                   Nenhuma nova REC nas suas áreas.
                 </p>
               ) : (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {newFeed.rec.map((item) => (
+                  {visibleNewFeed.rec.map((item) => (
                     <button
                       key={item.id}
                       onClick={() => handleSelectQueue(item.cf, 'REC')}
@@ -1840,6 +1995,147 @@ export default function GrafanaPage() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Selecionar Minhas Áreas */}
+      {showMyAreasModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-[#090C13] border border-white/15 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Layers className="w-4 h-4 text-blue-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Minhas Áreas (CFs Personalizados)</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Selecione os CFs que deseja acompanhar. A preferência fica salva para o seu usuário.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMyAreasModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2 bg-white/[0.02]">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setDraftMyAreas(cfs.map((c) => c.cf))}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 transition"
+                >
+                  Selecionar Todas
+                </button>
+                <button
+                  onClick={() => setDraftMyAreas([])}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 transition"
+                >
+                  Limpar
+                </button>
+              </div>
+              <span className="text-[11px] text-blue-300 font-semibold">
+                {draftMyAreas.length} área{draftMyAreas.length === 1 ? '' : 's'} selecionada{draftMyAreas.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-4">
+              {regionGroups.map((group) => {
+                const groupItems = cfs.filter((c) => c.regional === group.key);
+                if (groupItems.length === 0) return null;
+                const allGroupSelected = groupItems.every((c) => draftMyAreas.includes(c.cf));
+                return (
+                  <div key={group.key} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                        {group.title}
+                      </span>
+                      <button
+                        onClick={() => {
+                          const groupCodes = groupItems.map((c) => c.cf);
+                          if (allGroupSelected) {
+                            setDraftMyAreas((prev) => prev.filter((cf) => !groupCodes.includes(cf)));
+                          } else {
+                            setDraftMyAreas((prev) => Array.from(new Set([...prev, ...groupCodes])));
+                          }
+                        }}
+                        className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold"
+                      >
+                        {allGroupSelected ? `Desmarcar ${group.title}` : `Marcar toda ${group.title}`}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {groupItems.map((item) => {
+                        const checked = draftMyAreas.includes(item.cf);
+                        return (
+                          <button
+                            key={item.cf}
+                            type="button"
+                            onClick={() =>
+                              setDraftMyAreas((prev) =>
+                                prev.includes(item.cf)
+                                  ? prev.filter((x) => x !== item.cf)
+                                  : [...prev, item.cf]
+                              )
+                            }
+                            className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-left transition ${
+                              checked
+                                ? 'bg-blue-500/15 border-blue-400/60 text-white'
+                                : 'bg-white/[0.02] border-white/10 text-slate-300 hover:border-white/25'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold leading-tight">{item.cf}</div>
+                              <div className="text-[10px] text-slate-400 truncate">{item.label}</div>
+                            </div>
+                            <span
+                              className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                                checked
+                                  ? 'bg-blue-500 border-blue-400 text-white'
+                                  : 'border-white/20 bg-white/5'
+                              }`}
+                            >
+                              {checked && <Check className="w-3 h-3 stroke-[3]" />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-white/10 bg-white/[0.02] flex flex-wrap items-center justify-between gap-2">
+              {isMyAreasFiltered ? (
+                <button
+                  onClick={toggleMyAreasOff}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition"
+                >
+                  Mostrar Todas as Áreas
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowMyAreasModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-white/10 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => applyMyAreas(draftMyAreas, draftMyAreas.length > 0)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#e20613] hover:bg-[#c80510] text-white transition shadow-lg shadow-[#e20613]/20"
+                >
+                  {draftMyAreas.length > 0
+                    ? `Aplicar Minhas Áreas (${draftMyAreas.length})`
+                    : 'Aplicar (Mostrar Todas)'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
