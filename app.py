@@ -229,7 +229,7 @@ def get_portal_url(path='/'):
         try:
             base = request.host_url.rstrip('/')
         except Exception:
-            base = 'https://gestao-rede-externa-bxbyrare.shardcloud.com'
+            base = 'https://gestaoredeexterna.com.br'
     if not path.startswith('/'):
         path = '/' + path
     return f"{base.rstrip('/')}{path}"
@@ -772,13 +772,14 @@ def enforce_security_policies():
             origin = request.headers.get('Origin')
             referer = request.headers.get('Referer')
             host = request.host.split(':')[0].lower()
+            allowed_hosts = {'localhost', '127.0.0.1', 'gestaoredeexterna.shardatabases.app', 'gestaoredeexterna.com.br', 'www.gestaoredeexterna.com.br'}
             if origin:
                 origin_clean = origin.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0].lower()
-                if origin_clean != host and origin_clean not in ('localhost', '127.0.0.1', 'gestaoredeexterna.shardatabases.app'):
+                if origin_clean != host and origin_clean not in allowed_hosts:
                     return jsonify({"error": "Origem de requisição não autorizada (Cross-Origin bloqueado).", "status": 403}), 403
             elif referer:
                 ref_clean = referer.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0].lower()
-                if ref_clean != host and ref_clean not in ('localhost', '127.0.0.1', 'gestaoredeexterna.shardatabases.app'):
+                if ref_clean != host and ref_clean not in allowed_hosts:
                     return jsonify({"error": "Referer de requisição não autorizado.", "status": 403}), 403
 
     # 2. Global Sliding Window Rate Limiting (All Requests)
@@ -3992,7 +3993,7 @@ def api_update_my_profile():
                 <p>Este e-mail será utilizado para envio de comunicados operacionais importantes, avisos de manutenções, menções em ocorrências e recuperação segura de credenciais.</p>
             ''',
             cta_text="Acessar Minha Conta",
-            cta_url="https://gestaoredeexterna.shardweb.app/"
+            cta_url="https://gestaoredeexterna.com.br/"
         )
 
     if hashed_pw and (email or old_email):
@@ -4010,7 +4011,7 @@ def api_update_my_profile():
                 <p>Se você realizou essa alteração, nenhuma ação é necessária. Se você <strong>não reconhece</strong> essa operação, redefina sua senha imediatamente.</p>
             ''',
             cta_text="Acessar Minha Conta",
-            cta_url="https://gestaoredeexterna.shardweb.app/"
+            cta_url="https://gestaoredeexterna.com.br/"
         )
 
     log_action(user_id, user['username'], f"Atualizou seus dados de perfil próprio (E-mail: {email or 'mantido'}, Telefone: {phone or 'mantido'}).")
@@ -4367,7 +4368,7 @@ def api_update_technician(tech_id):
                         <p>Caso identifique alguma informação incorreta, acesse o menu <strong>Meu Perfil</strong> para verificar ou entre em contato com sua coordenação.</p>
                     ''',
                     cta_text="Conferir Meu Perfil",
-                    cta_url="https://gestaoredeexterna.shardweb.app/perfil"
+                    cta_url="https://gestaoredeexterna.com.br/perfil"
                 )
         except Exception as notify_err:
             print("Technician update email error:", notify_err)
@@ -5974,7 +5975,7 @@ def api_form_responses_export(form_id):
 
         # Build dynamic base url for full image/attachment links
         base_host = request.host_url.rstrip('/')
-        if 'shardweb.app' in base_host and not base_host.startswith('https://'):
+        if ('shardweb.app' in base_host or 'gestaoredeexterna.com.br' in base_host) and not base_host.startswith('https://'):
             base_host = 'https://' + base_host.split('://')[-1]
 
         # Collect all dynamic question headers and determine if any fields contain lists (e.g. multiple photos)
@@ -7658,7 +7659,7 @@ def api_notifications():
                                 <p>Para conferir os detalhes e histórico completo, acesse a aba de Notificações na plataforma.</p>
                             ''',
                             cta_text="Ver Notificações",
-                            cta_url="https://gestaoredeexterna.shardweb.app/notificacoes"
+                            cta_url="https://gestaoredeexterna.com.br/notificacoes"
                         )
             except Exception as mention_err:
                 print("Mention email error:", mention_err)
@@ -9911,7 +9912,7 @@ def api_create_user_task():
                         </div>
                     ''',
                     cta_text="Abrir Minhas Tarefas",
-                    cta_url="https://gestaoredeexterna.shardweb.app/area-de-trabalho"
+                    cta_url="https://gestaoredeexterna.com.br/area-de-trabalho"
                 )
         except Exception as task_email_err:
             print("Task assign email error:", task_email_err)
