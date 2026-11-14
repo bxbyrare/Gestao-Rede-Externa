@@ -117,7 +117,9 @@ interface ClearedTicket {
 }
 
 interface PersonOption {
-  id: number;
+  key: string;
+  tech_id: number | null;
+  user_id: number | null;
   name: string;
   username: string;
   role: string;
@@ -356,7 +358,8 @@ export default function GrafanaPage() {
     setRespQuery('');
     try {
       const data = await api.put<any>(`/api/grafana/tickets/${ticketId}/responsible`, {
-        user_id: person ? person.id : null,
+        tech_id: person ? person.tech_id : null,
+        user_id: person ? person.user_id : null,
       });
       setTickets((prev) =>
         prev.map((t) =>
@@ -1066,12 +1069,14 @@ export default function GrafanaPage() {
                               ) : (
                                 filteredPeople.map((p) => (
                                   <button
-                                    key={p.id}
+                                    key={p.key}
                                     onClick={() => handleSetResponsible(t.id, p)}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 flex items-center justify-between"
+                                    className="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 flex items-center justify-between gap-2"
                                   >
-                                    <span>{p.name}</span>
-                                    <span className="text-[10px] text-slate-500">{p.role}</span>
+                                    <span className="truncate">{p.name}</span>
+                                    <span className="text-[10px] text-slate-400 shrink-0">
+                                      {[p.company, p.role].filter(Boolean).join(' · ')}
+                                    </span>
                                   </button>
                                 ))
                               )}

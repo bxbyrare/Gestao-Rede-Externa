@@ -2275,6 +2275,7 @@ def init_db():
                 prejuizo VARCHAR(30),
                 status_andamento VARCHAR(60) DEFAULT 'Sem classificação',
                 responsible_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                responsible_tech_id INT REFERENCES technicians(id) ON DELETE SET NULL,
                 responsible_name VARCHAR(150),
                 first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2282,6 +2283,10 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        try:
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS responsible_tech_id INT REFERENCES technicians(id) ON DELETE SET NULL;")
+        except Exception:
+            conn.rollback()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS grafana_cleared_tickets (
                 id SERIAL PRIMARY KEY,
@@ -13387,20 +13392,39 @@ def api_grafana_update_status(ticket_id):
 @login_required
 def api_grafana_update_responsible(ticket_id):
     data = request.get_json(silent=True) or {}
+    target_tech_id = data.get("tech_id")
     target_uid = data.get("user_id")
     try:
         conn = get_db()
         cur = conn.cursor()
         resp_name = None
         clean_uid = None
-        if target_uid is not None and str(target_uid).strip() != "":
+        clean_tech_id = None
+
+        if target_tech_id is not None and str(target_tech_id).strip() != "":
+            try:
+                clean_tech_id = int(target_tech_id)
+            except (TypeError, ValueError):
+                cur.close()
+                return jsonify({"error": "ID da pessoa inválido."}), 400
+            cur.execute("SELECT id, name FROM technicians WHERE id = %s;", (clean_tech_id,))
+            trow = cur.fetchone()
+            if not trow:
+                cur.close()
+                return jsonify({"error": "Pessoa não encontrada na base de Pessoas."}), 404
+            resp_name = format_person_name(trow["name"])
+            cur.execute("SELECT id FROM users WHERE tech_id = %s LIMIT 1;", (clean_tech_id,))
+            linked_u = cur.fetchone()
+            if linked_u:
+                clean_uid = linked_u["id"]
+        elif target_uid is not None and str(target_uid).strip() != "":
             try:
                 clean_uid = int(target_uid)
             except (TypeError, ValueError):
                 cur.close()
                 return jsonify({"error": "ID de responsável inválido."}), 400
             cur.execute("""
-                SELECT u.id, u.username, t.name AS tech_name
+                SELECT u.id, u.username, u.tech_id, t.name AS tech_name
                 FROM users u
                 LEFT JOIN technicians t ON u.tech_id = t.id
                 WHERE u.id = %s;
@@ -13409,15 +13433,16 @@ def api_grafana_update_responsible(ticket_id):
             if not urow:
                 cur.close()
                 return jsonify({"error": "Usuário responsável não encontrado."}), 404
+            clean_tech_id = urow.get("tech_id")
             raw_display = urow.get("tech_name") or (urow.get("username") or "").replace(".", " ")
             resp_name = format_person_name(raw_display)
 
         cur.execute("""
             UPDATE grafana_tickets
-            SET responsible_user_id = %s, responsible_name = %s, updated_at = CURRENT_TIMESTAMP
+            SET responsible_user_id = %s, responsible_tech_id = %s, responsible_name = %s, updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
-            RETURNING id, ticket_number, responsible_user_id, responsible_name;
-        """, (clean_uid, resp_name, ticket_id))
+            RETURNING id, ticket_number, responsible_user_id, responsible_tech_id, responsible_name;
+        """, (clean_uid, clean_tech_id, resp_name, ticket_id))
         updated = cur.fetchone()
         if not updated:
             cur.close()
@@ -13428,6 +13453,7 @@ def api_grafana_update_responsible(ticket_id):
         return jsonify({
             "success": True,
             "responsible_user_id": updated["responsible_user_id"],
+            "responsible_tech_id": updated["responsible_tech_id"],
             "responsible_name": updated["responsible_name"] or "",
         })
     except Exception as e:
@@ -13564,27 +13590,68 @@ def api_grafana_people():
         q = (request.args.get("q") or "").strip().lower()
         conn = get_db()
         cur = conn.cursor()
+
+        # 1. All registered people from Pessoas (technicians table)
         cur.execute("""
-            SELECT u.id, u.username, u.role, t.name AS tech_name, t.company
-            FROM users u
-            LEFT JOIN technicians t ON u.tech_id = t.id
-            ORDER BY COALESCE(t.name, u.username) ASC;
+            SELECT t.id AS tech_id, t.name, t.role, t.company, t.area,
+                   u.id AS user_id, u.username
+            FROM technicians t
+            LEFT JOIN users u ON u.tech_id = t.id
+            ORDER BY t.name ASC;
         """)
-        rows = cur.fetchall()
+        tech_rows = cur.fetchall()
+
+        # 2. Users without a linked technician record (e.g. standalone admin/coordinator logins)
+        cur.execute("""
+            SELECT u.id AS user_id, u.username, u.role
+            FROM users u
+            WHERE u.tech_id IS NULL
+            ORDER BY u.username ASC;
+        """)
+        user_only_rows = cur.fetchall()
         cur.close()
+
         people = []
-        for r in rows:
-            name = format_person_name(r.get("tech_name") or (r.get("username") or "").replace(".", " "))
-            if q and q not in name.lower() and q not in (r.get("username") or "").lower():
+        seen_names = set()
+
+        for r in tech_rows:
+            name = format_person_name(r.get("name") or "")
+            if not name:
                 continue
+            uname = r.get("username") or ""
+            if q and q not in name.lower() and q not in uname.lower() and q not in (r.get("company") or "").lower():
+                continue
+            seen_names.add(name.lower())
             people.append({
-                "id": r["id"],
+                "key": f"tech:{r['tech_id']}",
+                "tech_id": r["tech_id"],
+                "user_id": r.get("user_id"),
                 "name": name,
-                "username": r["username"],
-                "role": r["role"],
+                "username": uname,
+                "role": r.get("role") or "Técnico",
                 "company": r.get("company") or "",
             })
-        return jsonify({"people": people[:50]})
+
+        for r in user_only_rows:
+            name = format_person_name((r.get("username") or "").replace(".", " "))
+            if not name or name.lower() in seen_names:
+                continue
+            uname = r.get("username") or ""
+            if q and q not in name.lower() and q not in uname.lower():
+                continue
+            seen_names.add(name.lower())
+            people.append({
+                "key": f"user:{r['user_id']}",
+                "tech_id": None,
+                "user_id": r["user_id"],
+                "name": name,
+                "username": uname,
+                "role": r.get("role") or "Usuário",
+                "company": "",
+            })
+
+        people.sort(key=lambda p: p["name"].lower())
+        return jsonify({"people": people[:500]})
     except Exception as e:
         print("[GRAFANA PEOPLE ERROR]", e)
         return jsonify({"error": "Falha ao listar pessoas."}), 500
