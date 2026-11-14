@@ -12927,8 +12927,8 @@ def api_notify_outdated_profile():
 GRAFANA_RAL_CSV_URL = "https://raw.githubusercontent.com/cpralonrj-pralon/embratel-sir/refs/heads/main/dados_ral.csv"
 GRAFANA_REC_CSV_URL = "https://raw.githubusercontent.com/cpralonrj-pralon/embratel-sir/refs/heads/main/dados_rec.csv"
 GRAFANA_SYNC_INTERVAL_SECONDS = 300
-from datetime import datetime, timedelta, timezone as _grafana_timezone
-GRAFANA_BRT_TZ = _grafana_timezone(timedelta(hours=-3))
+from datetime import datetime as _grafana_datetime, timedelta as _grafana_timedelta, timezone as _grafana_timezone
+GRAFANA_BRT_TZ = _grafana_timezone(_grafana_timedelta(hours=-3))
 
 GRAFANA_CF_LIST = [
     {"cf": "MTN", "label": "Metropolitana Norte - ES", "regional": "ES", "expected_prefix": "VTA"},
@@ -12965,7 +12965,7 @@ GRAFANA_ALLOWED_STATUSES = [
 ]
 
 def _grafana_now_brt():
-    return datetime.now(GRAFANA_BRT_TZ).replace(tzinfo=None)
+    return _grafana_datetime.now(GRAFANA_BRT_TZ).replace(tzinfo=None)
 
 def _grafana_parse_abertura(raw_val):
     s = (raw_val or "").strip()
@@ -12973,7 +12973,7 @@ def _grafana_parse_abertura(raw_val):
         return None
     for fmt in ("%d/%m/%Y - %H:%M", "%d/%m/%Y %H:%M", "%d/%m/%Y %H:%M:%S"):
         try:
-            return datetime.strptime(s, fmt)
+            return _grafana_datetime.strptime(s, fmt)
         except ValueError:
             continue
     return None
@@ -13149,7 +13149,7 @@ def _sync_grafana_data(force=False):
         removed_keys = list(existing_keys - set(parsed_tickets.keys()))
 
         # Clear "is_new" on tickets older than 15 minutes
-        cutoff_new = now_brt - timedelta(minutes=15)
+        cutoff_new = now_brt - _grafana_timedelta(minutes=15)
         cur.execute("UPDATE grafana_tickets SET is_new = FALSE WHERE is_new = TRUE AND first_seen_at < %s;", (cutoff_new,))
 
         # Move cleared/removed tickets into grafana_cleared_tickets with notes snapshot
