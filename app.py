@@ -12478,8 +12478,8 @@ def api_ral_qualidade_import():
         cur = conn.cursor()
 
         # Obter todos os números de ticket já existentes para deduplicação
-        cur.execute("SELECT LOWER(TRIM(ticket_number)) FROM ral_qualidade WHERE ticket_number IS NOT NULL;")
-        existing_tickets = set(r[0] for r in cur.fetchall() if r[0])
+        cur.execute("SELECT LOWER(TRIM(ticket_number)) AS tnum FROM ral_qualidade WHERE ticket_number IS NOT NULL;")
+        existing_tickets = set(r['tnum'] for r in cur.fetchall() if r.get('tnum'))
 
         created_by_name = session.get('name') or session.get('user_name') or session.get('username') or 'Importação Automática'
         created_by_name = format_person_name(created_by_name)
