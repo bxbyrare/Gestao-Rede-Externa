@@ -583,7 +583,7 @@ def send_outdated_profile_email(to_email, user_display, missing_fields=None, por
     sender_fn = _send_resend_email_sync if sync else send_resend_email
     return sender_fn(
         to_email=to_email,
-        subject="[Claro Rede Externa] Atualize seu cadastro e contribua com o portal",
+        subject="[Claro Gestão Externa] Regularização Cadastral",
         category_badge="REGULARIZAÇÃO CADASTRAL • PORTAL",
         title="Atualize seu Cadastro no Portal",
         message_html=message_html,
