@@ -3232,71 +3232,31 @@ def login():
 
 @app.route('/robots.txt')
 def serve_robots_txt():
-    # Strict Enterprise robots.txt: Disallow all indexing & never expose sitemaps or internal routes
-    return Response("User-agent: *\nDisallow: /\n", mimetype='text/plain')
+    # Strict Enterprise robots.txt: Disallow all indexing & AI scrapers; never expose internal routes
+    txt = (
+        "# Gestão Rede Externa (gestaoredeexterna.com.br) — Acesso Corporativo Restrito\n"
+        "User-agent: *\nDisallow: /\n\n"
+        "User-agent: GPTBot\nDisallow: /\n\n"
+        "User-agent: Google-Extended\nDisallow: /\n\n"
+        "User-agent: CCBot\nDisallow: /\n\n"
+        "User-agent: ClaudeBot\nDisallow: /\n\n"
+        "User-agent: Bytespider\nDisallow: /\n"
+    )
+    return Response(txt, mimetype='text/plain')
 
 @app.route('/sitemap.xml')
 def serve_sitemap_xml():
     # Strict Enterprise Security: Private systems must NEVER expose sitemaps of internal forms/routes
     return Response("Not Found", mimetype='text/plain', status=404)
 
-def _disabled_sitemap_xml_legacy():
-    try:
-        host = request.host_url.rstrip('/')
-        today = datetime.date.today().isoformat()
-        
-        # Static & Portal Routes
-        routes = [
-            {"loc": f"{host}/", "changefreq": "daily", "priority": "1.0"},
-            {"loc": f"{host}/login", "changefreq": "monthly", "priority": "0.8"},
-            {"loc": f"{host}/formularios", "changefreq": "daily", "priority": "0.9"},
-            {"loc": f"{host}/veiculos", "changefreq": "daily", "priority": "0.8"},
-            {"loc": f"{host}/escala", "changefreq": "daily", "priority": "0.8"},
-            {"loc": f"{host}/indicadores", "changefreq": "daily", "priority": "0.8"},
-            {"loc": f"{host}/projetos", "changefreq": "weekly", "priority": "0.8"},
-            {"loc": f"{host}/rotas", "changefreq": "weekly", "priority": "0.7"},
-            {"loc": f"{host}/pessoas", "changefreq": "weekly", "priority": "0.7"},
-        ]
-        
-        # Dynamic Public Forms & Projects from Database
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute("SELECT slug, created_at FROM forms WHERE slug IS NOT NULL AND slug != '';")
-            for r in cur.fetchall():
-                slug = r['slug']
-                dt = r['created_at'].strftime('%Y-%m-%d') if r['created_at'] else today
-                routes.append({
-                    "loc": f"{host}/f/{slug}",
-                    "lastmod": dt,
-                    "changefreq": "weekly",
-                    "priority": "0.9"
-                })
-            
-# Projects have no slug column; removed dead query
-            cur.close()
-            conn.close()
-        except Exception as db_err:
-            print("Notice: Error fetching dynamic sitemap items:", db_err)
-
-        # Build XML
-        xml_lines = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        ]
-        for item in routes:
-            xml_lines.append('  <url>')
-            xml_lines.append(f"    <loc>{item['loc']}</loc>")
-            xml_lines.append(f"    <lastmod>{item.get('lastmod', today)}</lastmod>")
-            xml_lines.append(f"    <changefreq>{item.get('changefreq', 'weekly')}</changefreq>")
-            xml_lines.append(f"    <priority>{item.get('priority', '0.7')}</priority>")
-            xml_lines.append('  </url>')
-        xml_lines.append('</urlset>')
-        
-        return Response('\n'.join(xml_lines), mimetype='application/xml')
-    except Exception as e:
-        traceback.print_exc()
-        return Response("<!-- Error generating sitemap -->", mimetype='application/xml', status=500)
+@app.route('/.well-known/security.txt')
+def serve_security_txt():
+    txt = (
+        "Contact: https://gestaoredeexterna.com.br/\n"
+        "Preferred-Languages: pt-BR, en\n"
+        "Canonical: https://gestaoredeexterna.com.br/.well-known/security.txt\n"
+    )
+    return Response(txt, mimetype='text/plain')
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

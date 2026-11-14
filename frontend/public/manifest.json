@@ -1,11 +1,13 @@
 {
-  "name": "Claro Gestão Rede Externa",
+  "id": "https://gestaoredeexterna.com.br/",
+  "name": "Claro • Gestão Rede Externa",
   "short_name": "Gestão Externa",
-  "description": "Sistema integrado de gestão operacional de rede externa, vistorias, técnicos e frota Claro.",
-  "start_url": "/",
+  "description": "Portal corporativo de gestão operacional de rede externa Claro: Grafana COP REDE (RAL, REC, Qualidade), vistorias, técnicos e frota.",
+  "start_url": "/grafana",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#08080a",
-  "theme_color": "#ee2c24",
+  "background_color": "#030305",
+  "theme_color": "#e20613",
   "orientation": "portrait-primary",
   "icons": [
     {
