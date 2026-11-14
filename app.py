@@ -282,6 +282,7 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
 
     current_year = datetime.datetime.now().year
     now_str = datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')
+    banner_url = html.escape(get_portal_url('/email-banner-claro.png'), quote=True)
 
     return f'''<!DOCTYPE html>
 <html lang="pt-BR">
@@ -343,11 +344,20 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
                     </td>
                 </tr>
 
+                <!-- Banner Claro Gestão Rede Externa (Cabeçalho Final) -->
+                <tr>
+                    <td style="padding: 20px 32px 10px 32px; background: #090C13; border-top: 1px solid #1A2333; text-align: center;">
+                        <a href="{html.escape(get_portal_url('/'), quote=True)}" target="_blank" style="text-decoration: none; display: block;">
+                            <img src="{banner_url}" alt="Claro • Gestão Rede Externa" width="536" style="display: block; width: 100%; max-width: 536px; height: auto; margin: 0 auto; border-radius: 10px; border: 1px solid #1E293B;" />
+                        </a>
+                    </td>
+                </tr>
+
                 <!-- Footer -->
                 <tr>
-                    <td style="padding: 18px 32px; background: #07090F; border-top: 1px solid #141B26; text-align: center;">
+                    <td style="padding: 14px 32px 22px 32px; background: #07090F; text-align: center;">
                         <p style="margin: 0 0 6px 0; font-size: 11px; color: #64748B;">
-                            &copy; {current_year} Claro Brasil. Todos os direitos reservados.
+                            &copy; {current_year} Claro Brasil &bull; Gestão Rede Externa. Todos os direitos reservados.
                         </p>
                         <p style="margin: 0; font-size: 10px; color: #475569;">
                             Mensagem gerada automaticamente pelo sistema em {now_str} (Horário de Brasília).
@@ -540,16 +550,16 @@ def send_outdated_profile_email(to_email, user_display, missing_fields=None, por
     message_html = f'''
         <p style="margin: 0 0 14px 0; font-size: 15px; color: #E2E8F0;">Prezado(a) colaborador(a), <strong>{safe_user}</strong>.</p>
         
-        <!-- Bloqueio de Acesso Alerta -->
+        <!-- Aviso Cadastral -->
         <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 16px 0 22px 0;">
             <tr>
-                <td style="background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.06) 100%); border: 1px solid rgba(245, 158, 11, 0.45); border-left: 4px solid #F59E0B; border-radius: 10px; padding: 18px 20px;">
-                    <div style="font-size: 12px; font-weight: 800; color: #FBBF24; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">
-                        🚫 AVISO DE ACESSO RESTRITO AO PORTAL
+                <td style="background: linear-gradient(180deg, rgba(226, 6, 19, 0.12) 0%, rgba(190, 18, 60, 0.05) 100%); border: 1px solid rgba(226, 6, 19, 0.35); border-left: 4px solid #E20613; border-radius: 10px; padding: 18px 20px;">
+                    <div style="font-size: 12px; font-weight: 800; color: #FDA4AF; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">
+                        ATUALIZAÇÃO CADASTRAL PARA OPERAÇÃO NO PORTAL
                     </div>
-                    <p style="margin: 0; font-size: 13.5px; line-height: 1.6; color: #FEF3C7;">
-                        Identificamos que seu cadastro na plataforma <strong>Claro Gestão Rede Externa</strong> possui pendências obrigatórias de identificação.
-                        <strong>Você não conseguirá utilizar as rotinas operacionais do portal (mapas, consultas, ordens e relatórios) até que suas pendências cadastrais sejam atualizadas.</strong>
+                    <p style="margin: 0; font-size: 13.5px; line-height: 1.65; color: #F1F5F9;">
+                        Identificamos que o seu cadastro na plataforma <strong>Claro Gestão Rede Externa</strong> ainda possui informações pendentes.
+                        <strong>Mantenha seus dados completos para continuar contribuindo com o portal</strong> (mapas, consultas, ordens de campo e relatórios operacionais) sem restrições de acesso.
                     </p>
                 </td>
             </tr>
@@ -566,18 +576,18 @@ def send_outdated_profile_email(to_email, user_display, missing_fields=None, por
         </div>
 
         <p style="margin: 0 0 10px 0; font-size: 13.5px; line-height: 1.6; color: #94A3B8;">
-            A regularização leva menos de 1 minuto: acesse o link abaixo, complete as informações faltantes e salve para restabelecer imediatamente seu acesso irrestrito ao sistema.
+            A atualização leva menos de 1 minuto: clique no botão abaixo, preencha os campos pendentes e salve para deixar seu perfil 100% regularizado.
         </p>
     '''
 
     sender_fn = _send_resend_email_sync if sync else send_resend_email
     return sender_fn(
         to_email=to_email,
-        subject="[Claro Rede Externa] Ação Obrigatória: Cadastro Pendente de Atualização",
-        category_badge="REGULARIZAÇÃO CADASTRAL OBRIGATÓRIA",
-        title="Cadastro Pendente de Regularização",
+        subject="[Claro Rede Externa] Atualize seu cadastro e contribua com o portal",
+        category_badge="REGULARIZAÇÃO CADASTRAL • PORTAL",
+        title="Atualize seu Cadastro no Portal",
         message_html=message_html,
-        cta_text="Regularizar Meu Cadastro Agora",
+        cta_text="Atualizar Meu Cadastro Agora",
         cta_url=profile_url
     )
 
