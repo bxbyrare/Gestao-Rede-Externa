@@ -56,8 +56,9 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<FavoritesPage />} />
+            <Route index element={<Navigate to="/grafana" replace />} />
             <Route path="grafana" element={<GrafanaPage />} />
+            <Route path="favoritos" element={<FavoritesPage />} />
             <Route path="area-de-trabalho" element={<WorkspacePage />} />
             <Route path="pessoas" element={<PessoasPage />} />
             <Route path="veiculos" element={<VehiclesPage />} />
@@ -77,7 +78,7 @@ export default function App() {
             <Route path="gerenciamento" element={<UsersPage />} />
             <Route path="notificacoes" element={<NotificacoesPage />} />
             <Route path="perfil" element={<ProfilePage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/grafana" replace />} />
           </Route>
         </Routes>
       </NotificationProvider>

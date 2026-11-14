@@ -37,8 +37,8 @@ function companyLogoNeedsWhiteBg(company: string | null | undefined): boolean {
 }
 
 const NAV_ITEMS = [
-  { to: '/grafana', label: 'Grafana', icon: Activity },
-  { to: '/', label: 'Favoritos', icon: Star, end: true },
+  { to: '/grafana', label: 'Grafana', icon: Activity, end: true },
+  { to: '/favoritos', label: 'Favoritos', icon: Star },
   { to: '/area-de-trabalho', label: 'Área de Trabalho', icon: Briefcase },
   { to: '/pessoas', label: 'Pessoas', icon: Users },
   { to: '/veiculos', label: 'Veículos', icon: Truck },
