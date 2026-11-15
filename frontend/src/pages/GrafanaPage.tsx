@@ -6,13 +6,16 @@ import {
   ChevronDown,
   Clock,
   Copy,
+  Database,
   Download,
+  FileSpreadsheet,
   Layers,
   Pencil,
   Plus,
   RefreshCw,
   Search,
   Sparkles,
+  Upload,
   UserCheck,
   X,
 } from 'lucide-react';
@@ -25,6 +28,12 @@ interface SyncMeta {
   error: string | null;
   interval_seconds: number;
   seconds_to_next: number;
+  manual_override_active?: boolean;
+  manual_updated_at?: string | null;
+  manual_updated_by?: string | null;
+  github_last_changed_at?: string | null;
+  github_stale_minutes?: number;
+  github_is_stale?: boolean;
 }
 
 interface RegionalTotals {
@@ -313,6 +322,21 @@ export default function GrafanaPage() {
   const [respEditingFor, setRespEditingFor] = useState<number | null>(null);
   const [respQuery, setRespQuery] = useState('');
 
+  // Manual base upload modal
+  const [showManualUpload, setShowManualUpload] = useState(false);
+  const [manualRalFile, setManualRalFile] = useState<File | null>(null);
+  const [manualRecFile, setManualRecFile] = useState<File | null>(null);
+  const [manualUploading, setManualUploading] = useState(false);
+  const [manualUploadError, setManualUploadError] = useState<string | null>(null);
+  const [manualUploadResult, setManualUploadResult] = useState<{
+    ral_loaded: number;
+    qua_loaded: number;
+    rec_loaded: number;
+    new_count: number;
+    cleared_now: number;
+    updated_types: string[];
+  } | null>(null);
+
   const fetchDashboard = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -408,6 +432,52 @@ export default function GrafanaPage() {
       console.error('Erro ao sincronizar:', err);
     } finally {
       setSyncing(false);
+    }
+  }
+
+  function openManualUploadModal() {
+    setManualUploadError(null);
+    setManualUploadResult(null);
+    setManualRalFile(null);
+    setManualRecFile(null);
+    setShowManualUpload(true);
+  }
+
+  async function handleManualUploadSubmit() {
+    if (!manualRalFile && !manualRecFile) {
+      setManualUploadError('Selecione ao menos uma base (RAL ou REC) para enviar.');
+      return;
+    }
+    setManualUploading(true);
+    setManualUploadError(null);
+    setManualUploadResult(null);
+    try {
+      const fd = new FormData();
+      if (manualRalFile) fd.append('ral_file', manualRalFile);
+      if (manualRecFile) fd.append('rec_file', manualRecFile);
+      const res = await api.postFormData<{
+        success: boolean;
+        updated_types: string[];
+        ral_loaded: number;
+        qua_loaded: number;
+        rec_loaded: number;
+        new_count: number;
+        cleared_now: number;
+      }>('/api/grafana/manual-upload', fd);
+      setManualUploadResult({
+        ral_loaded: res.ral_loaded || 0,
+        qua_loaded: res.qua_loaded || 0,
+        rec_loaded: res.rec_loaded || 0,
+        new_count: res.new_count || 0,
+        cleared_now: res.cleared_now || 0,
+        updated_types: res.updated_types || [],
+      });
+      await fetchDashboard(true);
+      if (selectedCf) await fetchTickets(selectedCf, selectedQueue);
+    } catch (err: any) {
+      setManualUploadError(err?.message || 'Falha ao enviar base manual.');
+    } finally {
+      setManualUploading(false);
     }
   }
 
@@ -772,6 +842,18 @@ export default function GrafanaPage() {
             </span>
             <span className="text-slate-500">•</span>
             <GrafanaCountdownBadge syncSeconds={syncSeconds} syncTick={syncTick} onRefresh={handleAutoRefresh} />
+            {syncMeta.manual_override_active && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-200 font-semibold">
+                <Database className="w-3 h-3" />
+                Modo Manual Ativo ({syncMeta.manual_updated_by || 'Operador'} · {syncMeta.manual_updated_at || ''})
+              </span>
+            )}
+            {syncMeta.github_is_stale && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/15 border border-red-400/40 text-red-200 font-semibold">
+                <AlertTriangle className="w-3 h-3" />
+                GitHub sem atualização há {Math.floor((syncMeta.github_stale_minutes || 0) / 60)}h {(syncMeta.github_stale_minutes || 0) % 60}min
+              </span>
+            )}
             {syncMeta.status === 'error' && (
               <span className="text-red-400 inline-flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" /> Falha na última leitura CSV
@@ -803,6 +885,15 @@ export default function GrafanaPage() {
                 {myAreas.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={openManualUploadModal}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 text-amber-200 transition"
+            title="Subir manualmente as bases RAL (separa RAL e QUA) e/ou REC"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Atualizar Base Manual
           </button>
 
           <button
@@ -2165,6 +2256,131 @@ export default function GrafanaPage() {
                     : 'Aplicar (Mostrar Todas)'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Atualização Manual das Bases (RAL -> RAL + QUA, REC -> REC) */}
+      {showManualUpload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="w-full max-w-xl bg-[#0B0F17] border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-400/35 flex items-center justify-center text-amber-300">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Atualização Manual de Bases Grafana</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Envie RAL (separa automaticamente RAL + QUA) e/ou REC (.csv, .xlsx, .xlsm, .xls)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowManualUpload(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-xl bg-amber-500/10 border border-amber-400/30 p-3 text-xs text-amber-100/90 leading-relaxed">
+                Enquanto os arquivos do GitHub não receberem uma nova atualização, seus dados manuais ficam protegidos e não serão sobrescritos. Assim que o GitHub atualizar, a sincronização automática retorna sozinha.
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Base RAL */}
+                <label className="block cursor-pointer rounded-xl border border-dashed border-white/20 hover:border-amber-400/60 bg-white/[0.02] hover:bg-white/[0.04] p-4 transition">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xlsm,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setManualRalFile(f);
+                      setManualUploadError(null);
+                    }}
+                  />
+                  <div className="flex items-center gap-2 text-xs font-bold text-white mb-1">
+                    <FileSpreadsheet className="w-4 h-4 text-[#e20613]" />
+                    Base RAL (RAL + QUA)
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-2">
+                    Separa automaticamente filas RAL e QUALIDADE.
+                  </p>
+                  <div className="text-[11px] font-medium truncate px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/10 text-slate-200">
+                    {manualRalFile ? manualRalFile.name : 'Selecionar arquivo RAL...'}
+                  </div>
+                </label>
+
+                {/* Base REC */}
+                <label className="block cursor-pointer rounded-xl border border-dashed border-white/20 hover:border-amber-400/60 bg-white/[0.02] hover:bg-white/[0.04] p-4 transition">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xlsm,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setManualRecFile(f);
+                      setManualUploadError(null);
+                    }}
+                  />
+                  <div className="flex items-center gap-2 text-xs font-bold text-white mb-1">
+                    <FileSpreadsheet className="w-4 h-4 text-sky-400" />
+                    Base REC
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-2">
+                    Atualiza exclusivamente a fila de Reclamações (REC).
+                  </p>
+                  <div className="text-[11px] font-medium truncate px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/10 text-slate-200">
+                    {manualRecFile ? manualRecFile.name : 'Selecionar arquivo REC...'}
+                  </div>
+                </label>
+              </div>
+
+              {manualUploadError && (
+                <div className="rounded-xl bg-red-500/15 border border-red-500/40 px-3.5 py-2.5 text-xs text-red-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{manualUploadError}</span>
+                </div>
+              )}
+
+              {manualUploadResult && (
+                <div className="rounded-xl bg-emerald-500/15 border border-emerald-500/40 px-3.5 py-2.5 text-xs text-emerald-100 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-emerald-300">
+                    <Check className="w-4 h-4" />
+                    Base manual aplicada com sucesso!
+                  </div>
+                  <div className="text-[11px] text-emerald-100/90">
+                    {manualUploadResult.updated_types.includes('RAL') && (
+                      <span>RAL carregadas: <strong>{manualUploadResult.ral_loaded}</strong> · QUA carregadas: <strong>{manualUploadResult.qua_loaded}</strong>{' · '}</span>
+                    )}
+                    {manualUploadResult.updated_types.includes('REC') && (
+                      <span>REC carregadas: <strong>{manualUploadResult.rec_loaded}</strong>{' · '}</span>
+                    )}
+                    Novos: <strong>{manualUploadResult.new_count}</strong> · Sanados: <strong>{manualUploadResult.cleared_now}</strong>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-white/10 bg-white/[0.02] flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowManualUpload(false)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-white/10 transition"
+              >
+                Fechar
+              </button>
+              <button
+                onClick={handleManualUploadSubmit}
+                disabled={manualUploading || (!manualRalFile && !manualRecFile)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition disabled:opacity-50"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {manualUploading ? 'Processando...' : 'Aplicar Base Manual'}
+              </button>
             </div>
           </div>
         </div>

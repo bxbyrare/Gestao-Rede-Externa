@@ -2592,9 +2592,29 @@ def init_db():
                 rec_count INT DEFAULT 0,
                 qualidade_count INT DEFAULT 0,
                 new_count INT DEFAULT 0,
-                cleared_count INT DEFAULT 0
+                cleared_count INT DEFAULT 0,
+                github_ral_hash VARCHAR(64),
+                github_rec_hash VARCHAR(64),
+                github_last_changed_at TIMESTAMP,
+                manual_override_active BOOLEAN DEFAULT FALSE,
+                manual_updated_at TIMESTAMP,
+                manual_updated_by VARCHAR(150),
+                stale_alert_sent_at TIMESTAMP
             );
         """)
+        for col_sql in [
+            "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS github_ral_hash VARCHAR(64);",
+            "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS github_rec_hash VARCHAR(64);",
+            "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS github_last_changed_at TIMESTAMP;",
+            "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS manual_override_active BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS manual_updated_at TIMESTAMP;",
+            "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS manual_updated_by VARCHAR(150);",
+            "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS stale_alert_sent_at TIMESTAMP;",
+        ]:
+            try:
+                cur.execute(col_sql)
+            except Exception:
+                pass
         for idx_sql in [
             "CREATE INDEX IF NOT EXISTS idx_grafana_tickets_cf_type ON grafana_tickets(cf, ticket_type);",
             "CREATE INDEX IF NOT EXISTS idx_grafana_tickets_qualidade ON grafana_tickets(is_qualidade);",
@@ -3018,7 +3038,7 @@ def _resolve_required_permission(path, method):
         return 'ral_qualidade.delete'
 
     # Grafana (COP REDE - RAL / REC / RAL de Qualidade)
-    if p == '/api/grafana/sync' and method == 'POST':
+    if p in ('/api/grafana/sync', '/api/grafana/manual-upload') and method == 'POST':
         return 'grafana.edit'
     if p.startswith('/api/grafana/tickets/') and p.endswith('/notes') and method == 'POST':
         return 'grafana.create'
@@ -13940,6 +13960,347 @@ def _grafana_compute_sla(ticket_type, abertura_dt, now_brt=None):
         "sla_delta_minutes": rem,
     }
 
+GRAFANA_STALE_ALERT_EMAIL = "alexandrecandid@gmail.com"
+GRAFANA_STALE_THRESHOLD_SECONDS = 5400   # 1h 30min (within 1-2 hours)
+GRAFANA_STALE_ALERT_COOLDOWN_SECONDS = 7200  # 2h cooldown between repeat alerts
+GRAFANA_WATCHDOG_INTERVAL_SECONDS = 900  # 15 min background check
+
+
+def _ensure_grafana_sync_meta_cols(cur):
+    """Garante que colunas de rastreio manual e alerta estejam presentes em grafana_sync_meta."""
+    for col_sql in [
+        "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS github_ral_hash VARCHAR(64);",
+        "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS github_rec_hash VARCHAR(64);",
+        "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS github_last_changed_at TIMESTAMP;",
+        "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS manual_override_active BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS manual_updated_at TIMESTAMP;",
+        "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS manual_updated_by VARCHAR(150);",
+        "ALTER TABLE grafana_sync_meta ADD COLUMN IF NOT EXISTS stale_alert_sent_at TIMESTAMP;",
+    ]:
+        cur.execute(col_sql)
+
+
+def _norm_grafana_row(row):
+    """Normaliza chaves e valores de uma linha (CSV/Excel) para strings limpas."""
+    out = {}
+    for k, v in (row or {}).items():
+        if k is None:
+            continue
+        ks = str(k).strip()
+        if not ks:
+            continue
+        if v is None:
+            out[ks] = ""
+        elif hasattr(v, "strftime"):
+            out[ks] = v.strftime("%d/%m/%Y %H:%M")
+        else:
+            out[ks] = str(v).strip()
+    return out
+
+
+def _parse_grafana_rows_to_tickets(rows, kind, parsed_tickets):
+    """Converte linhas de RAL (separando RAL e QUALIDADE) ou REC em dict indexado por ticket_key."""
+    raw_count = 0
+    for raw_row in rows:
+        raw_count += 1
+        row = _norm_grafana_row(raw_row)
+        num = row.get("Num.Recup.") or ""
+        if not num:
+            continue
+        cf_meta = _grafana_extract_cf(row.get("CF Exec."))
+        if not cf_meta:
+            continue
+        abertura_raw = row.get("Abertura") or ""
+        if kind == "RAL":
+            tipo_ral = row.get("Tipo Ral") or ""
+            is_qual = tipo_ral.upper() == "QUALIDADE"
+            tkey = f"RAL:{num}"
+            parsed_tickets[tkey] = {
+                "ticket_key": tkey,
+                "ticket_type": "RAL",
+                "ticket_number": num[:60],
+                "cf": cf_meta["cf"],
+                "regional": cf_meta["regional"],
+                "cf_exec_raw": (row.get("CF Exec.") or "")[:120],
+                "designation": (row.get("Designação") or "")[:255],
+                "tipo_ral": tipo_ral[:100],
+                "is_qualidade": is_qual,
+                "cliente": "",
+                "anorm": (row.get("Anorm.") or "")[:80],
+                "abertura_raw": abertura_raw[:60],
+                "abertura_dt": _grafana_parse_abertura(abertura_raw),
+                "duracao_raw": (row.get("Duração") or "")[:60],
+                "resp_code": (row.get("Resp.") or "")[:40],
+                "tecnico_csv": (row.get("Técn.") or "")[:120],
+                "anatel": (row.get("Anatel") or "")[:30],
+                "prejuizo": (row.get("Prejuízo") or "")[:30],
+            }
+        else:
+            tkey = f"REC:{num}"
+            parsed_tickets[tkey] = {
+                "ticket_key": tkey,
+                "ticket_type": "REC",
+                "ticket_number": num[:60],
+                "cf": cf_meta["cf"],
+                "regional": cf_meta["regional"],
+                "cf_exec_raw": (row.get("CF Exec.") or "")[:120],
+                "designation": (row.get("Designação") or "")[:255],
+                "tipo_ral": "REC",
+                "is_qualidade": False,
+                "cliente": (row.get("Cliente") or "")[:180],
+                "anorm": "",
+                "abertura_raw": abertura_raw[:60],
+                "abertura_dt": _grafana_parse_abertura(abertura_raw),
+                "duracao_raw": "",
+                "resp_code": (row.get("Resp.") or "")[:40],
+                "tecnico_csv": (row.get("Técnico") or "")[:120],
+                "anatel": "",
+                "prejuizo": "",
+            }
+    return raw_count
+
+
+def _read_grafana_uploaded_file(file_storage):
+    """Lê arquivo enviado (.csv, .xlsx, .xlsm, .xls) e retorna lista de dicts."""
+    filename = (getattr(file_storage, "filename", "") or "").lower()
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError("Arquivo enviado está vazio.")
+
+    if filename.endswith((".xlsx", ".xlsm")):
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        try:
+            ws = wb.active
+            rows_iter = ws.iter_rows(values_only=True)
+            headers = None
+            result = []
+            for r in rows_iter:
+                if headers is None:
+                    cand = [str(c).strip() if c is not None else "" for c in r]
+                    if any(cand):
+                        headers = cand
+                    continue
+                if not any(c is not None and str(c).strip() != "" for c in r):
+                    continue
+                row_dict = {}
+                for idx, h in enumerate(headers):
+                    if h:
+                        row_dict[h] = r[idx] if idx < len(r) else ""
+                result.append(row_dict)
+            return result
+        finally:
+            wb.close()
+
+    if filename.endswith(".xls"):
+        try:
+            import xlrd
+            book = xlrd.open_workbook(file_contents=raw)
+            sheet = book.sheet_by_index(0)
+            if sheet.nrows < 1:
+                return []
+            headers = [str(sheet.cell_value(0, c)).strip() for c in range(sheet.ncols)]
+            result = []
+            for r_idx in range(1, sheet.nrows):
+                row_dict = {}
+                has_val = False
+                for c_idx, h in enumerate(headers):
+                    if h:
+                        val = sheet.cell_value(r_idx, c_idx)
+                        if val is not None and str(val).strip() != "":
+                            has_val = True
+                        row_dict[h] = val
+                if has_val:
+                    result.append(row_dict)
+            return result
+        except ImportError:
+            raise ValueError("Formato .xls legado não suportado diretamente; salve a planilha como .xlsx ou .csv.")
+
+    # CSV fallback
+    text = None
+    for enc in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode("utf-8-sig", errors="replace")
+
+    first_line = text.splitlines()[0] if text.splitlines() else ""
+    delim = ";" if first_line.count(";") >= first_line.count(",") else ","
+    if "\t" in first_line and first_line.count("\t") > first_line.count(delim):
+        delim = "\t"
+    return list(csv.DictReader(io.StringIO(text), delimiter=delim))
+
+
+def _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt):
+    """Aplica atualização de tickets para os tipos informados (ex: {'RAL'}, {'REC'} ou {'RAL', 'REC'})."""
+    target_list = list(target_types)
+    cur.execute("SELECT ticket_key, first_seen_at FROM grafana_tickets WHERE ticket_type = ANY(%s);", (target_list,))
+    existing_rows = cur.fetchall()
+    existing_keys = {r["ticket_key"] for r in existing_rows}
+    had_existing = len(existing_keys) > 0
+
+    new_keys = set(parsed_tickets.keys()) - existing_keys
+    removed_keys = list(existing_keys - set(parsed_tickets.keys()))
+
+    # Clear "is_new" on tickets older than 15 minutes
+    cutoff_new = now_brt - _grafana_timedelta(minutes=15)
+    cur.execute(
+        "UPDATE grafana_tickets SET is_new = FALSE WHERE is_new = TRUE AND first_seen_at < %s AND ticket_type = ANY(%s);",
+        (cutoff_new, target_list),
+    )
+
+    # Move cleared/removed tickets into grafana_cleared_tickets with notes snapshot
+    cleared_now = 0
+    if removed_keys:
+        cur.execute("SELECT * FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
+        to_archive = cur.fetchall()
+        cur.execute("""
+            SELECT ticket_key, id, content, author_name, created_at
+            FROM grafana_ticket_notes
+            WHERE ticket_key = ANY(%s)
+            ORDER BY created_at ASC;
+        """, (removed_keys,))
+        notes_by_key = {}
+        for n in cur.fetchall():
+            notes_by_key.setdefault(n["ticket_key"], []).append({
+                "id": n["id"],
+                "content": n["content"],
+                "author_name": n["author_name"],
+                "created_at": n["created_at"].strftime("%d/%m %H:%M") if n.get("created_at") else "",
+            })
+        if to_archive:
+            from psycopg2.extras import execute_values
+            archive_rows = [
+                (
+                    t["ticket_key"], t["ticket_type"], t["ticket_number"], t["cf"], t["regional"], t["cf_exec_raw"],
+                    t["designation"], t["tipo_ral"], t["is_qualidade"], t["cliente"], t["abertura_raw"], t["abertura_dt"],
+                    t["status_andamento"], t["responsible_name"],
+                    json.dumps(notes_by_key.get(t["ticket_key"], []), ensure_ascii=False),
+                    t["first_seen_at"], now_brt
+                )
+                for t in to_archive
+            ]
+            execute_values(cur, """
+                INSERT INTO grafana_cleared_tickets (
+                    ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
+                    designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
+                    status_andamento, responsible_name, notes_snapshot, first_seen_at, cleared_at
+                ) VALUES %s;
+            """, archive_rows, template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)", page_size=500)
+            cleared_now = len(archive_rows)
+        cur.execute("DELETE FROM grafana_ticket_notes WHERE ticket_key = ANY(%s);", (removed_keys,))
+        cur.execute("DELETE FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
+
+    # Upsert active tickets in batch preserving status_andamento & responsible_name
+    if parsed_tickets:
+        from psycopg2.extras import execute_values
+        ticket_rows = [
+            (
+                item["ticket_key"], item["ticket_type"], item["ticket_number"], item["cf"], item["regional"], item["cf_exec_raw"],
+                item["designation"], item["tipo_ral"], item["is_qualidade"], item["cliente"], item["anorm"], item["abertura_raw"],
+                item["abertura_dt"], item["duracao_raw"], item["resp_code"], item["tecnico_csv"], item["anatel"], item["prejuizo"],
+                now_brt, now_brt, bool(had_existing and tkey in new_keys), now_brt
+            )
+            for tkey, item in parsed_tickets.items()
+        ]
+        execute_values(cur, """
+            INSERT INTO grafana_tickets (
+                ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
+                designation, tipo_ral, is_qualidade, cliente, anorm, abertura_raw,
+                abertura_dt, duracao_raw, resp_code, tecnico_csv, anatel, prejuizo,
+                first_seen_at, last_seen_at, is_new, updated_at
+            ) VALUES %s
+            ON CONFLICT (ticket_key) DO UPDATE SET
+                cf = EXCLUDED.cf,
+                regional = EXCLUDED.regional,
+                cf_exec_raw = EXCLUDED.cf_exec_raw,
+                designation = EXCLUDED.designation,
+                tipo_ral = EXCLUDED.tipo_ral,
+                is_qualidade = EXCLUDED.is_qualidade,
+                cliente = EXCLUDED.cliente,
+                anorm = EXCLUDED.anorm,
+                abertura_raw = EXCLUDED.abertura_raw,
+                abertura_dt = EXCLUDED.abertura_dt,
+                duracao_raw = EXCLUDED.duracao_raw,
+                resp_code = EXCLUDED.resp_code,
+                tecnico_csv = EXCLUDED.tecnico_csv,
+                anatel = EXCLUDED.anatel,
+                prejuizo = EXCLUDED.prejuizo,
+                last_seen_at = EXCLUDED.last_seen_at,
+                updated_at = EXCLUDED.updated_at;
+        """, ticket_rows, page_size=500)
+
+    cur.execute("""
+        SELECT
+            COUNT(*) FILTER (WHERE ticket_type = 'RAL' AND NOT is_qualidade) AS ral_count,
+            COUNT(*) FILTER (WHERE ticket_type = 'REC') AS rec_count,
+            COUNT(*) FILTER (WHERE is_qualidade) AS qualidade_count
+        FROM grafana_tickets;
+    """)
+    counts = cur.fetchone() or {}
+    new_active = len(new_keys) if had_existing else 0
+    return {
+        "new_active": new_active,
+        "cleared_now": cleared_now,
+        "ral_count": int(counts.get("ral_count") or 0),
+        "rec_count": int(counts.get("rec_count") or 0),
+        "qualidade_count": int(counts.get("qualidade_count") or 0),
+    }
+
+
+def _format_duration_pt(seconds):
+    total_min = max(1, int(seconds // 60))
+    hours, mins = divmod(total_min, 60)
+    if hours > 0 and mins > 0:
+        return f"{hours}h {mins}min"
+    if hours > 0:
+        return f"{hours}h"
+    return f"{mins}min"
+
+
+def _check_and_alert_stale_grafana(cur, now_brt, github_last_changed_at, stale_alert_sent_at, manual_override_active=False):
+    """Envia alerta por e-mail se a base do GitHub estiver sem atualização há >= 1h30."""
+    if not github_last_changed_at:
+        return False
+    elapsed = (now_brt - github_last_changed_at).total_seconds()
+    if elapsed < GRAFANA_STALE_THRESHOLD_SECONDS:
+        return False
+    if stale_alert_sent_at and (now_brt - stale_alert_sent_at).total_seconds() < GRAFANA_STALE_ALERT_COOLDOWN_SECONDS:
+        return False
+
+    dur_label = _format_duration_pt(elapsed)
+    last_changed_str = github_last_changed_at.strftime("%d/%m/%Y às %H:%M")
+    override_note = (
+        "<p><strong>Modo Manual Ativo:</strong> A operação está utilizando uma base enviada manualmente até que o GitHub receba uma nova atualização.</p>"
+        if manual_override_active else
+        "<p>Caso a atualização automática não normalize hoje, utilize a opção <strong>Atualizar Base Manual</strong> na aba Grafana.</p>"
+    )
+    subject = f"[Alerta Grafana] Base GitHub sem atualização há {dur_label}"
+    message_html = (
+        f"<p>A base automática do Grafana no GitHub (<code>dados_ral.csv</code> / <code>dados_rec.csv</code>) "
+        f"está sem novas atualizações há <strong>{dur_label}</strong>.</p>"
+        f"<p><strong>Última alteração detectada no GitHub:</strong> {last_changed_str} (horário de Brasília)</p>"
+        f"{override_note}"
+        f"<p>Por favor, verifique e atualize a base assim que possível.</p>"
+    )
+    ok, _code, err = _send_resend_email_sync(
+        GRAFANA_STALE_ALERT_EMAIL,
+        subject,
+        "ALERTA GRAFANA",
+        f"Base sem atualização há {dur_label}",
+        message_html,
+    )
+    if ok:
+        cur.execute("UPDATE grafana_sync_meta SET stale_alert_sent_at = %s WHERE id = 1;", (now_brt,))
+        print(f"[GRAFANA STALE ALERT] E-mail enviado para {GRAFANA_STALE_ALERT_EMAIL} (sem atualização há {dur_label})")
+        return True
+    print(f"[GRAFANA STALE ALERT] Falha ao enviar e-mail: {err}")
+    return False
+
+
 def _sync_grafana_data(force=False):
     conn = None
     cur = None
@@ -13949,7 +14310,13 @@ def _sync_grafana_data(force=False):
         conn = get_db()
         cur = conn.cursor()
 
-        cur.execute("SELECT last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count, qualidade_count, new_count, cleared_count FROM grafana_sync_meta WHERE id = 1;")
+        cur.execute("""
+            SELECT last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count,
+                   qualidade_count, new_count, cleared_count,
+                   github_ral_hash, github_rec_hash, github_last_changed_at,
+                   manual_override_active, manual_updated_at, manual_updated_by, stale_alert_sent_at
+            FROM grafana_sync_meta WHERE id = 1;
+        """)
         meta_row = cur.fetchone()
         if meta_row and meta_row.get("last_sync_at"):
             age = (now_brt - meta_row["last_sync_at"]).total_seconds()
@@ -13964,7 +14331,13 @@ def _sync_grafana_data(force=False):
             return {"synced": False, "cached": True, "meta": meta_row}
 
         # Re-check inside lock in case another worker just finished syncing
-        cur.execute("SELECT last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count, qualidade_count, new_count, cleared_count FROM grafana_sync_meta WHERE id = 1;")
+        cur.execute("""
+            SELECT last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count,
+                   qualidade_count, new_count, cleared_count,
+                   github_ral_hash, github_rec_hash, github_last_changed_at,
+                   manual_override_active, manual_updated_at, manual_updated_by, stale_alert_sent_at
+            FROM grafana_sync_meta WHERE id = 1;
+        """)
         meta_row = cur.fetchone()
         if meta_row and meta_row.get("last_sync_at"):
             age = (now_brt - meta_row["last_sync_at"]).total_seconds()
@@ -13973,11 +14346,40 @@ def _sync_grafana_data(force=False):
                 return {"synced": False, "cached": True, "meta": meta_row}
 
         # Fetch hardcoded GitHub raw CSVs (no user-supplied URL -> SSRF-safe)
+        import hashlib
         import requests as _req
         ral_resp = _req.get(GRAFANA_RAL_CSV_URL, timeout=20)
         rec_resp = _req.get(GRAFANA_REC_CSV_URL, timeout=20)
         ral_resp.raise_for_status()
         rec_resp.raise_for_status()
+
+        new_ral_hash = hashlib.sha256(ral_resp.content).hexdigest()
+        new_rec_hash = hashlib.sha256(rec_resp.content).hexdigest()
+
+        prev_ral_hash = meta_row.get("github_ral_hash") if meta_row else None
+        prev_rec_hash = meta_row.get("github_rec_hash") if meta_row else None
+        manual_override_active = bool(meta_row and meta_row.get("manual_override_active"))
+        github_changed = (
+            prev_ral_hash is None
+            or prev_rec_hash is None
+            or new_ral_hash != prev_ral_hash
+            or new_rec_hash != prev_rec_hash
+        )
+
+        # If manual override is active and GitHub hasn't changed yet, keep manual data untouched
+        if manual_override_active and not github_changed:
+            github_last_changed = (meta_row.get("github_last_changed_at") if meta_row else None) or now_brt
+            stale_sent = meta_row.get("stale_alert_sent_at") if meta_row else None
+            _check_and_alert_stale_grafana(cur, now_brt, github_last_changed, stale_sent, manual_override_active=True)
+            cur.execute("""
+                UPDATE grafana_sync_meta
+                SET last_sync_at = %s,
+                    last_sync_status = 'manual_override',
+                    last_sync_error = NULL
+                WHERE id = 1;
+            """, (now_brt,))
+            conn.commit()
+            return {"synced": False, "cached": False, "manual_override_preserved": True}
 
         ral_text = ral_resp.content.decode("utf-8-sig", errors="replace")
         rec_text = rec_resp.content.decode("utf-8-sig", errors="replace")
@@ -13986,177 +14388,31 @@ def _sync_grafana_data(force=False):
         rec_reader = csv.DictReader(io.StringIO(rec_text), delimiter=";")
 
         parsed_tickets = {}
-        ral_raw_rows = 0
-        rec_raw_rows = 0
-
-        for row in ral_reader:
-            ral_raw_rows += 1
-            num = (row.get("Num.Recup.") or "").strip()
-            if not num:
-                continue
-            cf_meta = _grafana_extract_cf(row.get("CF Exec."))
-            if not cf_meta:
-                continue
-            tipo_ral = (row.get("Tipo Ral") or "").strip()
-            is_qual = tipo_ral.upper() == "QUALIDADE"
-            abertura_raw = (row.get("Abertura") or "").strip()
-            tkey = f"RAL:{num}"
-            parsed_tickets[tkey] = {
-                "ticket_key": tkey,
-                "ticket_type": "RAL",
-                "ticket_number": num[:60],
-                "cf": cf_meta["cf"],
-                "regional": cf_meta["regional"],
-                "cf_exec_raw": (row.get("CF Exec.") or "").strip()[:120],
-                "designation": (row.get("Designação") or "").strip()[:255],
-                "tipo_ral": tipo_ral[:100],
-                "is_qualidade": is_qual,
-                "cliente": "",
-                "anorm": (row.get("Anorm.") or "").strip()[:80],
-                "abertura_raw": abertura_raw[:60],
-                "abertura_dt": _grafana_parse_abertura(abertura_raw),
-                "duracao_raw": (row.get("Duração") or "").strip()[:60],
-                "resp_code": (row.get("Resp.") or "").strip()[:40],
-                "tecnico_csv": (row.get("Técn.") or "").strip()[:120],
-                "anatel": (row.get("Anatel") or "").strip()[:30],
-                "prejuizo": (row.get("Prejuízo") or "").strip()[:30],
-            }
-
-        for row in rec_reader:
-            rec_raw_rows += 1
-            num = (row.get("Num.Recup.") or "").strip()
-            if not num:
-                continue
-            cf_meta = _grafana_extract_cf(row.get("CF Exec."))
-            if not cf_meta:
-                continue
-            abertura_raw = (row.get("Abertura") or "").strip()
-            tkey = f"REC:{num}"
-            parsed_tickets[tkey] = {
-                "ticket_key": tkey,
-                "ticket_type": "REC",
-                "ticket_number": num[:60],
-                "cf": cf_meta["cf"],
-                "regional": cf_meta["regional"],
-                "cf_exec_raw": (row.get("CF Exec.") or "").strip()[:120],
-                "designation": (row.get("Designação") or "").strip()[:255],
-                "tipo_ral": "REC",
-                "is_qualidade": False,
-                "cliente": (row.get("Cliente") or "").strip()[:180],
-                "anorm": "",
-                "abertura_raw": abertura_raw[:60],
-                "abertura_dt": _grafana_parse_abertura(abertura_raw),
-                "duracao_raw": "",
-                "resp_code": (row.get("Resp.") or "").strip()[:40],
-                "tecnico_csv": (row.get("Técnico") or "").strip()[:120],
-                "anatel": "",
-                "prejuizo": "",
-            }
+        ral_raw_rows = _parse_grafana_rows_to_tickets(ral_reader, "RAL", parsed_tickets)
+        rec_raw_rows = _parse_grafana_rows_to_tickets(rec_reader, "REC", parsed_tickets)
 
         if ral_raw_rows == 0 or rec_raw_rows == 0:
             raise ValueError("CSV retornado vazio; sincronização abortada para proteger base ativa.")
 
-        cur.execute("SELECT ticket_key, first_seen_at FROM grafana_tickets;")
-        existing_rows = cur.fetchall()
-        existing_keys = {r["ticket_key"] for r in existing_rows}
-        had_existing = len(existing_keys) > 0
+        batch_res = _apply_grafana_ticket_batch(cur, parsed_tickets, {"RAL", "REC"}, now_brt)
 
-        new_keys = set(parsed_tickets.keys()) - existing_keys
-        removed_keys = list(existing_keys - set(parsed_tickets.keys()))
-
-        # Clear "is_new" on tickets older than 15 minutes
-        cutoff_new = now_brt - _grafana_timedelta(minutes=15)
-        cur.execute("UPDATE grafana_tickets SET is_new = FALSE WHERE is_new = TRUE AND first_seen_at < %s;", (cutoff_new,))
-
-        # Move cleared/removed tickets into grafana_cleared_tickets with notes snapshot
-        cleared_now = 0
-        if removed_keys:
-            cur.execute("SELECT * FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
-            to_archive = cur.fetchall()
-            cur.execute("""
-                SELECT ticket_key, id, content, author_name, created_at
-                FROM grafana_ticket_notes
-                WHERE ticket_key = ANY(%s)
-                ORDER BY created_at ASC;
-            """, (removed_keys,))
-            notes_by_key = {}
-            for n in cur.fetchall():
-                notes_by_key.setdefault(n["ticket_key"], []).append({
-                    "id": n["id"],
-                    "content": n["content"],
-                    "author_name": n["author_name"],
-                    "created_at": n["created_at"].strftime("%d/%m %H:%M") if n.get("created_at") else "",
-                })
-            if to_archive:
-                from psycopg2.extras import execute_values
-                archive_rows = [
-                    (
-                        t["ticket_key"], t["ticket_type"], t["ticket_number"], t["cf"], t["regional"], t["cf_exec_raw"],
-                        t["designation"], t["tipo_ral"], t["is_qualidade"], t["cliente"], t["abertura_raw"], t["abertura_dt"],
-                        t["status_andamento"], t["responsible_name"],
-                        json.dumps(notes_by_key.get(t["ticket_key"], []), ensure_ascii=False),
-                        t["first_seen_at"], now_brt
-                    )
-                    for t in to_archive
-                ]
-                execute_values(cur, """
-                    INSERT INTO grafana_cleared_tickets (
-                        ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
-                        designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
-                        status_andamento, responsible_name, notes_snapshot, first_seen_at, cleared_at
-                    ) VALUES %s;
-                """, archive_rows, template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)", page_size=500)
-                cleared_now = len(archive_rows)
-            cur.execute("DELETE FROM grafana_ticket_notes WHERE ticket_key = ANY(%s);", (removed_keys,))
-            cur.execute("DELETE FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
-
-        # Upsert all active tickets in a single batch
-        if parsed_tickets:
-            from psycopg2.extras import execute_values
-            ticket_rows = [
-                (
-                    item["ticket_key"], item["ticket_type"], item["ticket_number"], item["cf"], item["regional"], item["cf_exec_raw"],
-                    item["designation"], item["tipo_ral"], item["is_qualidade"], item["cliente"], item["anorm"], item["abertura_raw"],
-                    item["abertura_dt"], item["duracao_raw"], item["resp_code"], item["tecnico_csv"], item["anatel"], item["prejuizo"],
-                    now_brt, now_brt, bool(had_existing and tkey in new_keys), now_brt
-                )
-                for tkey, item in parsed_tickets.items()
-            ]
-            execute_values(cur, """
-                INSERT INTO grafana_tickets (
-                    ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
-                    designation, tipo_ral, is_qualidade, cliente, anorm, abertura_raw,
-                    abertura_dt, duracao_raw, resp_code, tecnico_csv, anatel, prejuizo,
-                    first_seen_at, last_seen_at, is_new, updated_at
-                ) VALUES %s
-                ON CONFLICT (ticket_key) DO UPDATE SET
-                    cf = EXCLUDED.cf,
-                    regional = EXCLUDED.regional,
-                    cf_exec_raw = EXCLUDED.cf_exec_raw,
-                    designation = EXCLUDED.designation,
-                    tipo_ral = EXCLUDED.tipo_ral,
-                    is_qualidade = EXCLUDED.is_qualidade,
-                    cliente = EXCLUDED.cliente,
-                    anorm = EXCLUDED.anorm,
-                    abertura_raw = EXCLUDED.abertura_raw,
-                    abertura_dt = EXCLUDED.abertura_dt,
-                    duracao_raw = EXCLUDED.duracao_raw,
-                    resp_code = EXCLUDED.resp_code,
-                    tecnico_csv = EXCLUDED.tecnico_csv,
-                    anatel = EXCLUDED.anatel,
-                    prejuizo = EXCLUDED.prejuizo,
-                    last_seen_at = EXCLUDED.last_seen_at,
-                    updated_at = EXCLUDED.updated_at;
-            """, ticket_rows, page_size=500)
-
-        ral_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "RAL" and not v["is_qualidade"])
-        rec_count = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "REC")
-        qual_count = sum(1 for v in parsed_tickets.values() if v["is_qualidade"])
-        new_active = len(new_keys) if had_existing else 0
+        if github_changed:
+            github_last_changed = now_brt
+            stale_alert_sent = None
+            manual_override_next = False
+        else:
+            github_last_changed = (meta_row.get("github_last_changed_at") if meta_row else None) or now_brt
+            stale_alert_sent = meta_row.get("stale_alert_sent_at") if meta_row else None
+            manual_override_next = False
 
         cur.execute("""
-            INSERT INTO grafana_sync_meta (id, last_sync_at, last_sync_status, last_sync_error, ral_count, rec_count, qualidade_count, new_count, cleared_count)
-            VALUES (1, %s, 'ok', NULL, %s, %s, %s, %s, %s)
+            INSERT INTO grafana_sync_meta (
+                id, last_sync_at, last_sync_status, last_sync_error,
+                ral_count, rec_count, qualidade_count, new_count, cleared_count,
+                github_ral_hash, github_rec_hash, github_last_changed_at,
+                manual_override_active, stale_alert_sent_at
+            )
+            VALUES (1, %s, 'ok', NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 last_sync_at = EXCLUDED.last_sync_at,
                 last_sync_status = 'ok',
@@ -14165,10 +14421,25 @@ def _sync_grafana_data(force=False):
                 rec_count = EXCLUDED.rec_count,
                 qualidade_count = EXCLUDED.qualidade_count,
                 new_count = EXCLUDED.new_count,
-                cleared_count = grafana_sync_meta.cleared_count + EXCLUDED.cleared_count;
-        """, (now_brt, ral_count, rec_count, qual_count, new_active, cleared_now))
+                cleared_count = grafana_sync_meta.cleared_count + EXCLUDED.cleared_count,
+                github_ral_hash = EXCLUDED.github_ral_hash,
+                github_rec_hash = EXCLUDED.github_rec_hash,
+                github_last_changed_at = EXCLUDED.github_last_changed_at,
+                manual_override_active = EXCLUDED.manual_override_active,
+                stale_alert_sent_at = EXCLUDED.stale_alert_sent_at;
+        """, (
+            now_brt,
+            batch_res["ral_count"], batch_res["rec_count"], batch_res["qualidade_count"],
+            batch_res["new_active"], batch_res["cleared_now"],
+            new_ral_hash, new_rec_hash, github_last_changed,
+            manual_override_next, stale_alert_sent,
+        ))
+
+        if not github_changed:
+            _check_and_alert_stale_grafana(cur, now_brt, github_last_changed, stale_alert_sent, manual_override_active=False)
+
         conn.commit()
-        return {"synced": True, "cached": False, "new_count": new_active, "cleared_now": cleared_now}
+        return {"synced": True, "cached": False, "new_count": batch_res["new_active"], "cleared_now": batch_res["cleared_now"]}
     except Exception as e:
         if conn:
             try:
@@ -14198,6 +14469,31 @@ def _sync_grafana_data(force=False):
                 cur.close()
             except Exception:
                 pass
+
+
+_grafana_watchdog_started = False
+
+
+def _start_grafana_stale_watchdog():
+    """Inicia thread daemon para checar periodicamente se a base do GitHub ficou desatualizada."""
+    global _grafana_watchdog_started
+    if _grafana_watchdog_started:
+        return
+    _grafana_watchdog_started = True
+
+    def _loop():
+        import time as _time
+        _time.sleep(60)
+        while True:
+            try:
+                with app.app_context():
+                    _sync_grafana_data(force=False)
+            except Exception as exc:
+                print("[GRAFANA WATCHDOG ERROR]", exc)
+            _time.sleep(GRAFANA_WATCHDOG_INTERVAL_SECONDS)
+
+    t = threading.Thread(target=_loop, daemon=True, name="grafana-stale-watchdog")
+    t.start()
 
 @app.route('/api/grafana/dashboard', methods=['GET'])
 @login_required
@@ -14332,11 +14628,20 @@ def api_grafana_dashboard():
                 elif ttype == "REC":
                     new_rec_feed.append(feed_item)
 
+        _start_grafana_stale_watchdog()
         last_sync_iso = meta.get("last_sync_at").strftime("%d/%m/%Y %H:%M:%S") if meta.get("last_sync_at") else None
         seconds_to_next = GRAFANA_SYNC_INTERVAL_SECONDS
         if meta.get("last_sync_at"):
             elapsed = (now_brt - meta["last_sync_at"]).total_seconds()
             seconds_to_next = max(0, int(GRAFANA_SYNC_INTERVAL_SECONDS - elapsed))
+
+        gh_changed_at = meta.get("github_last_changed_at")
+        gh_stale_minutes = 0
+        gh_is_stale = False
+        if gh_changed_at:
+            gh_elapsed = max(0, (now_brt - gh_changed_at).total_seconds())
+            gh_stale_minutes = int(gh_elapsed // 60)
+            gh_is_stale = gh_elapsed >= GRAFANA_STALE_THRESHOLD_SECONDS
 
         return jsonify({
             "totals": totals,
@@ -14351,6 +14656,12 @@ def api_grafana_dashboard():
                 "error": meta.get("last_sync_error"),
                 "interval_seconds": GRAFANA_SYNC_INTERVAL_SECONDS,
                 "seconds_to_next": seconds_to_next,
+                "manual_override_active": bool(meta.get("manual_override_active")),
+                "manual_updated_at": meta.get("manual_updated_at").strftime("%d/%m/%Y %H:%M:%S") if meta.get("manual_updated_at") else None,
+                "manual_updated_by": meta.get("manual_updated_by"),
+                "github_last_changed_at": gh_changed_at.strftime("%d/%m/%Y %H:%M:%S") if gh_changed_at else None,
+                "github_stale_minutes": gh_stale_minutes,
+                "github_is_stale": gh_is_stale,
             },
             "server_time_brt": now_brt.strftime("%d/%m, %H:%M"),
         })
@@ -14363,6 +14674,132 @@ def api_grafana_dashboard():
 def api_grafana_sync():
     res = _sync_grafana_data(force=True)
     return jsonify({"success": "error" not in res, **res})
+
+
+@app.route('/api/grafana/manual-upload', methods=['POST'])
+@login_required
+def api_grafana_manual_upload():
+    """Atualiza manualmente as bases RAL (separando RAL e QUA) e/ou REC do Grafana."""
+    ral_file = request.files.get('ral_file')
+    rec_file = request.files.get('rec_file')
+    has_ral = bool(ral_file and (ral_file.filename or '').strip())
+    has_rec = bool(rec_file and (rec_file.filename or '').strip())
+    if not has_ral and not has_rec:
+        return jsonify({"error": "Envie ao menos uma base (RAL ou REC) para atualização manual."}), 400
+
+    conn = None
+    cur = None
+    locked = False
+    now_brt = _grafana_now_brt()
+    try:
+        parsed_tickets = {}
+        target_types = set()
+
+        if has_ral:
+            ral_rows = _read_grafana_uploaded_file(ral_file)
+            ral_raw = _parse_grafana_rows_to_tickets(ral_rows, "RAL", parsed_tickets)
+            if ral_raw == 0:
+                return jsonify({"error": "A base RAL enviada está vazia ou sem colunas reconhecidas (Num.Recup. / CF Exec.)."}), 400
+            target_types.add("RAL")
+
+        if has_rec:
+            rec_rows = _read_grafana_uploaded_file(rec_file)
+            rec_raw = _parse_grafana_rows_to_tickets(rec_rows, "REC", parsed_tickets)
+            if rec_raw == 0:
+                return jsonify({"error": "A base REC enviada está vazia ou sem colunas reconhecidas (Num.Recup. / CF Exec.)."}), 400
+            target_types.add("REC")
+
+        if not parsed_tickets:
+            return jsonify({"error": "Nenhum ticket válido encontrado nos arquivos enviados (verifique as colunas Num.Recup. e CF Exec.)."}), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_grafana_sync_meta_cols(cur)
+
+        cur.execute("SELECT pg_try_advisory_lock(984512) AS locked;")
+        lock_row = cur.fetchone()
+        locked = bool(lock_row and lock_row.get("locked"))
+        if not locked:
+            return jsonify({"error": "Sincronização em andamento. Aguarde alguns segundos e tente novamente."}), 409
+
+        batch_res = _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt)
+        uploader = (
+            session.get('user_name')
+            or session.get('username')
+            or session.get('user')
+            or 'Operador'
+        )
+        uploader = str(uploader)[:150]
+
+        cur.execute("""
+            INSERT INTO grafana_sync_meta (
+                id, last_sync_at, last_sync_status, last_sync_error,
+                ral_count, rec_count, qualidade_count, new_count, cleared_count,
+                manual_override_active, manual_updated_at, manual_updated_by
+            )
+            VALUES (1, %s, 'manual_override', NULL, %s, %s, %s, %s, %s, TRUE, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                last_sync_at = EXCLUDED.last_sync_at,
+                last_sync_status = 'manual_override',
+                last_sync_error = NULL,
+                ral_count = EXCLUDED.ral_count,
+                rec_count = EXCLUDED.rec_count,
+                qualidade_count = EXCLUDED.qualidade_count,
+                new_count = EXCLUDED.new_count,
+                cleared_count = grafana_sync_meta.cleared_count + EXCLUDED.cleared_count,
+                manual_override_active = TRUE,
+                manual_updated_at = EXCLUDED.manual_updated_at,
+                manual_updated_by = EXCLUDED.manual_updated_by;
+        """, (
+            now_brt,
+            batch_res["ral_count"], batch_res["rec_count"], batch_res["qualidade_count"],
+            batch_res["new_active"], batch_res["cleared_now"],
+            now_brt, uploader,
+        ))
+        conn.commit()
+
+        ral_loaded = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "RAL" and not v["is_qualidade"])
+        qua_loaded = sum(1 for v in parsed_tickets.values() if v["is_qualidade"])
+        rec_loaded = sum(1 for v in parsed_tickets.values() if v["ticket_type"] == "REC")
+
+        return jsonify({
+            "success": True,
+            "updated_types": sorted(target_types),
+            "ral_loaded": ral_loaded,
+            "qua_loaded": qua_loaded,
+            "rec_loaded": rec_loaded,
+            "new_count": batch_res["new_active"],
+            "cleared_now": batch_res["cleared_now"],
+            "manual_updated_by": uploader,
+            "manual_updated_at": now_brt.strftime("%d/%m/%Y %H:%M:%S"),
+        })
+    except ValueError as ve:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        print("[GRAFANA MANUAL UPLOAD ERROR]", e)
+        return jsonify({"error": "Falha ao processar atualização manual das bases."}), 500
+    finally:
+        if locked and cur and conn:
+            try:
+                cur.execute("SELECT pg_advisory_unlock(984512);")
+                conn.commit()
+            except Exception:
+                pass
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
 
 @app.route('/api/grafana/tickets', methods=['GET'])
 @login_required
