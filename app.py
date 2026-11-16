@@ -1109,18 +1109,26 @@ class _PooledConnProxy:
             return
         self._released = True
         raw = self._conn
+        should_close = bool(getattr(raw, 'closed', 1))
         try:
-            if not getattr(raw, 'closed', 1):
+            if not should_close:
                 try:
                     raw.rollback()
                 except Exception:
-                    pass
-            self._pool.putconn(raw, close=bool(getattr(raw, 'closed', 1)))
+                    should_close = True
+            self._pool.putconn(raw, close=should_close)
         except Exception:
             try:
                 raw.close()
             except Exception:
                 pass
+
+    def __del__(self):
+        try:
+            if not getattr(self, '_released', True):
+                self.close()
+        except Exception:
+            pass
 
     def __getattr__(self, item):
         return getattr(self._conn, item)
@@ -1145,10 +1153,14 @@ def _init_db_pool():
             kwargs = {
                 'cursor_factory': RealDictCursor,
                 'connect_timeout': 4,
+                'keepalives': 1,
+                'keepalives_idle': 30,
+                'keepalives_interval': 10,
+                'keepalives_count': 3,
             }
             if h_addr:
                 kwargs['hostaddr'] = h_addr
-            pool = ThreadedConnectionPool(2, 20, DATABASE_URL, **kwargs)
+            pool = ThreadedConnectionPool(2, 40, DATABASE_URL, **kwargs)
             test_conn = pool.getconn()
             pool.putconn(test_conn)
             if h_addr:
@@ -1173,8 +1185,11 @@ def get_db():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL não configurada no ambiente do servidor.")
 
-    # 1. Fast path: reuse open connection for the current request context (0ms handshake!)
-    if has_request_context():
+    from flask import has_app_context
+    in_ctx = has_app_context()
+
+    # 1. Fast path: reuse open connection for the current app/request context (0ms handshake!)
+    if in_ctx:
         current_conn = getattr(g, '_current_db_conn', None)
         if current_conn and not current_conn.closed:
             return current_conn
@@ -1192,7 +1207,7 @@ def get_db():
         raw_conn = pool.getconn()
 
     conn = _PooledConnProxy(raw_conn, pool)
-    if has_request_context():
+    if in_ctx:
         if not hasattr(g, '_active_db_conns'):
             g._active_db_conns = []
         g._active_db_conns.append(conn)
@@ -1245,6 +1260,11 @@ def emit_live_alert(category, title, message, target_user_id=None, target_userna
         if cur:
             try:
                 cur.close()
+            except Exception:
+                pass
+        if conn and not has_request_context():
+            try:
+                conn.close()
             except Exception:
                 pass
         if conn and not in_req:
@@ -2738,6 +2758,11 @@ def log_action(user_id, username, action):
         if cur:
             try:
                 cur.close()
+            except Exception:
+                pass
+        if conn and not has_request_context():
+            try:
+                conn.close()
             except Exception:
                 pass
         if conn and not in_req:
@@ -14469,6 +14494,11 @@ def _sync_grafana_data(force=False):
                 cur.close()
             except Exception:
                 pass
+        if conn and not has_request_context():
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 _grafana_watchdog_started = False
@@ -14798,6 +14828,11 @@ def api_grafana_manual_upload():
         if cur:
             try:
                 cur.close()
+            except Exception:
+                pass
+        if conn and not has_request_context():
+            try:
+                conn.close()
             except Exception:
                 pass
 
