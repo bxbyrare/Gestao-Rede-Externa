@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -20,85 +20,30 @@ import { openPrivacyPreferencesModal } from '../components/PrivacyCookieBanner';
 
 gsap.registerPlugin(ScrollTrigger);
 
-interface ShowcaseTab {
-  id: 'grafana' | 'campo' | 'seguranca';
-  index: string;
-  label: string;
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  metrics: Array<{ label: string; value: string }>;
-  rows: Array<{ name: string; meta: string; status: string }>;
-}
-
-const SHOWCASE_TABS: ShowcaseTab[] = [
+const UNIFIED_PILLARS = [
   {
-    id: 'grafana',
-    index: '01',
-    label: 'COP REDE · Grafana',
-    eyebrow: 'MONITORAMENTO EM TEMPO REAL',
-    title: 'Controle de RAL, REC e Qualidade por Regional',
-    subtitle:
-      'Sincronização contínua com separação automática de filas, alertas de SLA e contingência manual protegida.',
-    metrics: [
-      { label: 'SLA RAL', value: '6h' },
-      { label: 'SLA REC', value: '4h' },
-      { label: 'CFs Ativos', value: '16' },
-    ],
-    rows: [
-      { name: 'ES · Espírito Santo (MTN, MTS, NOR, SUL)', meta: 'Prefixo VTA', status: 'Ativo' },
-      { name: 'INTERIOR · RJ (SUF, SEF, NOF, LGS, BX1, MTP)', meta: 'Prefixo RJO', status: 'Ativo' },
-      { name: 'CAPITAL · RJ (NO1, NO2, NO3, OE1, SU2, CZS)', meta: 'Prefixo RJO', status: 'Ativo' },
-    ],
+    title: 'Atendimentos em tempo real',
+    desc: 'Acompanhe chamados e prioridades de cada região com avisos rápidos para cumprir todos os prazos.',
+    tag: 'ES · Interior · Capital',
   },
   {
-    id: 'campo',
-    index: '02',
-    label: 'Equipes de Campo',
-    eyebrow: 'OPERAÇÃO PADRONIZADA',
-    title: 'Escalas, rotas, frota e documentação em um só lugar',
-    subtitle:
-      'Técnicos e supervisores consultam escalas, buscam registros e recebem alertas preventivos de NRs, ASO e EPIs.',
-    metrics: [
-      { label: 'NRs & ASO', value: 'Auto' },
-      { label: 'Formulários', value: 'Nativos' },
-      { label: 'Frota & Rotas', value: 'Cloud' },
-    ],
-    rows: [
-      { name: 'Buscador & Cadastros Operacionais', meta: 'Consulta rápida', status: 'Integrado' },
-      { name: 'Auditorias, Aceitação & Pós-Evento', meta: 'Evidências em campo', status: 'Integrado' },
-      { name: 'Escalas de Plantão & Veículos', meta: 'Controle de frota', status: 'Integrado' },
-    ],
+    title: 'Equipes, frota e documentos',
+    desc: 'Escalas, rotas, veículos e alertas automáticos de vencimento de cursos e exames organizados em um só lugar.',
+    tag: 'Campo e Coordenação',
   },
   {
-    id: 'seguranca',
-    index: '03',
-    label: 'Nuvem & Segurança',
-    eyebrow: 'ARQUITETURA ZERO-TRUST',
-    title: 'Dados corporativos protegidos em nuvem PostgreSQL',
-    subtitle:
-      'Autenticação em dois fatores (TOTP), permissões granulares por perfil, criptografia SSL/TLS e trilha de auditoria.',
-    metrics: [
-      { label: 'Sessão MFA', value: 'TOTP' },
-      { label: 'Transporte', value: 'SSL/TLS' },
-      { label: 'Permissões', value: 'RBAC' },
-    ],
-    rows: [
-      { name: 'Autenticação 2FA Anti-Replay (RFC 6238)', meta: 'Bloqueio brute-force', status: 'Protegido' },
-      { name: 'PostgreSQL Cloud com Failover & Pool', meta: 'Alta disponibilidade', status: 'Online' },
-      { name: 'WAF Anti-Scanner & Auditoria de Acessos', meta: 'Alertas por e-mail', status: 'Ativo' },
-    ],
+    title: 'Segurança na nuvem',
+    desc: 'Dados sempre disponíveis, protegidos por senha e código no celular, com histórico completo das ações.',
+    tag: 'Proteção Contínua',
   },
 ];
 
 export default function LandingPage() {
   const { user } = useAuth();
   const isAuthenticated = Boolean(user);
-  const [activeTab, setActiveTab] = useState<'grafana' | 'campo' | 'seguranca'>('grafana');
 
   const rootRef = useRef<HTMLDivElement>(null);
   const showcaseRef = useRef<HTMLDivElement>(null);
-  const showcaseBodyRef = useRef<HTMLDivElement>(null);
 
   // Pure URL Policy: clean any hash if present and scroll smoothly without changing URL
   function scrollToSection(sectionId: string) {
@@ -276,18 +221,6 @@ export default function LandingPage() {
     return () => ctx.revert();
   }, []);
 
-  // Animate showcase inner panel on tab switch
-  useEffect(() => {
-    if (!showcaseBodyRef.current) return;
-    gsap.fromTo(
-      showcaseBodyRef.current,
-      { y: 10, opacity: 0 },
-      { y: 0, opacity: 1, duration: 0.38, ease: 'power2.out' },
-    );
-  }, [activeTab]);
-
-  const currentTab = SHOWCASE_TABS.find((t) => t.id === activeTab) || SHOWCASE_TABS[0];
-
   return (
     <div ref={rootRef} className="min-h-screen bg-[#030305] text-white selection:bg-[#EE2C24]/30 overflow-x-hidden flex flex-col relative">
       {/* Studio Black Reactive GSAP Background */}
@@ -314,10 +247,6 @@ export default function LandingPage() {
       {/* SECTION 1: HERO MONOLITO (Transparent over GSAP Canvas) */}
       <section className="relative z-10 bg-transparent pt-14 pb-20 sm:pt-20 sm:pb-24 px-5 sm:px-8">
         <div className="max-w-5xl mx-auto text-center space-y-6">
-          <p className="hero-reveal text-[11px] font-mono uppercase tracking-[0.26em] text-[#a1a1a6]">
-            CLARO BRASIL · ENGENHARIA &amp; OPERAÇÃO DE CAMPO
-          </p>
-
           <h1 className="hero-reveal text-4xl sm:text-6xl lg:text-[64px] font-extrabold tracking-[-0.04em] leading-[1.03] text-white">
             Precisão operacional em tempo real.
           </h1>
@@ -346,7 +275,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Center 3D Showcase Panel (Double-Bezel + Specular Spotlight + 3D Tilt) */}
+          {/* Center Unified Showcase Panel (Double-Bezel + Specular Spotlight + 3D Tilt) */}
           <div className="hero-showcase-wrap max-w-4xl mx-auto">
             <div
               ref={showcaseRef}
@@ -360,84 +289,52 @@ export default function LandingPage() {
             >
               <div className="rounded-2xl bg-[#090C13]/95 backdrop-blur-2xl overflow-hidden text-left">
                 {/* Top Chrome Bar */}
-                <div className="px-5 py-3.5 border-b border-white/[0.08] flex items-center justify-between bg-white/[0.02]">
+                <div className="px-6 py-3.5 border-b border-white/[0.08] flex items-center justify-between bg-white/[0.02]">
                   <div className="flex items-center gap-2.5">
                     <span className="relative flex h-2 w-2">
                       <span className="studio-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
                     </span>
-                    <span className="text-[11px] font-mono uppercase tracking-[0.16em] text-[#a1a1a6]">
-                      {currentTab.eyebrow}
+                    <span className="text-xs font-medium text-white/80">
+                      Portal Gestão Rede Externa
                     </span>
                   </div>
                   <span className="text-[11px] font-mono text-white/40">
-                    gestaoredeexterna.com.br
+                    Claro Brasil
                   </span>
                 </div>
 
-                {/* Inner Showcase Content */}
-                <div ref={showcaseBodyRef} className="p-6 sm:p-8 space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                    <div className="space-y-2 max-w-xl">
-                      <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                        {currentTab.title}
-                      </h2>
-                      <p className="text-xs sm:text-sm text-[#a1a1a6] leading-relaxed">
-                        {currentTab.subtitle}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 shrink-0">
-                      {currentTab.metrics.map((m) => (
-                        <div
-                          key={m.label}
-                          className="rounded-xl bg-white/[0.03] border border-white/[0.08] px-3.5 py-2.5 text-center"
-                        >
-                          <span className="block text-base sm:text-lg font-bold font-mono text-white">
-                            {m.value}
-                          </span>
-                          <span className="block text-[10px] uppercase tracking-wider text-[#a1a1a6] mt-0.5">
-                            {m.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                {/* Unified Human-Friendly Content */}
+                <div className="p-6 sm:p-8 space-y-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                      Tudo o que a equipe de campo e a gestão precisam, em um só lugar
+                    </h2>
+                    <p className="text-xs sm:text-sm text-[#a1a1a6] leading-relaxed">
+                      Acompanhe os atendimentos do dia, organize escalas, rotas e veículos e mantenha documentos e informações da Claro sempre seguros na nuvem.
+                    </p>
                   </div>
 
-                  <div className="divide-y divide-white/[0.07] border-y border-white/[0.07]">
-                    {currentTab.rows.map((r) => (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                    {UNIFIED_PILLARS.map((item) => (
                       <div
-                        key={r.name}
-                        className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs"
+                        key={item.title}
+                        className="rounded-xl bg-white/[0.025] border border-white/[0.08] p-4 space-y-2 flex flex-col justify-between"
                       >
-                        <span className="font-medium text-white">{r.name}</span>
-                        <div className="flex items-center gap-4">
-                          <span className="font-mono text-[#a1a1a6]">{r.meta}</span>
-                          <span className="font-mono text-emerald-400">{r.status}</span>
+                        <div className="space-y-1.5">
+                          <h3 className="text-sm font-bold text-white">{item.title}</h3>
+                          <p className="text-xs text-[#a1a1a6] leading-relaxed">
+                            {item.desc}
+                          </p>
                         </div>
+                        <span className="block text-[11px] text-white/50 pt-2 border-t border-white/[0.06]">
+                          {item.tag}
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Selector Pills Below Showcase */}
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-              {SHOWCASE_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 rounded-full text-xs font-semibold transition cursor-pointer border ${
-                    activeTab === tab.id
-                      ? 'bg-white text-black border-white'
-                      : 'bg-white/[0.03] text-[#a1a1a6] border-white/[0.08] hover:text-white hover:border-white/20'
-                  }`}
-                >
-                  <span className="font-mono opacity-60 mr-1.5">{tab.index}</span>
-                  {tab.label}
-                </button>
-              ))}
             </div>
           </div>
 
@@ -473,26 +370,23 @@ export default function LandingPage() {
       <section id="resultados" className="relative z-10 bg-transparent py-20 px-5 sm:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto space-y-12">
           <div className="scroll-reveal grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
-            <div className="lg:col-span-7 space-y-3">
-              <p className="text-[11px] font-mono uppercase tracking-[0.22em] bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent font-bold">
-                CLARO · INFRAESTRUTURA CRÍTICA
-              </p>
+            <div className="lg:col-span-7">
               <h2 className="text-2xl sm:text-4xl font-bold tracking-[-0.03em] text-white leading-tight">
                 Conectividade nacional sustentada por gestão de campo de alta precisão.
               </h2>
             </div>
             <p className="lg:col-span-5 text-sm text-[#a1a1a6] leading-relaxed">
-              Da prevenção de falhas em fibra óptica à auditoria documental de técnicos e frota, cada registro permanece sincronizado em nuvem para decisões imediatas.
+              Da prevenção de falhas na rede à conferência de documentos de técnicos e veículos, tudo permanece atualizado na nuvem para decisões rápidas.
             </p>
           </div>
 
           {/* Rolling Number Counters */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { target: 16, decimals: 0, prefix: '', suffix: '', label: 'CFs Monitorados (ES & RJ)' },
-              { target: 6, decimals: 0, prefix: '', suffix: 'h / 4h', label: 'SLAs RAL e REC em Tempo Real' },
-              { target: 99.98, decimals: 2, prefix: '', suffix: '%', label: 'Disponibilidade em Nuvem' },
-              { target: 2, decimals: 0, prefix: '', suffix: 'FA', label: 'Autenticação TOTP Zero-Trust' },
+              { target: 16, decimals: 0, prefix: '', suffix: '', label: 'Áreas atendidas (ES & RJ)' },
+              { target: 6, decimals: 0, prefix: '', suffix: 'h / 4h', label: 'Prazos de atendimento acompanhados' },
+              { target: 99.98, decimals: 2, prefix: '', suffix: '%', label: 'Disponibilidade na nuvem' },
+              { target: 2, decimals: 0, prefix: '', suffix: ' etapas', label: 'Verificação segura no acesso' },
             ].map((stat) => (
               <div
                 key={stat.label}
@@ -527,10 +421,7 @@ export default function LandingPage() {
       {/* SECTION 3: CAMPO & GESTÃO (Transparent over GSAP Canvas) */}
       <section id="operacao" className="relative z-10 bg-transparent py-20 px-5 sm:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto space-y-10">
-          <div className="scroll-reveal space-y-2 max-w-2xl">
-            <p className="text-[11px] font-mono uppercase tracking-[0.22em] text-[#a1a1a6]">
-              FLUXO OPERACIONAL UNIFICADO
-            </p>
+          <div className="scroll-reveal max-w-2xl">
             <h2 className="text-2xl sm:text-4xl font-bold tracking-[-0.03em] text-white">
               Como o portal apoia o campo e a gestão
             </h2>
@@ -594,12 +485,9 @@ export default function LandingPage() {
       <section className="relative z-20 bg-[#000000] border-t border-white/[0.08] pt-20 pb-12 px-5 sm:px-8">
         <div className="max-w-5xl mx-auto space-y-14">
           <div className="scroll-reveal flex flex-col sm:flex-row sm:items-end justify-between gap-6">
-            <div className="space-y-2 max-w-xl">
-              <p className="text-[11px] font-mono uppercase tracking-[0.22em] text-emerald-400">
-                ENGENHARIA DE SEGURANÇA &amp; NUVEM
-              </p>
+            <div className="max-w-xl">
               <h2 className="text-2xl sm:text-4xl font-bold tracking-[-0.03em] text-white">
-                Informações blindadas em nuvem
+                Informações protegidas na nuvem
               </h2>
             </div>
             <Link
@@ -617,23 +505,23 @@ export default function LandingPage() {
             {[
               {
                 icon: ShieldCheck,
-                title: 'Zero-Trust MFA (TOTP)',
-                desc: 'Sessão retida até validação por autenticador e proteção anti-replay.',
+                title: 'Acesso em duas etapas',
+                desc: 'Confirmação por código no celular para garantir que só pessoas autorizadas entrem.',
               },
               {
                 icon: Cloud,
-                title: 'PostgreSQL Cloud SSL',
-                desc: 'Banco gerenciado com criptografia em trânsito, failover e pool dedicado.',
+                title: 'Dados salvos na nuvem',
+                desc: 'Todas as informações ficam guardadas com segurança e conexão criptografada.',
               },
               {
                 icon: Lock,
-                title: 'RBAC & Anti-Scanner',
-                desc: 'Permissões por cargo, proteção CSRF e bloqueio ativo contra sondagens.',
+                title: 'Cada perfil vê o que precisa',
+                desc: 'Permissões organizadas por função e proteção ativa contra acessos indevidos.',
               },
               {
                 icon: Activity,
-                title: 'Auditoria & LGPD',
-                desc: 'Trilha completa de alterações e controle transparente de privacidade.',
+                title: 'Histórico e privacidade',
+                desc: 'Registro completo de alterações e transparência no cuidado com os dados.',
               },
             ].map((item) => {
               const Icon = item.icon;
