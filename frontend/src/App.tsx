@@ -5,7 +5,7 @@ import { NotificationProvider } from './state/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
 import FullScreenCinematicIntro from './components/FullScreenCinematicIntro';
-import PrivacyCookieBanner from './components/PrivacyCookieBanner';
+import PrivacyCookieBanner, { readPrivacyConsent } from './components/PrivacyCookieBanner';
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
@@ -50,6 +50,38 @@ export default function App() {
       setIntroRunId((n) => n + 1);
     }
     prevPathRef.current = location.pathname;
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const sendTelemetry = () => {
+      const consent = readPrivacyConsent();
+      if (!consent?.metrics) return;
+      try {
+        const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+        const loadMs = nav && nav.loadEventEnd > 0 ? Math.round(nav.loadEventEnd - nav.startTime) : null;
+        const ttfbMs = nav && nav.responseStart > 0 ? Math.round(nav.responseStart - nav.requestStart) : null;
+        const domMs = nav && nav.domInteractive > 0 ? Math.round(nav.domInteractive - nav.startTime) : null;
+        const payload = JSON.stringify({
+          path: location.pathname,
+          load_ms: loadMs,
+          ttfb_ms: ttfbMs,
+          dom_ms: domMs,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+        });
+        fetch('/api/telemetry/performance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true,
+          credentials: 'same-origin',
+        }).catch(() => {});
+      } catch {
+        // ignore telemetry errors
+      }
+    };
+
+    const timer = window.setTimeout(sendTelemetry, 600);
+    return () => window.clearTimeout(timer);
   }, [location.pathname]);
 
   return (

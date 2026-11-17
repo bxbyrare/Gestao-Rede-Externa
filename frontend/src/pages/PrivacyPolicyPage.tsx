@@ -1,10 +1,25 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Cloud, Cookie, Database, Lock, Mail, ShieldCheck, SlidersHorizontal } from 'lucide-react';
-import { openPrivacyPreferencesModal } from '../components/PrivacyCookieBanner';
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { readPrivacyConsent, savePrivacyConsent } from '../components/PrivacyCookieBanner';
+
+const SECTIONS = [
+  { id: 'dados', num: '01', label: 'Dados tratados' },
+  { id: 'tecnologias', num: '02', label: 'Tecnologias e cookies' },
+  { id: 'nuvem', num: '03', label: 'Armazenamento em nuvem' },
+  { id: 'comunicacoes', num: '04', label: 'Comunicações por e-mail' },
+  { id: 'preferencias', num: '05', label: 'Suas preferências' },
+];
 
 export default function PrivacyPolicyPage() {
   const { hash } = useLocation();
+  const [metricsActive, setMetricsActive] = useState<boolean>(() => Boolean(readPrivacyConsent()?.metrics));
+
+  useEffect(() => {
+    const syncState = () => setMetricsActive(Boolean(readPrivacyConsent()?.metrics));
+    window.addEventListener('privacy-consent-changed', syncState);
+    return () => window.removeEventListener('privacy-consent-changed', syncState);
+  }, []);
 
   useEffect(() => {
     if (hash) {
@@ -17,138 +32,195 @@ export default function PrivacyPolicyPage() {
     }
   }, [hash]);
 
+  function handleSetMetrics(enabled: boolean) {
+    savePrivacyConsent(enabled);
+    setMetricsActive(enabled);
+  }
+
   return (
-    <div className="min-h-screen bg-[#070A10] text-slate-200 selection:bg-[#e20613]/30">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070A10]/85 backdrop-blur-xl">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5 text-white font-bold tracking-tight">
-            <img src="/claro-icon.png" alt="Claro" className="w-7 h-7 rounded-lg object-contain" />
-            <span>Claro · Gestão Rede Externa</span>
+    <div className="min-h-screen bg-[#06080D] text-slate-300 selection:bg-[#e20613]/30 flex flex-col">
+      {/* Minimalist Full-Width Header */}
+      <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-[#06080D]/90 backdrop-blur-md">
+        <div className="w-full px-5 sm:px-8 lg:px-12 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-3 text-white shrink-0">
+            <img src="/claro-icon.png" alt="Claro" className="w-8 h-8 rounded-lg object-contain" />
+            <div className="leading-tight">
+              <span className="block text-sm font-bold tracking-tight">Claro</span>
+              <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">
+                Gestão Rede Externa
+              </span>
+            </div>
           </Link>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-4">
             <Link
               to="/"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-white transition"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              Voltar ao início
+              <span>Voltar</span>
             </Link>
             <Link
               to="/login"
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#e20613] hover:bg-[#c80510] text-white transition"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#e20613] hover:bg-[#c80510] text-white transition"
             >
-              Entrar no sistema
+              <span>Entrar no sistema</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-10">
-        <div className="space-y-3 border-b border-white/10 pb-8">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-[#e20613]/15 border border-[#e20613]/35 text-red-300">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Transparência & LGPD
-          </span>
-          <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Política de Privacidade e Uso de Dados
+      {/* Editorial Document Layout */}
+      <main className="max-w-5xl mx-auto w-full px-5 sm:px-8 py-14 sm:py-20 flex-1">
+        <div className="border-b border-white/[0.08] pb-10 mb-12 space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#e20613]">
+            Documentação Institucional · LGPD
+          </p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+            Política de Privacidade
           </h1>
-          <p className="text-sm text-slate-400 leading-relaxed max-w-2xl">
-            Esta política explica como o portal <strong className="text-slate-200">Claro · Gestão Rede Externa</strong> coleta, utiliza, armazena na nuvem e protege os dados operacionais e cadastrais de equipes de campo, supervisores e coordenadores.
+          <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
+            Como o portal <span className="text-slate-200 font-medium">Claro · Gestão Rede Externa</span> coleta, armazena na nuvem e protege informações operacionais, cadastrais e métricas de desempenho.
           </p>
         </div>
 
-        <section className="space-y-3">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Database className="w-5 h-5 text-[#e20613]" />
-            1. Dados Tratados no Portal
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300 leading-relaxed">
-            <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-5 space-y-1.5">
-              <h3 className="text-sm font-bold text-white">Acesso, Segurança e Auditoria</h3>
-              <p>
-                Credenciais de login, perfil de permissão (RBAC), autenticação em dois fatores (TOTP), endereço IP de acesso, registro de alterações e alertas de segurança.
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-5 space-y-1.5">
-              <h3 className="text-sm font-bold text-white">Cadastro Operacional e Campo</h3>
-              <p>
-                Nome, CPF, RG, telefone, e-mail corporativo/pessoal, matrícula Claro/TOA, empresa parceira, validades de NRs/ASO, EPIs, veículos, escalas, rotas e chamados (RAL/REC/QUA).
-              </p>
-            </div>
-          </div>
-        </section>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+          {/* Sticky Table of Contents */}
+          <aside className="lg:col-span-4 lg:sticky lg:top-24 space-y-1 border-l border-white/[0.08] pl-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-3">
+              Índice
+            </p>
+            {SECTIONS.map((sec) => (
+              <a
+                key={sec.id}
+                href={`#${sec.id}`}
+                className="flex items-center gap-2.5 py-1.5 text-xs text-slate-400 hover:text-white transition"
+              >
+                <span className="font-mono text-[11px] text-slate-600">{sec.num}</span>
+                <span>{sec.label}</span>
+              </a>
+            ))}
+          </aside>
 
-        <section id="tecnologias" className="scroll-mt-24 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Cookie className="w-5 h-5 text-[#e20613]" />
-              2. Tecnologias, Cookies e Armazenamento Local
-            </h2>
-            <button
-              type="button"
-              onClick={openPrivacyPreferencesModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 transition cursor-pointer"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              Gerenciar preferências
-            </button>
-          </div>
-
-          <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-            <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-5 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-bold text-white">Cookies e Armazenamento Essenciais</h3>
-                <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                  Sempre ativos
-                </span>
-              </div>
-              <p>
-                Utilizados para garantir o funcionamento técnico adequado da plataforma, manutenção segura da sessão autenticada, validação 2FA, proteção contra acessos automatizados e preferências operacionais locais (como filtros de áreas no painel Grafana). Não podem ser desativados pois são indispensáveis para a operação.
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-5 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-bold text-white">Métricas Próprias e Desempenho</h3>
-                <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                  Opcional · Consentimento
-                </span>
-              </div>
-              <p>
-                Ficam desativadas por padrão até que você clique em <strong>Aceitar métricas</strong>. Quando autorizadas, auxiliam a entender o uso das páginas e otimizar a velocidade do sistema. Caso recuse ou desative posteriormente, o acesso ao portal continua integralmente liberado.
-              </p>
+          {/* Clean Prose Content */}
+          <div className="lg:col-span-8 space-y-14 text-sm leading-relaxed">
+            <section id="dados" className="scroll-mt-24 space-y-4">
+              <h2 className="text-lg font-bold text-white tracking-tight">
+                01. Dados tratados no portal
+              </h2>
               <p className="text-slate-400">
-                Sua escolha no painel de privacidade permanece válida por <strong>180 dias</strong> neste navegador e pode ser alterada a qualquer momento pelo botão acima ou pelo rodapé.
+                O Gestão Rede Externa é um ambiente corporativo voltado à coordenação de equipes de campo, frota e indicadores da Claro. Os dados tratados limitam-se ao estritamente necessário para a operação:
               </p>
-            </div>
-          </div>
-        </section>
+              <dl className="divide-y divide-white/[0.07] border-y border-white/[0.07] text-xs">
+                <div className="py-3.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <dt className="font-semibold text-white">Acesso e segurança</dt>
+                  <dd className="sm:col-span-2 text-slate-400">
+                    Nome de usuário, cargo/permissões (RBAC), autenticação 2FA (TOTP), IP de acesso e registros de auditoria.
+                  </dd>
+                </div>
+                <div className="py-3.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <dt className="font-semibold text-white">Cadastro operacional</dt>
+                  <dd className="sm:col-span-2 text-slate-400">
+                    Nome completo, CPF, RG, telefone, e-mail, matrícula Claro/TOA, empresa parceira, uniformes, EPIs e validades de NRs/ASO.
+                  </dd>
+                </div>
+                <div className="py-3.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <dt className="font-semibold text-white">Operação de campo</dt>
+                  <dd className="sm:col-span-2 text-slate-400">
+                    Escalas, rotas, veículos, formulários digitais, auditorias fotográficas e tratativas de chamados (RAL, REC e Qualidade).
+                  </dd>
+                </div>
+              </dl>
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Cloud className="w-5 h-5 text-[#e20613]" />
-            3. Armazenamento em Nuvem e Segurança
-          </h2>
-          <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-5 text-xs text-slate-300 leading-relaxed space-y-2">
-            <p className="flex items-center gap-2 text-white font-semibold">
-              <Lock className="w-4 h-4 text-emerald-400" />
-              Proteção ponta a ponta para operação de campo e gestão
-            </p>
-            <p>
-              Todas as informações operacionais são armazenadas em banco de dados PostgreSQL em nuvem com conexões criptografadas (SSL/TLS), controle de acesso por perfil, proteção contra tentativas abusivas de login, verificação em duas etapas (TOTP) e trilha de auditoria.
-            </p>
-          </div>
-        </section>
+            <section id="tecnologias" className="scroll-mt-24 space-y-4">
+              <h2 className="text-lg font-bold text-white tracking-tight">
+                02. Tecnologias, cookies e armazenamento local
+              </h2>
+              <p className="text-slate-400">
+                Dividimos o uso de armazenamento no navegador em duas categorias transparentes:
+              </p>
+              <dl className="divide-y divide-white/[0.07] border-y border-white/[0.07] text-xs">
+                <div className="py-4 space-y-1.5">
+                  <dt className="font-semibold text-white flex items-center justify-between">
+                    <span>Armazenamento essencial</span>
+                    <span className="text-[11px] font-mono text-emerald-400">Sempre ativo</span>
+                  </dt>
+                  <dd className="text-slate-400">
+                    Cookie de sessão Flask para manter a autenticação, validação de 2FA, proteção contra acessos automatizados e preferências operacionais locais (como filtros de áreas no Grafana). Sem ele, o portal não funciona corretamente.
+                  </dd>
+                </div>
+                <div className="py-4 space-y-1.5">
+                  <dt className="font-semibold text-white flex items-center justify-between">
+                    <span>Métricas de desempenho e navegação</span>
+                    <span className="text-[11px] font-mono text-slate-400">Opcional · 180 dias</span>
+                  </dt>
+                  <dd className="text-slate-400">
+                    Ativadas apenas mediante seu consentimento. Quando autorizadas, registram tempo de carregamento das páginas, TTFB e rota acessada diretamente nos logs do servidor para identificar gargalos e manter o portal estável. Recusar não impede nenhum recurso do sistema.
+                  </dd>
+                </div>
+              </dl>
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Mail className="w-5 h-5 text-[#e20613]" />
-            4. Comunicações e Atualização Cadastral
-          </h2>
-          <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-5 text-xs text-slate-300 leading-relaxed">
-            O portal envia notificações por e-mail sobre segurança de conta, atualização cadastral, pendências de documentos/NRs e alertas operacionais. Caso um endereço apresente falha de entrega, o sistema solicita validação por código de 6 dígitos para garantir que avisos críticos cheguem corretamente.
+            <section id="nuvem" className="scroll-mt-24 space-y-3">
+              <h2 className="text-lg font-bold text-white tracking-tight">
+                03. Armazenamento em nuvem e segurança
+              </h2>
+              <p className="text-slate-400">
+                Todas as informações são persistidas em banco de dados PostgreSQL em nuvem com conexões criptografadas (SSL/TLS), controle de acesso baseado em função (RBAC), autenticação em dois fatores (TOTP) e trilha de auditoria para alterações críticas.
+              </p>
+            </section>
+
+            <section id="comunicacoes" className="scroll-mt-24 space-y-3">
+              <h2 className="text-lg font-bold text-white tracking-tight">
+                04. Comunicações e validação de e-mail
+              </h2>
+              <p className="text-slate-400">
+                O portal envia alertas operacionais, avisos de vencimento de documentação e notificações de segurança por e-mail. Caso ocorra falha de entrega em um endereço cadastrado, o sistema solicita a confirmação por código de 6 dígitos para garantir o recebimento dos comunicados.
+              </p>
+            </section>
+
+            <section id="preferencias" className="scroll-mt-24 space-y-4 pt-2 border-t border-white/[0.08]">
+              <h2 className="text-lg font-bold text-white tracking-tight">
+                05. Gerenciar preferências neste navegador
+              </h2>
+              <p className="text-xs text-slate-400">
+                Status atual das métricas de desempenho:{' '}
+                <strong className={metricsActive ? 'text-emerald-400' : 'text-slate-200'}>
+                  {metricsActive ? 'Ativadas' : 'Recusadas / Desativadas'}
+                </strong>
+                . Sua escolha é válida por 180 dias.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSetMetrics(false)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                    !metricsActive
+                      ? 'bg-white/15 border-white/30 text-white'
+                      : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {!metricsActive && <Check className="w-3.5 h-3.5" />}
+                  Recusar métricas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetMetrics(true)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                    metricsActive
+                      ? 'bg-[#e20613] border-[#e20613] text-white'
+                      : 'bg-white/[0.03] border-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {metricsActive && <Check className="w-3.5 h-3.5" />}
+                  Aceitar métricas
+                </button>
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
       </main>
     </div>
   );

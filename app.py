@@ -14190,6 +14190,24 @@ def api_admin_sync_email_bounces():
     return jsonify({"success": "error" not in res, **res})
 
 
+@app.route('/api/telemetry/performance', methods=['POST'])
+def api_telemetry_performance():
+    """Registra métricas opcionais de desempenho e navegação nos logs do servidor."""
+    data = request.get_json(silent=True) or {}
+    path = str(data.get('path') or '/')[:120]
+    load_ms = data.get('load_ms')
+    ttfb_ms = data.get('ttfb_ms')
+    dom_ms = data.get('dom_ms')
+    viewport = str(data.get('viewport') or '')[:32]
+    uid = session.get('user_id')
+    uname = session.get('username') or 'visitante'
+    print(
+        f"[PERF TELEMETRY] user={uname}({uid or '-'}) path={path} "
+        f"load={load_ms}ms ttfb={ttfb_ms}ms dom={dom_ms}ms viewport={viewport}"
+    )
+    return jsonify({"ok": True}), 200
+
+
 @app.route('/api/admin/notify-outdated-profile', methods=['GET', 'POST'])
 @login_required
 def api_notify_outdated_profile():
