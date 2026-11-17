@@ -279,16 +279,6 @@ export default function LandingPage() {
               </span>
             </div>
           </Link>
-
-          <Link
-            to={isAuthenticated ? '/grafana' : '/login'}
-            onMouseMove={handleMagneticMove}
-            onMouseLeave={handleMagneticLeave}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition shadow-lg shadow-white/5"
-          >
-            <span>{isAuthenticated ? 'Acessar painel' : 'Entrar no sistema'}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
         </div>
       </header>
 
