@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import gsap from 'gsap';
 import { Check, Cookie, ExternalLink, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 
 const CONSENT_STORAGE_KEY = 'claro_privacy_consent_v1';
@@ -51,6 +52,17 @@ export default function PrivacyCookieBanner() {
   const [showCustomize, setShowCustomize] = useState(false);
   const [metricsEnabled, setMetricsEnabled] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
+  const bannerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (visible && !showCustomize && bannerRef.current) {
+      gsap.fromTo(
+        bannerRef.current,
+        { y: 28, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' },
+      );
+    }
+  }, [visible, showCustomize]);
 
   useEffect(() => {
     const existing = readPrivacyConsent();
@@ -82,6 +94,7 @@ export default function PrivacyCookieBanner() {
     <>
       {visible && !showCustomize && (
         <div
+          ref={bannerRef}
           role="dialog"
           aria-label="Preferências de privacidade e cookies"
           className="fixed bottom-4 left-4 right-4 z-[950] flex justify-center pointer-events-none"
