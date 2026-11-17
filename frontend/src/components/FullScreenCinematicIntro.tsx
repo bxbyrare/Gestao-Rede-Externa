@@ -91,24 +91,16 @@ export default function FullScreenCinematicIntro({
     window.addEventListener('keydown', unlockAudioOnInteraction, { once: true, passive: true });
     window.addEventListener('touchstart', unlockAudioOnInteraction, { once: true, passive: true });
 
-    // Strict fast transition timers: never block the user
+    // Strict fast transition timer: ends automatically after durationMs
     const fallbackTimer = setTimeout(() => {
       finishIntro();
     }, durationMs);
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') {
-        finishIntro();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
 
     return () => {
       clearTimeout(fallbackTimer);
       window.removeEventListener('pointerdown', unlockAudioOnInteraction);
       window.removeEventListener('keydown', unlockAudioOnInteraction);
       window.removeEventListener('touchstart', unlockAudioOnInteraction);
-      window.removeEventListener('keydown', onKeyDown);
     };
   }, [durationMs, alreadySeen]);
 
@@ -116,17 +108,13 @@ export default function FullScreenCinematicIntro({
 
   return (
     <div
-      onClick={() => {
-        // Tap/click anywhere dismisses intro immediately and goes to login
-        finishIntro();
-      }}
-      className={`fixed inset-0 z-[1000] flex items-center justify-center select-none overflow-hidden transition-all duration-500 cursor-pointer ${
+      className={`fixed inset-0 z-[1000] flex items-center justify-center select-none overflow-hidden transition-all duration-500 ${
         phase === 'dissolve'
           ? 'opacity-0 scale-[1.02] filter blur-sm pointer-events-none'
           : 'opacity-100 scale-100 filter-none pointer-events-auto'
       }`}
       style={{
-        background: 'radial-gradient(ellipse at center, #140d12 0%, #08090d 60%, #040507 100%)',
+        background: '#030305',
         transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
@@ -141,23 +129,6 @@ export default function FullScreenCinematicIntro({
         onError={() => finishIntro()}
         className="w-full h-full object-cover object-center pointer-events-none"
       />
-
-      {/* Top-Right Clean Skip Button */}
-      <div className="absolute top-4 right-4 z-20">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            finishIntro();
-          }}
-          aria-label="Pular introdução"
-          title="Pular introdução (ESC ou clique)"
-          className="px-3.5 py-1.5 rounded-full bg-[#0a0d14]/80 hover:bg-[#141b26] border border-white/20 text-xs font-medium text-neutral-200 hover:text-white flex items-center gap-1.5 backdrop-blur-md shadow-lg shadow-black/50 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-        >
-          <span>Pular</span>
-          <span className="text-[10px] text-neutral-400 uppercase tracking-widest font-mono">ESC</span>
-        </button>
-      </div>
 
       {/* Audio toggle */}
       <div className="absolute bottom-5 right-5 z-20 flex items-center gap-2">
