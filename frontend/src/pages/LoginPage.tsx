@@ -1,6 +1,6 @@
 import { useState, useRef, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, User as UserIcon, ArrowRight, Loader2, ShieldAlert } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Eye, EyeOff, Lock, User as UserIcon, ArrowRight, Loader2, ShieldAlert } from 'lucide-react';
 import gsap from 'gsap';
 import { useAuth } from '../state/AuthContext';
 import { ApiError } from '../api/client';
@@ -53,6 +53,15 @@ export default function LoginPage() {
 
       {/* Atmospheric Ambient Lighting Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-red-600/[0.07] blur-[150px] pointer-events-none" />
+
+      {/* Top-Left Back to Home Button */}
+      <Link
+        to="/"
+        className="absolute top-5 left-5 sm:top-7 sm:left-8 z-20 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-[#090C13]/90 hover:bg-white/[0.08] border border-white/[0.12] hover:border-white/25 text-neutral-200 hover:text-white backdrop-blur-xl transition-all shadow-lg"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" />
+        <span>Página principal</span>
+      </Link>
 
       {/* Double Bezel Precision Card Container */}
       <div ref={cardRef} className="relative w-full max-w-[420px] z-10 transition-all duration-500 ease-out">
