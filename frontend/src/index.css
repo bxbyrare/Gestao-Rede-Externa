@@ -1,13 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
   --color-bg: #030305;
   --color-surface: #090C13;
-  --color-surface-2: #0E121D;
+  --color-surface-2: #09090d;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.14);
 
@@ -25,21 +25,33 @@
   --color-danger: #f87171;
   --color-danger-dim: rgba(248, 113, 113, 0.14);
 
-  --color-text: #f4f4f6;
-  --color-text-muted: #9498a3;
-  --color-text-faint: #5c606b;
+  --color-text: #ffffff;
+  --color-text-muted: #a1a1a6;
+  --color-text-faint: #63636b;
 }
 
 html {
   color-scheme: dark;
+  overflow-x: hidden;
 }
 
 body {
   background: #030305;
-  color: #f4f4f6;
+  color: #ffffff;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+  overflow-x: hidden;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.025em;
+}
+
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
 }
 
 /* Lagos Digital backdrop */

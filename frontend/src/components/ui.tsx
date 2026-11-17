@@ -51,7 +51,7 @@ export function Button({
 export function Card({ children, className = '', style, onClick }: { children: ReactNode; className?: string; style?: CSSProperties; onClick?: () => void }) {
   return (
     <div
-      className={`rounded-2xl p-5 bg-[#090C13]/85 border border-white/[0.08] hover:border-white/15 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-all ${className}`}
+      className={`rounded-2xl p-5 bg-[#09090d]/90 border border-white/[0.08] hover:border-white/[0.15] backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.6)] transition-all ${className}`}
       style={style}
       onClick={onClick}
     >
@@ -64,8 +64,8 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight text-white">{title}</h1>
-        {subtitle && <p className="text-sm text-neutral-400 mt-1">{subtitle}</p>}
+        <h1 className="text-2xl font-extrabold tracking-[-0.03em] text-white">{title}</h1>
+        {subtitle && <p className="text-sm text-[#a1a1a6] mt-1">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
     </div>

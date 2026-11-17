@@ -159,8 +159,10 @@ export default function MandatoryEmailModal() {
   }
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="glass relative w-full max-w-md rounded-2xl p-6 sm:p-7 shadow-2xl">
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+      <div className="relative w-full max-w-md rounded-[28px] p-[1px] bg-gradient-to-b from-white/[0.14] via-white/[0.04] to-white/[0.02] border border-white/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.9)]">
+        <div className="rounded-[27px] bg-[#090C13]/98 border border-white/[0.05] p-6 sm:p-7 relative">
+          <div className="absolute top-0 left-8 right-8 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
         {isSuccess ? (
           <div className="py-6 text-center space-y-3">
             <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center mx-auto">
@@ -388,6 +390,7 @@ export default function MandatoryEmailModal() {
             )}
           </>
         )}
+        </div>
       </div>
     </div>
   );

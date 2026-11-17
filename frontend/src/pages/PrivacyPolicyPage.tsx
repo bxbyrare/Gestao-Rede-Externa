@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { readPrivacyConsent, savePrivacyConsent } from '../components/PrivacyCookieBanner';
+import GsapSecurityBackground from '../components/GsapSecurityBackground';
 
 const SECTIONS = [
   { id: 'dados', num: '01', label: 'Dados tratados' },
@@ -38,15 +39,16 @@ export default function PrivacyPolicyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#06080D] text-slate-300 selection:bg-[#e20613]/30 flex flex-col">
+    <div className="min-h-screen bg-[#030305] text-[#a1a1a6] selection:bg-[#EE2C24]/30 flex flex-col relative overflow-x-hidden">
+      <GsapSecurityBackground />
       {/* Minimalist Full-Width Header */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-[#06080D]/90 backdrop-blur-md">
-        <div className="w-full px-5 sm:px-8 lg:px-12 h-16 flex items-center justify-between">
+      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#030305]/80 backdrop-blur-xl">
+        <div className="w-full px-5 sm:px-8 lg:px-12 h-[76px] flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 text-white shrink-0">
-            <img src="/claro-icon.png" alt="Claro" className="w-8 h-8 rounded-lg object-contain" />
+            <img src="/claro-icon.png" alt="Claro" className="w-8 h-8 object-contain" />
             <div className="leading-tight">
-              <span className="block text-sm font-bold tracking-tight">Claro</span>
-              <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">
+              <span className="block text-sm font-bold tracking-tight text-white">Claro</span>
+              <span className="block text-[10px] font-bold uppercase tracking-[0.18em] bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent">
                 Gestão Rede Externa
               </span>
             </div>
@@ -55,14 +57,14 @@ export default function PrivacyPolicyPage() {
           <div className="flex items-center gap-4">
             <Link
               to="/"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#a1a1a6] hover:text-white transition"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Voltar</span>
             </Link>
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#e20613] hover:bg-[#c80510] text-white transition"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition"
             >
               <span>Entrar no sistema</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -72,7 +74,7 @@ export default function PrivacyPolicyPage() {
       </header>
 
       {/* Editorial Document Layout */}
-      <main className="max-w-5xl mx-auto w-full px-5 sm:px-8 py-14 sm:py-20 flex-1">
+      <main className="relative z-10 max-w-5xl mx-auto w-full px-5 sm:px-8 py-14 sm:py-20 flex-1">
         <div className="border-b border-white/[0.08] pb-10 mb-12 space-y-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#e20613]">
             Documentação Institucional · LGPD
