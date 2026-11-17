@@ -323,7 +323,7 @@ export default function LandingPage() {
           </h1>
 
           {/* Animated Pristine Claro 3D Orb */}
-          <div className="hero-claro-orb py-5 sm:py-7 flex items-center justify-center">
+          <div className="hero-claro-orb py-6 sm:py-9 flex items-center justify-center">
             <div
               onMouseMove={(e) => {
                 if (window.innerWidth < 1024) return;
@@ -337,11 +337,11 @@ export default function LandingPage() {
               }}
               className="relative flex items-center justify-center select-none cursor-default"
             >
-              <div className="hero-claro-bloom absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-[#EE2C24]/25 blur-2xl pointer-events-none" />
+              <div className="hero-claro-bloom absolute w-44 h-44 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-full bg-[#EE2C24]/25 blur-3xl pointer-events-none" />
               <img
                 src="/claro-icon.png"
                 alt="Claro"
-                className="hero-claro-orb-img relative z-10 w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_16px_32px_rgba(0,0,0,0.75)]"
+                className="hero-claro-orb-img relative z-10 w-36 h-36 sm:w-44 sm:h-44 lg:w-48 lg:h-48 object-contain drop-shadow-[0_22px_44px_rgba(0,0,0,0.85)]"
               />
             </div>
           </div>
