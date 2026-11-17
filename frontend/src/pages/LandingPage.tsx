@@ -171,16 +171,45 @@ export default function LandingPage() {
         opacity: 0,
         duration: 0.8,
         stagger: 0.09,
-      }).from(
-        '.hero-showcase-wrap',
-        {
-          y: 36,
-          opacity: 0,
-          scale: 0.97,
-          duration: 0.9,
-        },
-        '-=0.45',
-      );
+      })
+        .from(
+          '.hero-claro-orb',
+          {
+            scale: 0.72,
+            y: 18,
+            opacity: 0,
+            duration: 0.9,
+            ease: 'power3.out',
+          },
+          '-=0.45',
+        )
+        .from(
+          '.hero-showcase-wrap',
+          {
+            y: 36,
+            opacity: 0,
+            scale: 0.97,
+            duration: 0.9,
+          },
+          '-=0.55',
+        );
+
+      // Gentle levitation & diffused bloom breathing on Claro Orb
+      gsap.to('.hero-claro-orb-img', {
+        y: -8,
+        duration: 2.6,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
+      gsap.to('.hero-claro-bloom', {
+        scale: 1.22,
+        opacity: 0.45,
+        duration: 2.6,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
 
       // Continuous subtle telemetry pulse
       gsap.to('.studio-pulse', {
@@ -293,8 +322,32 @@ export default function LandingPage() {
             Precisão operacional em tempo real.
           </h1>
 
+          {/* Animated Pristine Claro 3D Orb */}
+          <div className="hero-claro-orb py-5 sm:py-7 flex items-center justify-center">
+            <div
+              onMouseMove={(e) => {
+                if (window.innerWidth < 1024) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const rx = ((e.clientY - rect.top) / rect.height - 0.5) * -14;
+                const ry = ((e.clientX - rect.left) / rect.width - 0.5) * 14;
+                gsap.to(e.currentTarget, { rotateX: rx, rotateY: ry, transformPerspective: 700, duration: 0.35, ease: 'power2.out' });
+              }}
+              onMouseLeave={(e) => {
+                gsap.to(e.currentTarget, { rotateX: 0, rotateY: 0, duration: 0.5, ease: 'elastic.out(1, 0.5)' });
+              }}
+              className="relative flex items-center justify-center select-none cursor-default"
+            >
+              <div className="hero-claro-bloom absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-[#EE2C24]/25 blur-2xl pointer-events-none" />
+              <img
+                src="/claro-icon.png"
+                alt="Claro"
+                className="hero-claro-orb-img relative z-10 w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_16px_32px_rgba(0,0,0,0.75)]"
+              />
+            </div>
+          </div>
+
           {/* Center 3D Showcase Panel (Double-Bezel + Specular Spotlight + 3D Tilt) */}
-          <div className="hero-showcase-wrap pt-6 max-w-4xl mx-auto">
+          <div className="hero-showcase-wrap max-w-4xl mx-auto">
             <div
               ref={showcaseRef}
               onMouseMove={(e) => handleCardMouseMove(e, true)}
