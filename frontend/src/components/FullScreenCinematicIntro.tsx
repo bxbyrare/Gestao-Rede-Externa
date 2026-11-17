@@ -8,7 +8,7 @@ interface FullScreenCinematicIntroProps {
 
 export default function FullScreenCinematicIntro({
   onComplete,
-  durationMs = 3800,
+  durationMs = 4100,
 }: FullScreenCinematicIntroProps) {
   // Check if user has already seen the intro in this session
   const alreadySeen = typeof window !== 'undefined' && sessionStorage.getItem('claro_intro_dismissed') === 'true';
@@ -120,7 +120,7 @@ export default function FullScreenCinematicIntro({
     >
       <video
         ref={videoRef}
-        src="/claro-orb-intro.mp4?v=20261026c"
+        src="/claro-orb-intro.mp4?v=20261117a"
         autoPlay
         muted
         playsInline
