@@ -512,6 +512,9 @@ def _ensure_email_bounce_schema(cur):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounce_reason TEXT DEFAULT NULL;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced_at TIMESTAMP DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_code VARCHAR(12) DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_target VARCHAR(255) DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_expires_at TIMESTAMP DEFAULT NULL;",
     ]:
         cur.execute(col_sql)
 
@@ -4494,10 +4497,10 @@ def api_update_my_profile():
     email_was_empty = not old_email
     was_bounced = bool(user.get('email_bounced'))
 
-    if email and was_bounced and email == old_email:
+    if was_bounced:
         cur.close()
         conn.close()
-        return jsonify({"error": "Este endereço de e-mail apresentou falha de entrega. Informe um novo e-mail válido diferente do anterior."}), 400
+        return jsonify({"error": "É necessário validar o código enviado por e-mail para liberar seu acesso."}), 400
 
     hashed_pw = None
     if new_password:
@@ -4580,6 +4583,145 @@ def api_update_my_profile():
 
     log_action(user_id, user['username'], f"Atualizou seus dados de perfil próprio (E-mail: {email or 'mantido'}, Telefone: {phone or 'mantido'}).")
 
+    updated_user = get_user_info_dict(user_id)
+    return jsonify({"success": True, "user": updated_user})
+
+
+@app.route('/api/users/me/email-verification/send', methods=['POST'])
+@login_required
+def api_send_my_email_verification():
+    """Envia código de 6 dígitos para validar que o e-mail informado realmente recebe mensagens."""
+    import secrets
+    user_id = session['user_id']
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    if not _is_valid_email_addr(email):
+        return jsonify({"error": "Informe um endereço de e-mail válido (exemplo: usuario@claro.com.br)."}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    _ensure_email_bounce_schema(cur)
+    cur.execute("SELECT id, username, name FROM users WHERE id = %s;", (user_id,))
+    user = cur.fetchone()
+    if not user:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "Usuário não encontrado."}), 404
+
+    code = f"{secrets.randbelow(900000) + 100000:06d}"
+    expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
+    cur.execute("""
+        UPDATE users
+        SET email_verify_code = %s,
+            email_verify_target = %s,
+            email_verify_expires_at = %s
+        WHERE id = %s;
+    """, (code, email, expires_at, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    safe_name = html.escape(str((data.get('name') or user.get('name') or user['username'])))
+    ok, _status, detail = _send_resend_email_sync(
+        to_email=email,
+        subject="[Claro Rede Externa] Código de Validação de E-mail",
+        category_badge="VALIDAÇÃO DE E-MAIL",
+        title="Confirme seu Endereço de E-mail",
+        message_html=f'''
+            <p>Olá, <strong>{safe_name}</strong>.</p>
+            <p>Use o código abaixo para confirmar que este endereço de e-mail é válido e está recebendo avisos do portal <strong>Gestão Rede Externa</strong>:</p>
+            <div style="background: #172033; border: 1px solid #38BDF8; border-radius: 10px; padding: 18px; margin: 20px 0; text-align: center;">
+                <span style="font-size: 30px; font-weight: 800; letter-spacing: 6px; color: #F8FAFC; font-family: monospace;">{code}</span>
+            </div>
+            <p style="color: #94A3B8; font-size: 13px;">Este código expira em 15 minutos. Após validado, seu acesso ao portal será liberado imediatamente.</p>
+        '''
+    )
+    if not ok:
+        return jsonify({"error": f"Não foi possível enviar o código para {email}: {detail}"}), 400
+
+    return jsonify({"success": True, "email": email, "message": f"Código de validação enviado para {email}."})
+
+
+@app.route('/api/users/me/email-verification/verify', methods=['POST'])
+@login_required
+def api_verify_my_email_verification():
+    """Valida o código de 6 dígitos enviado por e-mail, atualiza o cadastro e libera o acesso."""
+    user_id = session['user_id']
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    code = (data.get('code') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    name = (data.get('name') or '').strip()
+
+    if not _is_valid_email_addr(email):
+        return jsonify({"error": "Informe um endereço de e-mail válido."}), 400
+    if not code or len(code) != 6 or not code.isdigit():
+        return jsonify({"error": "Informe o código numérico de 6 dígitos enviado para o e-mail."}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    _ensure_email_bounce_schema(cur)
+    cur.execute("SELECT * FROM users WHERE id = %s;", (user_id,))
+    user = cur.fetchone()
+    if not user:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "Usuário não encontrado."}), 404
+
+    saved_code = (user.get('email_verify_code') or '').strip()
+    saved_target = (user.get('email_verify_target') or '').strip().lower()
+    expires_at = user.get('email_verify_expires_at')
+
+    if not saved_code or saved_target != email:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "Solicite um novo código de validação para este endereço de e-mail."}), 400
+    if expires_at and datetime.datetime.now() > expires_at:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "O código expirou. Clique em 'Reenviar código' para receber um novo."}), 400
+    if not hmac.compare_digest(saved_code, code):
+        cur.close()
+        conn.close()
+        return jsonify({"error": "Código incorreto. Verifique sua caixa de entrada ou spam e tente novamente."}), 400
+
+    old_email = (user.get('email') or '').strip().lower()
+    cur.execute("""
+        UPDATE users
+        SET email = %s,
+            phone = COALESCE(NULLIF(%s, ''), phone),
+            name = COALESCE(NULLIF(%s, ''), name),
+            email_bounced = FALSE,
+            email_bounce_reason = NULL,
+            email_bounced_at = NULL,
+            email_verify_code = NULL,
+            email_verify_target = NULL,
+            email_verify_expires_at = NULL
+        WHERE id = %s;
+    """, (email, phone, name, user_id))
+
+    if user.get('tech_id'):
+        cur.execute("""
+            UPDATE technicians
+            SET email = %s,
+                phone = COALESCE(NULLIF(%s, ''), phone),
+                name = COALESCE(NULLIF(%s, ''), name)
+            WHERE id = %s;
+        """, (email, phone, name, user['tech_id']))
+
+    cur.execute("UPDATE bounced_emails SET resolved_at = CURRENT_TIMESTAMP WHERE email = %s;", (email,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    if email != old_email or not old_email:
+        _send_email_registered_notice(
+            to_email=email,
+            display_name=name or user.get('name') or user['username'],
+            username=user['username']
+        )
+
+    log_action(user_id, user['username'], f"Validou e confirmou e-mail de contato ({email}) via código de verificação.")
     updated_user = get_user_info_dict(user_id)
     return jsonify({"success": True, "user": updated_user})
 
