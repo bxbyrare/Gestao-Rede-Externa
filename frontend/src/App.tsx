@@ -5,7 +5,10 @@ import { NotificationProvider } from './state/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
 import FullScreenCinematicIntro from './components/FullScreenCinematicIntro';
+import PrivacyCookieBanner from './components/PrivacyCookieBanner';
 
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage'));
 const PessoasPage = lazy(() => import('./pages/PessoasPage'));
@@ -55,17 +58,17 @@ export default function App() {
         {location.pathname === '/login' && <FullScreenCinematicIntro key={introRunId} durationMs={3600} />}
         <Suspense fallback={<RouteLoader />}>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/privacidade" element={<PrivacyPolicyPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/f/:slug" element={<FormResponderPage />} />
             <Route
-              path="/"
               element={
                 <ProtectedRoute>
                   <DashboardLayout />
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Navigate to="/grafana" replace />} />
               <Route path="grafana" element={<GrafanaPage />} />
               <Route path="favoritos" element={<FavoritesPage />} />
               <Route path="area-de-trabalho" element={<WorkspacePage />} />
@@ -91,6 +94,7 @@ export default function App() {
             </Route>
           </Routes>
         </Suspense>
+        <PrivacyCookieBanner />
       </NotificationProvider>
     </AuthProvider>
   );
