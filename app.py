@@ -461,6 +461,212 @@ def send_resend_email(to_email, subject, category_badge, title, message_html, ct
     t.start()
     return True
 
+
+def _send_email_registered_notice(to_email, display_name, username=None):
+    """Envia aviso confirmando que o e-mail foi cadastrado no Gestão Rede Externa."""
+    clean_email = (to_email or '').strip().lower()
+    if not _is_valid_email_addr(clean_email):
+        return False
+    safe_name = html.escape(str(display_name or username or 'Colaborador'))
+    safe_email = html.escape(clean_email)
+    user_row_html = ""
+    if username:
+        user_row_html = f'''
+            <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Login de Usuário:</p>
+            <p style="margin: 0; color: #F8FAFC; font-weight: 600; font-size: 15px;">{html.escape(str(username))}</p>
+            <hr style="border: 0; border-top: 1px solid #28354D; margin: 10px 0;">
+        '''
+    return send_resend_email(
+        to_email=clean_email,
+        subject="[Claro Rede Externa] E-mail Cadastrado no Portal",
+        category_badge="CADASTRO DE E-MAIL",
+        title="Endereço de E-mail Cadastrado",
+        message_html=f'''
+            <p>Olá, <strong>{safe_name}</strong>.</p>
+            <p>Este endereço de e-mail foi cadastrado no <strong>Gestão Rede Externa</strong> e será utilizado para o envio de avisos e alertas importantes em relação ao portal.</p>
+            <div style="background: #172033; border: 1px solid #1E293B; border-radius: 8px; padding: 14px 18px; margin: 18px 0;">
+                {user_row_html}
+                <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">E-mail Cadastrado:</p>
+                <p style="margin: 0; color: #38BDF8; font-weight: 600; font-size: 15px;">{safe_email}</p>
+            </div>
+            <p>Caso você não reconheça esta alteração ou deseje atualizar seu contato, acesse seu perfil no portal imediatamente.</p>
+        ''',
+        cta_text="Acessar Gestão Rede Externa",
+        cta_url="https://gestaoredeexterna.shardweb.app/"
+    )
+
+
+def _ensure_email_bounce_schema(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS bounced_emails (
+            email VARCHAR(255) PRIMARY KEY,
+            reason TEXT,
+            last_event VARCHAR(50),
+            resend_message_id VARCHAR(255),
+            bounce_count INT DEFAULT 1,
+            last_bounced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP DEFAULT NULL
+        );
+    """)
+    for col_sql in [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounce_reason TEXT DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced_at TIMESTAMP DEFAULT NULL;",
+    ]:
+        cur.execute(col_sql)
+
+
+def _mark_email_bounced(email_addr, reason="", event_type="bounced", resend_message_id=None):
+    clean = (email_addr or "").strip().lower()
+    if not clean or "@" not in clean:
+        return False
+    conn = None
+    cur = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_email_bounce_schema(cur)
+        reason_text = str(reason or "Falha de entrega (e-mail rejeitado ou inexistente).").strip()[:500]
+        cur.execute("""
+            INSERT INTO bounced_emails (email, reason, last_event, resend_message_id, bounce_count, last_bounced_at, resolved_at)
+            VALUES (%s, %s, %s, %s, 1, CURRENT_TIMESTAMP, NULL)
+            ON CONFLICT (email) DO UPDATE SET
+                reason = EXCLUDED.reason,
+                last_event = EXCLUDED.last_event,
+                resend_message_id = COALESCE(EXCLUDED.resend_message_id, bounced_emails.resend_message_id),
+                bounce_count = bounced_emails.bounce_count + 1,
+                last_bounced_at = CURRENT_TIMESTAMP,
+                resolved_at = NULL;
+        """, (clean, reason_text, str(event_type or "bounced")[:50], str(resend_message_id)[:255] if resend_message_id else None))
+
+        cur.execute("""
+            UPDATE users
+            SET email_bounced = TRUE,
+                email_bounce_reason = %s,
+                email_bounced_at = CURRENT_TIMESTAMP
+            WHERE LOWER(TRIM(COALESCE(email, ''))) = %s
+               OR tech_id IN (
+                   SELECT id FROM technicians WHERE LOWER(TRIM(COALESCE(email, ''))) = %s
+               );
+        """, (reason_text, clean, clean))
+        conn.commit()
+        return True
+    except Exception as ex:
+        print(f"[EMAIL BOUNCE MARK ERROR] {clean}: {ex}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return False
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn and not has_request_context():
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _clear_email_bounce_for_user(cur, user_id=None, tech_id=None, new_email=None):
+    _ensure_email_bounce_schema(cur)
+    if user_id:
+        cur.execute("""
+            UPDATE users
+            SET email_bounced = FALSE,
+                email_bounce_reason = NULL,
+                email_bounced_at = NULL
+            WHERE id = %s;
+        """, (user_id,))
+    elif tech_id:
+        cur.execute("""
+            UPDATE users
+            SET email_bounced = FALSE,
+                email_bounce_reason = NULL,
+                email_bounced_at = NULL
+            WHERE tech_id = %s;
+        """, (tech_id,))
+    if new_email:
+        clean_new = new_email.strip().lower()
+        if clean_new:
+            cur.execute("UPDATE bounced_emails SET resolved_at = CURRENT_TIMESTAMP WHERE email = %s;", (clean_new,))
+
+
+_resend_bounce_last_sync = 0.0
+_resend_bounce_lock = threading.Lock()
+_resend_bounce_watchdog_started = False
+
+
+def _sync_resend_bounces(force=False):
+    """Consulta a API do Resend para detectar e-mails com falha de entrega (bounced/complained/failed)."""
+    global _resend_bounce_last_sync
+    now_ts = time.time()
+    if not force and (now_ts - _resend_bounce_last_sync) < 600:
+        return {"skipped": True}
+    with _resend_bounce_lock:
+        now_ts = time.time()
+        if not force and (now_ts - _resend_bounce_last_sync) < 600:
+            return {"skipped": True}
+        _resend_bounce_last_sync = now_ts
+
+    api_key, _ = _get_resend_config()
+    if not api_key:
+        return {"error": "RESEND_API_KEY não configurada."}
+
+    marked = 0
+    try:
+        resp = requests.get(
+            'https://api.resend.com/emails?limit=100',
+            headers={'Authorization': f'Bearer {api_key}'},
+            timeout=15
+        )
+        if resp.status_code != 200:
+            return {"error": f"Resend HTTP {resp.status_code}"}
+        payload = resp.json() or {}
+        items = payload.get('data') or []
+        for item in items:
+            last_ev = str(item.get('last_event') or '').strip().lower()
+            if last_ev not in ('bounced', 'complained', 'failed', 'suppressed'):
+                continue
+            msg_id = item.get('id')
+            recipients = item.get('to') or []
+            if isinstance(recipients, str):
+                recipients = [recipients]
+            for rcpt in recipients:
+                clean_rcpt = str(rcpt or '').strip().lower()
+                if clean_rcpt and '@' in clean_rcpt:
+                    reason = f"Falha na entrega detectada pelo provedor ({last_ev})."
+                    if _mark_email_bounced(clean_rcpt, reason=reason, event_type=last_ev, resend_message_id=msg_id):
+                        marked += 1
+        return {"checked": len(items), "marked": marked}
+    except Exception as ex:
+        print(f"[RESEND BOUNCE SYNC ERROR] {ex}")
+        return {"error": str(ex)}
+
+
+def _start_resend_bounce_watchdog():
+    global _resend_bounce_watchdog_started
+    if _resend_bounce_watchdog_started:
+        return
+    _resend_bounce_watchdog_started = True
+
+    def _loop():
+        time.sleep(20)
+        while True:
+            try:
+                with app.app_context():
+                    _sync_resend_bounces(force=True)
+            except Exception as exc:
+                print(f"[RESEND BOUNCE WATCHDOG ERROR] {exc}")
+            time.sleep(600)
+
+    t = threading.Thread(target=_loop, daemon=True, name="resend-bounce-watchdog")
+    t.start()
+
 # --------------------------------------------------------------------------
 # EXECUTIVE EMAIL TEMPLATES (CLARO BRASIL)
 # --------------------------------------------------------------------------
@@ -2534,6 +2740,11 @@ def init_db():
         except Exception:
             conn.rollback()
 
+        try:
+            _ensure_email_bounce_schema(cur)
+        except Exception:
+            conn.rollback()
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS grafana_tickets (
                 id SERIAL PRIMARY KEY,
@@ -4099,6 +4310,7 @@ def api_reset_password():
 
 
 def get_user_info_dict(user_id):
+    _start_resend_bounce_watchdog()
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -4107,6 +4319,7 @@ def get_user_info_dict(user_id):
                 SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
                        u.email as u_email, u.phone as u_phone, u.name as u_name,
                        u.totp_secret, u.totp_enabled, u.totp_verified_at,
+                       u.email_bounced, u.email_bounce_reason,
                        t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
                        t.registration_claro, t.toa_login
                 FROM users u
@@ -4122,6 +4335,7 @@ def get_user_info_dict(user_id):
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_verified_at TIMESTAMP DEFAULT NULL;
                 """)
+                _ensure_email_bounce_schema(cur)
                 conn.commit()
             except Exception:
                 conn.rollback()
@@ -4129,6 +4343,7 @@ def get_user_info_dict(user_id):
                 SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
                        u.email as u_email, u.phone as u_phone, u.name as u_name,
                        u.totp_secret, u.totp_enabled, u.totp_verified_at,
+                       u.email_bounced, u.email_bounce_reason,
                        t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
                        t.registration_claro, t.toa_login
                 FROM users u
@@ -4136,13 +4351,31 @@ def get_user_info_dict(user_id):
                 WHERE u.id = %s;
             """, (user_id,))
         row = cur.fetchone()
-        cur.close()
-        conn.close()
         if not row:
+            cur.close()
+            conn.close()
             return None
 
         # Prefer users record, fallback to technicians record
         email = (row.get('u_email') or row.get('tech_email') or '').strip()
+        email_bounced = bool(row.get('email_bounced'))
+        email_bounce_reason = row.get('email_bounce_reason')
+
+        if email and not email_bounced:
+            try:
+                cur.execute(
+                    "SELECT reason FROM bounced_emails WHERE email = %s AND resolved_at IS NULL;",
+                    (email.lower(),)
+                )
+                b_row = cur.fetchone()
+                if b_row:
+                    email_bounced = True
+                    email_bounce_reason = b_row.get('reason') or "Falha na entrega de e-mails importantes."
+            except Exception:
+                conn.rollback()
+
+        cur.close()
+        conn.close()
         phone = (row.get('u_phone') or row.get('tech_phone') or '').strip()
         raw_name = (row.get('u_name') or row.get('tech_name') or '').strip()
         name = format_person_name(raw_name or row['username'])
@@ -4181,6 +4414,8 @@ def get_user_info_dict(user_id):
             "phone": phone,
             "tech_id": row.get('tech_id'),
             "needs_email": needs_email,
+            "email_bounced": email_bounced,
+            "email_bounce_reason": email_bounce_reason,
             "profile_complete": len(missing_fields) == 0,
             "missing_fields": missing_fields,
             "registration_claro": row.get('registration_claro'),
@@ -4255,8 +4490,14 @@ def api_update_my_profile():
         conn.close()
         return jsonify({"error": "Usuário não encontrado."}), 404
 
-    old_email = (user.get('email') or '').strip()
+    old_email = (user.get('email') or '').strip().lower()
     email_was_empty = not old_email
+    was_bounced = bool(user.get('email_bounced'))
+
+    if email and was_bounced and email == old_email:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "Este endereço de e-mail apresentou falha de entrega. Informe um novo e-mail válido diferente do anterior."}), 400
 
     hashed_pw = None
     if new_password:
@@ -4302,6 +4543,10 @@ def api_update_my_profile():
             WHERE id = %s;
         """, (email, phone, name, user['tech_id']))
 
+    # Clear bounce flag if email was updated to a new address
+    if email and (email_was_empty or email != old_email):
+        _clear_email_bounce_for_user(cur, user_id=user_id, new_email=email)
+
     conn.commit()
     cur.close()
     conn.close()
@@ -4309,25 +4554,10 @@ def api_update_my_profile():
     # If email was provided/updated, dispatch confirmation email via Resend
     if email and (email_was_empty or email != old_email):
         user_display_name = name or user['username']
-        send_resend_email(
+        _send_email_registered_notice(
             to_email=email,
-            subject="[Claro Rede Externa] Confirmação de E-mail Cadastrado",
-            category_badge="SEGURANÇA & ACESSO",
-            title="E-mail Vinculado com Sucesso",
-            message_html=f'''
-                <p>Olá, <strong>{user_display_name}</strong>.</p>
-                <p>Seu endereço de e-mail foi cadastrado com sucesso na sua conta do portal <strong>Claro Gestão Rede Externa</strong>.</p>
-                <div style="background: #172033; border: 1px solid #1E293B; border-radius: 8px; padding: 14px 18px; margin: 18px 0;">
-                    <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Login de Usuário:</p>
-                    <p style="margin: 0; color: #F8FAFC; font-weight: 600; font-size: 15px;">{user['username']}</p>
-                    <hr style="border: 0; border-top: 1px solid #28354D; margin: 10px 0;">
-                    <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">E-mail Registrado:</p>
-                    <p style="margin: 0; color: #38BDF8; font-weight: 600; font-size: 15px;">{email}</p>
-                </div>
-                <p>Este e-mail será utilizado para envio de comunicados operacionais importantes, avisos de manutenções, menções em ocorrências e recuperação segura de credenciais.</p>
-            ''',
-            cta_text="Acessar Minha Conta",
-            cta_url="https://gestaoredeexterna.shardweb.app/"
+            display_name=user_display_name,
+            username=user['username']
         )
 
     if hashed_pw and (email or old_email):
@@ -4615,6 +4845,11 @@ def api_update_technician(tech_id):
         conn = get_db()
         cur = conn.cursor()
         
+        cur.execute("SELECT email FROM technicians WHERE id = %s;", (tech_id,))
+        old_tech_row = cur.fetchone()
+        old_tech_email = ((old_tech_row or {}).get('email') or '').strip().lower()
+        clean_new_tech_email = (email or '').strip().lower()
+
         # Check unique CPF (excluding this technician)
         if cpf:
             cur.execute("SELECT id FROM technicians WHERE cpf = %s AND id != %s;", (cpf, tech_id))
@@ -4644,11 +4879,20 @@ def api_update_technician(tech_id):
              imei_1, imei_2, email, nr6_expiration, nr10_expiration, nr35_expiration, aso_expiration,
              new_nr6_file, new_nr10_file, new_nr35_file, new_aso_file, tech_id)
         )
+        if clean_new_tech_email and clean_new_tech_email != old_tech_email:
+            _clear_email_bounce_for_user(cur, tech_id=tech_id, new_email=clean_new_tech_email)
+
         conn.commit()
         cur.close()
         conn.close()
         
         log_action(session['user_id'], session['username'], f"Atualizou cadastro da pessoa: {name} (ID: {tech_id})")
+
+        if clean_new_tech_email and clean_new_tech_email != old_tech_email:
+            _send_email_registered_notice(
+                to_email=clean_new_tech_email,
+                display_name=name
+            )
 
         # Notify technician via email if email is present and updater is coordinator/supervisor
         try:
@@ -13766,6 +14010,42 @@ def api_admin_resend_status():
         "domain_name": domain_name,
         "domain_status": domain_status,
     })
+
+
+@app.route('/api/webhooks/resend', methods=['POST'])
+def api_resend_webhook():
+    """Recebe eventos do Resend (email.bounced, email.complained, email.failed) e sinaliza o usuário."""
+    payload = request.get_json(silent=True) or {}
+    ev_type = str(payload.get('type') or '').strip().lower()
+    if ev_type not in ('email.bounced', 'email.complained', 'email.delivery_delayed', 'email.failed'):
+        return jsonify({"received": True, "ignored": True}), 200
+
+    if ev_type == 'email.delivery_delayed':
+        return jsonify({"received": True, "ignored": "delayed_only"}), 200
+
+    data_obj = payload.get('data') or {}
+    recipients = data_obj.get('to') or []
+    if isinstance(recipients, str):
+        recipients = [recipients]
+    msg_id = data_obj.get('email_id') or data_obj.get('id')
+    bounce_info = data_obj.get('bounce') or {}
+    reason = bounce_info.get('message') or f"Falha na entrega ({ev_type})."
+
+    marked = 0
+    for rcpt in recipients:
+        if _mark_email_bounced(rcpt, reason=reason, event_type=ev_type.replace('email.', ''), resend_message_id=msg_id):
+            marked += 1
+    return jsonify({"received": True, "marked": marked}), 200
+
+
+@app.route('/api/admin/email-bounces/sync', methods=['POST'])
+@login_required
+def api_admin_sync_email_bounces():
+    auth = get_current_user_auth()
+    if not _has_admin_notify_access(auth):
+        return jsonify({"error": "Acesso restrito ao Coordenador Master."}), 403
+    res = _sync_resend_bounces(force=True)
+    return jsonify({"success": "error" not in res, **res})
 
 
 @app.route('/api/admin/notify-outdated-profile', methods=['GET', 'POST'])

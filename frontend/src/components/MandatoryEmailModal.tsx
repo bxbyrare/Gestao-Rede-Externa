@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { AlertTriangle, CheckCircle2, Loader2, MailWarning } from 'lucide-react';
 import { useAuth } from '../state/AuthContext';
 import { api, ApiError } from '../api/client';
 import type { User } from '../api/types';
@@ -7,14 +7,26 @@ import { Button, Field, Input } from './ui';
 
 export default function MandatoryEmailModal() {
   const { user, updateUserState } = useAuth();
-  const [email, setEmail] = useState(user?.email || '');
+  const isBounced = Boolean(user?.email_bounced);
+  const currentEmailClean = (user?.email || '').trim().toLowerCase();
+
+  const [email, setEmail] = useState(isBounced ? '' : (user?.email || ''));
   const [phone, setPhone] = useState(user?.phone || '');
   const [name, setName] = useState(user?.name || '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  if (!user || !user.needs_email) {
+  useEffect(() => {
+    if (!user) return;
+    setEmail(user.email_bounced ? '' : (user.email || ''));
+    setPhone(user.phone || '');
+    setName(user.name || '');
+    setError(null);
+    setIsSuccess(false);
+  }, [user?.id, user?.email_bounced, user?.needs_email]);
+
+  if (!user || (!user.needs_email && !user.email_bounced)) {
     return null;
   }
 
@@ -25,6 +37,11 @@ export default function MandatoryEmailModal() {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
       setError('Informe um endereço de e-mail válido.');
+      return;
+    }
+
+    if (isBounced && currentEmailClean && cleanEmail === currentEmailClean) {
+      setError('O e-mail anterior falhou na entrega. Informe um novo endereço de e-mail diferente.');
       return;
     }
 
@@ -45,9 +62,11 @@ export default function MandatoryEmailModal() {
             email: cleanEmail,
             phone: phone.trim(),
             needs_email: false,
+            email_bounced: false,
+            email_bounce_reason: null,
           });
         }
-      }, 900);
+      }, 1100);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -67,21 +86,46 @@ export default function MandatoryEmailModal() {
             <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6" />
             </div>
-            <h2 className="text-lg font-bold text-white">E-mail Cadastrado</h2>
-            <p className="text-xs text-[var(--color-text-muted)]">
-              E-mail <span className="text-white font-medium">{email}</span> vinculado ao seu perfil.
+            <h2 className="text-lg font-bold text-white">Novo E-mail Cadastrado</h2>
+            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+              O endereço <span className="text-white font-medium">{email}</span> foi cadastrado no Gestão Rede Externa e receberá os avisos e alertas importantes do portal.
             </p>
           </div>
         ) : (
           <>
             <div className="mb-5 pb-4 border-b border-white/5">
-              <h2 className="text-lg font-bold text-white tracking-tight">
-                Atualização Cadastral
-              </h2>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                Informe um e-mail válido para continuar no sistema.
-              </p>
+              <div className="flex items-center gap-2.5">
+                {isBounced && (
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-400/35 flex items-center justify-center text-amber-300 shrink-0">
+                    <MailWarning className="w-4 h-4" />
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-tight">
+                    {isBounced ? 'Atualize seu E-mail de Contato' : 'Atualização Cadastral'}
+                  </h2>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                    {isBounced
+                      ? 'Não estamos conseguindo entregar e-mails importantes no endereço atual.'
+                      : 'Informe um e-mail válido para continuar no sistema.'}
+                  </p>
+                </div>
+              </div>
             </div>
+
+            {isBounced && (
+              <div className="mb-4 p-3.5 rounded-xl bg-amber-500/10 border border-amber-400/35 text-amber-100 text-xs leading-relaxed flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-200 mb-1">
+                    Falha de entrega para: {user.email}
+                  </p>
+                  <p className="text-amber-100/85">
+                    Não estamos conseguindo enviar e-mails importantes para este endereço. Por favor, cadastre um novo e-mail válido para continuar recebendo avisos e alertas do Gestão Rede Externa.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-xs">
@@ -90,13 +134,13 @@ export default function MandatoryEmailModal() {
             )}
 
             <form onSubmit={handleSubmit}>
-              <Field label="E-mail">
+              <Field label={isBounced ? 'Novo E-mail Válido' : 'E-mail'}>
                 <Input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="usuario@claro.com.br"
+                  placeholder="novo.email@claro.com.br"
                 />
               </Field>
 

@@ -8,6 +8,8 @@ export interface User {
   phone?: string;
   tech_id?: number | null;
   needs_email?: boolean;
+  email_bounced?: boolean;
+  email_bounce_reason?: string | null;
   profile_complete?: boolean;
   missing_fields?: string[];
   registration_claro?: string | null;
