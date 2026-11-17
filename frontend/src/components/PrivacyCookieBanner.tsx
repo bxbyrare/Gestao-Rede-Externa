@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import gsap from 'gsap';
-import { Cookie, ExternalLink } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 
 const CONSENT_STORAGE_KEY = 'claro_privacy_consent_v1';
 const CONSENT_TTL_MS = 180 * 24 * 60 * 60 * 1000; // 180 dias
@@ -74,11 +74,18 @@ export default function PrivacyCookieBanner() {
     if (visible && bannerRef.current) {
       gsap.fromTo(
         bannerRef.current,
-        { y: 28, opacity: 0 },
+        { y: 24, opacity: 0 },
         { y: 0, opacity: 1, duration: 0.45, ease: 'power3.out' },
       );
     }
   }, [visible]);
+
+  function handleMouseMove(e: ReactMouseEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
+    el.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
+  }
 
   function applyChoice(metrics: boolean) {
     const saved = savePrivacyConsent(metrics);
@@ -95,50 +102,64 @@ export default function PrivacyCookieBanner() {
       aria-label="Preferências de privacidade e cookies"
       className="fixed bottom-4 left-4 right-4 z-[950] flex justify-center pointer-events-none"
     >
-      <div className="pointer-events-auto w-full max-w-4xl rounded-xl bg-[#0B0F17]/95 backdrop-blur-xl border border-white/15 shadow-2xl shadow-black/70 p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5">
-        <div className="space-y-1.5 flex-1">
-          <div className="flex items-center gap-2">
-            <Cookie className="w-4 h-4 text-[#e20613]" />
+      {/* Double-Bezel Studio Black Card */}
+      <div
+        onMouseMove={handleMouseMove}
+        className="pointer-events-auto w-full max-w-4xl rounded-2xl p-[1px] bg-white/[0.1] shadow-[0_24px_80px_rgba(0,0,0,0.9)]"
+        style={{
+          backgroundImage:
+            'radial-gradient(420px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(255,255,255,0.22), transparent 50%)',
+        }}
+      >
+        <div className="rounded-2xl bg-[#090C13]/95 backdrop-blur-2xl px-6 py-5 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-1.5 flex-1">
+            <div className="flex items-center gap-2.5">
+              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#a1a1a6]">
+                PRIVACIDADE · LGPD
+              </span>
+              <span className="text-white/20">•</span>
+              <span className="text-[10px] font-mono text-white/40">180 DIAS</span>
+            </div>
             <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
               Sua privacidade, sua escolha
             </h3>
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Usamos armazenamento essencial para o funcionamento e segurança do portal. Com sua permissão, coletamos métricas de desempenho e navegação nos logs para manter tudo rápido e estável. Recusar não impede o acesso.
-          </p>
-          <div className="pt-0.5">
-            <a
-              href="/privacidade#tecnologias"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-medium text-sky-400 hover:text-sky-300 underline underline-offset-2 transition"
-            >
-              <span>Política de Privacidade (nova aba)</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-          {storageBlocked && (
-            <p className="text-[11px] text-amber-300 pt-1">
-              Seu navegador bloqueou o armazenamento local; as métricas permanecerão desativadas nesta sessão.
+            <p className="text-xs text-[#a1a1a6] leading-relaxed max-w-2xl">
+              Usamos armazenamento essencial para autenticação e segurança do portal. Com sua permissão, coletamos métricas de desempenho nos logs para manter tudo rápido e estável. Recusar não impede o acesso.
             </p>
-          )}
-        </div>
+            <div className="pt-0.5">
+              <a
+                href="/privacidade#tecnologias"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-white/80 hover:text-white underline underline-offset-4 transition"
+              >
+                <span>Política de Privacidade (nova aba)</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+            {storageBlocked && (
+              <p className="text-[11px] text-amber-300 pt-1">
+                Armazenamento local bloqueado neste navegador; métricas mantidas desativadas nesta sessão.
+              </p>
+            )}
+          </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => applyChoice(false)}
-            className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/15 border border-white/15 text-white transition cursor-pointer"
-          >
-            Recusar métricas
-          </button>
-          <button
-            type="button"
-            onClick={() => applyChoice(true)}
-            className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#e20613] hover:bg-[#c80510] text-white transition cursor-pointer"
-          >
-            Aceitar métricas
-          </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => applyChoice(false)}
+              className="px-4 py-2.5 rounded-full text-xs font-semibold bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.12] text-white transition cursor-pointer"
+            >
+              Recusar métricas
+            </button>
+            <button
+              type="button"
+              onClick={() => applyChoice(true)}
+              className="px-5 py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition cursor-pointer"
+            >
+              Aceitar métricas
+            </button>
+          </div>
         </div>
       </div>
     </div>
