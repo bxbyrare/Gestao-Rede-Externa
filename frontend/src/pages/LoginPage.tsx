@@ -108,16 +108,21 @@ export default function LoginPage() {
                   <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 group-focus-within:text-white transition-colors" />
                   <input
                     id="username"
+                    name="username"
                     type="text"
                     required
                     autoComplete="username"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    enterKeyHint="next"
                     value={username}
                     onChange={(e) => {
                       setUsername(e.target.value);
                       if (error) setError(null);
                     }}
                     placeholder="Seu usuário corporativo..."
-                    className="w-full h-12 pl-11 pr-4 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-500 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none font-medium"
+                    className="w-full h-12 pl-11 pr-4 rounded-xl bg-white/[0.03] border border-white/10 text-base sm:text-sm text-white placeholder:text-neutral-500 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none font-medium"
                   />
                 </div>
               </div>
@@ -142,20 +147,23 @@ export default function LoginPage() {
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 group-focus-within:text-white transition-colors" />
                   <input
                     id="password"
+                    name="password"
                     type={showPassword ? 'text' : 'password'}
                     required
                     autoComplete="current-password"
+                    enterKeyHint="done"
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
                       if (error) setError(null);
                     }}
                     placeholder="••••••••••••"
-                    className="w-full h-12 pl-11 pr-11 rounded-xl bg-white/[0.03] border border-white/10 text-sm text-white placeholder:text-neutral-500 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none font-mono"
+                    className="w-full h-12 pl-11 pr-11 rounded-xl bg-white/[0.03] border border-white/10 text-base sm:text-sm text-white placeholder:text-neutral-500 focus:border-white/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-white/20 transition-all outline-none font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
+                    aria-pressed={showPassword}
                     aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-neutral-400 hover:text-white transition-colors cursor-pointer"
                   >
