@@ -118,6 +118,8 @@ export interface Vehicle {
   tires_json?: Record<string, TirePositionInfo> | null;
   open_damages_count?: number;
   pending_inspections_count?: number;
+  oldest_pending_minutes?: number;
+  pending_has_damage?: boolean;
   last_approved_by_name?: string | null;
   last_approved_at?: string | null;
 }

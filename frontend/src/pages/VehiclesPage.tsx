@@ -67,6 +67,7 @@ interface FleetInspection {
   status: 'pendente' | 'aprovado' | 'reprovado';
   created_by_name: string;
   created_at_fmt: string;
+  waiting_minutes?: number;
   approved_by_name?: string;
   approved_by_role?: string;
   approved_at_fmt?: string;
@@ -94,6 +95,7 @@ interface FleetDamage {
   resolved_at_fmt?: string;
   inspection_id?: number | null;
   created_at_fmt: string;
+  waiting_minutes?: number;
 }
 
 interface FleetMaintenance {
@@ -291,6 +293,31 @@ function getTireComputedState(info: TirePositionInfo | undefined, currentKm: num
   if (info.condition === 'warning') return 'warning';
   if (nextKm > 0 && currentKm >= nextKm - 1500) return 'warning';
   return 'ok';
+}
+
+function formatWaitingTime(minutes?: number): string {
+  const m = Math.max(0, Number(minutes || 0));
+  if (m < 1) return 'Agora mesmo';
+  if (m < 60) return `${m}min`;
+  const hours = Math.floor(m / 60);
+  const rem = m % 60;
+  if (hours < 24) {
+    return rem > 0 ? `${hours}h ${rem}min` : `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+function getVehicleUrgencyRank(v: Vehicle): number {
+  const pendingCount = Number(v.pending_inspections_count || 0);
+  const openDmgCount = Number(v.open_damages_count || 0);
+  const waitMin = Number(v.oldest_pending_minutes || 0);
+  let score = 0;
+  if (pendingCount > 0) score += 1000 + Math.min(waitMin, 500);
+  if (v.pending_has_damage) score += 600;
+  if (openDmgCount > 0) score += 500 + openDmgCount * 100;
+  return score;
 }
 
 export default function VehiclesPage() {
@@ -559,13 +586,19 @@ export default function VehiclesPage() {
       groupsMap.get(modelGroup)!.push(v);
     });
 
-    const groups: { model: string; vehicles: Vehicle[]; total: number }[] = [];
+    const groups: { model: string; vehicles: Vehicle[]; total: number; maxUrgency: number }[] = [];
     groupsMap.forEach((vList, modelName) => {
-      vList.sort((a, b) => getVehicleCompletenessScore(b) - getVehicleCompletenessScore(a));
+      vList.sort((a, b) => {
+        const urgDiff = getVehicleUrgencyRank(b) - getVehicleUrgencyRank(a);
+        if (urgDiff !== 0) return urgDiff;
+        return getVehicleCompletenessScore(b) - getVehicleCompletenessScore(a);
+      });
+      const maxUrgency = Math.max(0, ...vList.map(getVehicleUrgencyRank));
       groups.push({
         model: modelName,
         vehicles: vList,
         total: vList.length,
+        maxUrgency,
       });
     });
 
@@ -586,6 +619,7 @@ export default function VehiclesPage() {
     ];
 
     groups.sort((a, b) => {
+      if (b.maxUrgency !== a.maxUrgency) return b.maxUrgency - a.maxUrgency;
       const idxA = priorityOrder.indexOf(a.model);
       const idxB = priorityOrder.indexOf(b.model);
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
@@ -1172,6 +1206,125 @@ export default function VehiclesPage() {
 
   const totalFilteredCount = groupedVehicles.reduce((acc, g) => acc + g.vehicles.length, 0);
 
+  const [queueFilter, setQueueFilter] = useState<'todos' | 'repasses' | 'avarias'>('todos');
+
+  const priorityWaitingQueue = useMemo(() => {
+    type QueueItem = {
+      uid: string;
+      kind: 'repasse' | 'avaria';
+      tier: 1 | 2 | 3; // 1 = Crítico, 2 = Urgente, 3 = Fila normal
+      tierLabel: string;
+      waitingMinutes: number;
+      createdAtFmt: string;
+      plate: string;
+      vehicleModel: string;
+      area: string;
+      title: string;
+      subtitle: string;
+      detail?: string;
+      inspection?: FleetInspection;
+      damage?: FleetDamage;
+    };
+
+    const items: QueueItem[] = [];
+
+    // 1. Vistorias Pendentes de Entrega / Recebimento
+    inspections
+      .filter((i) => i.status === 'pendente')
+      .forEach((i) => {
+        const wait = Number(i.waiting_minutes || 0);
+        let tier: 1 | 2 | 3 = 3;
+        let tierLabel = 'AGUARDANDO REVISÃO';
+        if (i.has_damage) {
+          tier = 1;
+          tierLabel = 'CRÍTICO · REPASSE COM AVARIA';
+        } else if (wait >= 120) {
+          tier = 1;
+          tierLabel = 'CRÍTICO · ESPERA > 2H';
+        } else if (wait >= 30) {
+          tier = 2;
+          tierLabel = 'URGENTE · AGUARDANDO SUPERVISOR';
+        }
+
+        const opLabel =
+          i.inspection_type === 'entrega'
+            ? 'Entrega / Repasse'
+            : i.inspection_type === 'recebimento'
+            ? 'Recebimento / Devolução'
+            : 'Vistoria Periódica';
+
+        items.push({
+          uid: `insp-${i.id}`,
+          kind: 'repasse',
+          tier,
+          tierLabel,
+          waitingMinutes: wait,
+          createdAtFmt: i.created_at_fmt,
+          plate: i.plate,
+          vehicleModel: i.vehicle_model || 'Veículo da Frota',
+          area: i.area_rede || i.base || i.subclus || 'Geral',
+          title: `${opLabel}: ${i.from_person_name} ➔ ${i.to_person_name}`,
+          subtitle: `KM: ${i.km.toLocaleString('pt-BR')} km · Combustível: ${i.fuel_level} · 4 Fotos + Assinatura`,
+          detail: i.damage_notes ? `Avaria apontada: ${i.damage_notes}` : i.observations || undefined,
+          inspection: i,
+        });
+      });
+
+    // 2. Avarias / Quebrados Abertos (que não sejam duplicados da mesma vistoria pendente)
+    const pendingInspIds = new Set(inspections.filter((i) => i.status === 'pendente').map((i) => i.id));
+    damages
+      .filter((d) => d.status !== 'Concluída' && (!d.inspection_id || !pendingInspIds.has(d.inspection_id)))
+      .forEach((d) => {
+        const wait = Number(d.waiting_minutes || 0);
+        const isHigh = d.severity.includes('Crítica') || d.severity === 'Alta';
+        let tier: 1 | 2 | 3 = isHigh ? 1 : d.severity === 'Média' ? 2 : 3;
+        if (wait >= 240 && tier > 1) tier = 1;
+        const tierLabel =
+          d.severity.includes('Crítica')
+            ? 'CRÍTICO · VEÍCULO PARADO'
+            : tier === 1
+            ? `CRÍTICO · AVARIA ${d.severity.toUpperCase()}`
+            : tier === 2
+            ? `URGENTE · ${d.status.toUpperCase()}`
+            : `EM ACOMPANHAMENTO · ${d.status.toUpperCase()}`;
+
+        items.push({
+          uid: `dmg-${d.id}`,
+          kind: 'avaria',
+          tier,
+          tierLabel,
+          waitingMinutes: wait,
+          createdAtFmt: d.created_at_fmt,
+          plate: d.plate,
+          vehicleModel: d.vehicle_model || 'Veículo da Frota',
+          area: d.area || 'Geral',
+          title: `${d.occurrence_type}${d.affected_part ? ` — ${d.affected_part}` : ''}`,
+          subtitle: `Reportado por ${d.reported_by_name}${d.driver_name ? ` · Condutor: ${d.driver_name}` : ''}`,
+          detail: d.description,
+          damage: d,
+        });
+      });
+
+    // Filtra por área se o filtro de área estiver ativo
+    const areaFiltered = items.filter((item) => {
+      if (queueFilter === 'repasses' && item.kind !== 'repasse') return false;
+      if (queueFilter === 'avarias' && item.kind !== 'avaria') return false;
+      if (selectedArea !== 'Todas') {
+        return item.area.toLowerCase().includes(selectedArea.toLowerCase());
+      }
+      return true;
+    });
+
+    // Ordena: 1º Mais Crítico (tier 1 -> 2 -> 3), 2º Entrega/Repasse antes de Avaria no mesmo tier, 3º Maior tempo de espera (waitingMinutes DESC)
+    areaFiltered.sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier;
+      if (a.kind !== b.kind) return a.kind === 'repasse' ? -1 : 1;
+      return b.waitingMinutes - a.waitingMinutes;
+    });
+
+    return areaFiltered;
+  }, [inspections, damages, queueFilter, selectedArea]);
+
   const filteredInspections = useMemo(() => {
     return inspections.filter((i) => {
       if (inspStatusFilter !== 'todos' && i.status !== inspStatusFilter) return false;
@@ -1220,6 +1373,173 @@ export default function VehiclesPage() {
           </div>
         }
       />
+
+      {/* ===================================================================== */}
+      {/* LISTA DE ESPERA ESPECIAL NO TOPO (ORDENADA POR CRITICIDADE & TEMPO)    */}
+      {/* ===================================================================== */}
+      <Card className="p-5 border border-amber-500/35 bg-gradient-to-b from-[#161118]/95 via-[#0c0f17]/95 to-[#090C13] shadow-[0_16px_45px_rgba(0,0,0,0.75)] space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-white/10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-500 animate-ping" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
+                Fila Especial de Espera & Revisão de Supervisão
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-500/20 text-red-200 border border-red-500/40">
+                {priorityWaitingQueue.length} pendente{priorityWaitingQueue.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight">
+              Veículos Pendentes de Revisão (Entrega / Recebimento & Avarias Críticas)
+            </h2>
+            <p className="text-xs text-slate-400">
+              Ordenados automaticamente pela <strong>gravidade/criticidade</strong> e pelo <strong>tempo de espera na fila</strong> para aprovação rápida do supervisor/coordenador.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(
+              [
+                { id: 'todos', label: 'Toda a Fila Prioritária' },
+                { id: 'repasses', label: `Entrega / Recebimento (${stats.pendingInsp})` },
+                { id: 'avarias', label: `Avarias / Quebrados (${stats.openDamages})` },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setQueueFilter(f.id)}
+                className={`h-8 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  queueFilter === f.id
+                    ? 'bg-white text-black shadow'
+                    : 'bg-white/[0.04] text-slate-300 hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {priorityWaitingQueue.length === 0 ? (
+          <div className="py-6 text-center text-xs text-emerald-400 font-semibold flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Nenhum veículo aguardando revisão de entrega/recebimento ou avaria aberta neste momento!</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
+            {priorityWaitingQueue.map((item, idx) => {
+              const isCritical = item.tier === 1;
+              const isUrgent = item.tier === 2;
+
+              return (
+                <div
+                  key={item.uid}
+                  className={`p-4 rounded-2xl border flex flex-col justify-between gap-3 transition ${
+                    isCritical
+                      ? 'bg-red-950/25 border-red-500/50 shadow-[0_0_25px_rgba(239,68,68,0.12)]'
+                      : isUrgent
+                      ? 'bg-amber-950/20 border-amber-500/40'
+                      : 'bg-white/[0.03] border-white/15'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    {/* Top Row: Queue Position + Criticality + Waiting Time */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-mono text-[11px] font-black">
+                          #{idx + 1}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-lg bg-[#003399] text-white font-mono text-xs font-black tracking-wider">
+                          {item.plate}
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
+                            isCritical
+                              ? 'bg-red-500/25 text-red-200 border-red-400/50'
+                              : isUrgent
+                              ? 'bg-amber-500/25 text-amber-200 border-amber-400/50'
+                              : 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
+                          }`}
+                        >
+                          {item.tierLabel}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`px-2.5 py-1 rounded-xl font-mono text-[11px] font-bold border ${
+                          isCritical
+                            ? 'bg-red-500/20 text-red-200 border-red-500/40'
+                            : 'bg-black/40 text-amber-300 border-white/10'
+                        }`}
+                        title={`Registrado em ${item.createdAtFmt}`}
+                      >
+                        ⏱ Espera: {formatWaitingTime(item.waitingMinutes)}
+                      </span>
+                    </div>
+
+                    {/* Title & Subtitle */}
+                    <div>
+                      <div className="text-sm font-extrabold text-white">{item.title}</div>
+                      <div className="text-xs text-slate-300 mt-0.5">
+                        {item.vehicleModel} · Área: <strong className="text-white">{item.area}</strong> · {item.subtitle}
+                      </div>
+                    </div>
+
+                    {item.detail && (
+                      <div className="p-2.5 rounded-xl bg-black/35 border border-white/10 text-xs text-amber-200 line-clamp-2">
+                        {item.detail}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Footer */}
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      Enviado em {item.createdAtFmt}
+                    </span>
+                    {item.kind === 'repasse' && item.inspection ? (
+                      <Button
+                        onClick={() => openInspectionDetail(item.inspection!.id)}
+                        className="h-9 px-3.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Revisar 4 Fotos & Aprovar Repasse
+                      </Button>
+                    ) : item.damage ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const v = (vehicles || []).find((veh) => veh.id === item.damage!.vehicle_id);
+                            if (v) openVehicleHistory(v);
+                          }}
+                          className="h-8 px-3 text-xs"
+                        >
+                          Histórico
+                        </Button>
+                        {canReview && (
+                          <Button
+                            onClick={() => {
+                              setUpdatingDmg(item.damage!);
+                              setDmgNewStatus(
+                                item.damage!.status === 'Aberta' ? 'Em Análise' : item.damage!.status
+                              );
+                              setDmgResolutionNotes(item.damage!.resolution_notes || '');
+                            }}
+                            className="h-8 px-3 text-xs"
+                          >
+                            <Wrench className="w-3.5 h-3.5" /> Tratar Avaria
+                          </Button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {/* PAINEL DE INDICADORES OPERACIONAIS DA FROTA */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

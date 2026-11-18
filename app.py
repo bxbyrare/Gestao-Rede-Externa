@@ -5350,6 +5350,8 @@ def api_get_vehicles():
                 SELECT v.*, t.name AS responsible_name,
                        (SELECT COUNT(*) FROM vehicle_damages d WHERE d.vehicle_id = v.id AND d.status != 'Concluída') AS open_damages_count,
                        (SELECT COUNT(*) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS pending_inspections_count,
+                       (SELECT COALESCE(MAX(GREATEST(0, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - i.created_at)) / 60)::int), 0) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS oldest_pending_minutes,
+                       (SELECT COALESCE(BOOL_OR(i.has_damage), FALSE) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS pending_has_damage,
                        (SELECT i.approved_by_name FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_by_name,
                        (SELECT TO_CHAR(i.approved_at, 'DD/MM/YYYY HH24:MI') FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_at
                 FROM vehicles v 
@@ -5370,6 +5372,8 @@ def api_get_vehicles():
                 SELECT v.*, t.name AS responsible_name,
                        (SELECT COUNT(*) FROM vehicle_damages d WHERE d.vehicle_id = v.id AND d.status != 'Concluída') AS open_damages_count,
                        (SELECT COUNT(*) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS pending_inspections_count,
+                       (SELECT COALESCE(MAX(GREATEST(0, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - i.created_at)) / 60)::int), 0) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS oldest_pending_minutes,
+                       (SELECT COALESCE(BOOL_OR(i.has_damage), FALSE) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS pending_has_damage,
                        (SELECT i.approved_by_name FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_by_name,
                        (SELECT TO_CHAR(i.approved_at, 'DD/MM/YYYY HH24:MI') FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_at
                 FROM vehicles v 
@@ -5584,13 +5588,17 @@ def api_fleet_overview():
                    (CASE WHEN COALESCE(i.signature_data, '') != '' THEN TRUE ELSE FALSE END) AS has_signature,
                    i.status, i.created_by_user_id, i.created_by_name,
                    TO_CHAR(i.created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   GREATEST(0, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - i.created_at)) / 60)::int AS waiting_minutes,
                    i.approved_by_user_id, i.approved_by_name, i.approved_by_role,
                    TO_CHAR(i.approved_at, 'DD/MM/YYYY HH24:MI') AS approved_at_fmt,
                    i.review_notes,
                    v.model AS vehicle_model, v.area_rede, v.base, v.subclus
             FROM vehicle_inspections i
             LEFT JOIN vehicles v ON v.id = i.vehicle_id
-            ORDER BY i.created_at DESC, i.id DESC
+            ORDER BY CASE WHEN i.status = 'pendente' THEN 0 ELSE 1 END,
+                     i.has_damage DESC,
+                     i.created_at ASC,
+                     i.id DESC
             LIMIT 250;
         """)
         inspections = cur.fetchall()
@@ -5602,10 +5610,11 @@ def api_fleet_overview():
                    TO_CHAR(d.resolved_at, 'DD/MM/YYYY HH24:MI') AS resolved_at_fmt,
                    d.inspection_id,
                    TO_CHAR(d.created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   GREATEST(0, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - d.created_at)) / 60)::int AS waiting_minutes,
                    v.model AS vehicle_model, v.area_rede, v.base
             FROM vehicle_damages d
             LEFT JOIN vehicles v ON v.id = d.vehicle_id
-            ORDER BY CASE WHEN d.status != 'Concluída' THEN 0 ELSE 1 END, d.created_at DESC, d.id DESC
+            ORDER BY CASE WHEN d.status != 'Concluída' THEN 0 ELSE 1 END, d.created_at ASC, d.id DESC
             LIMIT 250;
         """)
         damages = cur.fetchall()
