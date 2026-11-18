@@ -17,10 +17,24 @@ export default function FullScreenCinematicIntro({
   const [isMutedByPolicy, setIsMutedByPolicy] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const completedRef = useRef(alreadySeen);
+  const playTimerRef = useRef<number | null>(null);
+  const stallTimerRef = useRef<number | null>(null);
+
+  function clearTimers() {
+    if (playTimerRef.current !== null) {
+      window.clearTimeout(playTimerRef.current);
+      playTimerRef.current = null;
+    }
+    if (stallTimerRef.current !== null) {
+      window.clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }
 
   function finishIntro() {
     if (completedRef.current) return;
     completedRef.current = true;
+    clearTimers();
     try {
       sessionStorage.setItem('claro_intro_dismissed', 'true');
     } catch {
@@ -31,6 +45,20 @@ export default function FullScreenCinematicIntro({
       setPhase('hidden');
       if (onComplete) onComplete();
     }, 450);
+  }
+
+  function handleVideoPlaying() {
+    // Cancel network stall timer once video actually starts playing frames
+    if (stallTimerRef.current !== null) {
+      window.clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+    // Start playback duration timer from the actual first playing frame
+    if (playTimerRef.current === null) {
+      playTimerRef.current = window.setTimeout(() => {
+        finishIntro();
+      }, durationMs + 400);
+    }
   }
 
   function enableAudio() {
@@ -91,13 +119,13 @@ export default function FullScreenCinematicIntro({
     window.addEventListener('keydown', unlockAudioOnInteraction, { once: true, passive: true });
     window.addEventListener('touchstart', unlockAudioOnInteraction, { once: true, passive: true });
 
-    // Strict fast transition timer: ends automatically after durationMs
-    const fallbackTimer = setTimeout(() => {
+    // Safety timer only if network stalls completely before video ever starts playing
+    stallTimerRef.current = window.setTimeout(() => {
       finishIntro();
-    }, durationMs);
+    }, 10000);
 
     return () => {
-      clearTimeout(fallbackTimer);
+      clearTimers();
       window.removeEventListener('pointerdown', unlockAudioOnInteraction);
       window.removeEventListener('keydown', unlockAudioOnInteraction);
       window.removeEventListener('touchstart', unlockAudioOnInteraction);
@@ -125,9 +153,10 @@ export default function FullScreenCinematicIntro({
         muted
         playsInline
         preload="auto"
+        onPlaying={handleVideoPlaying}
         onEnded={finishIntro}
         onError={() => finishIntro()}
-        className="w-full h-full object-cover object-center pointer-events-none"
+        className="w-full h-full object-contain sm:object-cover object-center pointer-events-none"
       />
 
       {/* Audio toggle */}
