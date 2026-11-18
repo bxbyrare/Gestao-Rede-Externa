@@ -104,6 +104,8 @@ export default function LandingPage() {
   }
 
   useEffect(() => {
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
     if (window.location.hash) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
@@ -222,7 +224,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div ref={rootRef} className="min-h-screen bg-[#030305] text-white selection:bg-[#EE2C24]/30 overflow-x-hidden flex flex-col relative">
+    <div ref={rootRef} className="min-h-screen bg-[#030305] text-white selection:bg-[#EE2C24]/30 overflow-x-clip flex flex-col relative">
       {/* Studio Black Reactive GSAP Background */}
       <GsapSecurityBackground />
 
@@ -240,6 +242,16 @@ export default function LandingPage() {
                 Gestão Rede Externa
               </span>
             </div>
+          </Link>
+
+          <Link
+            to={isAuthenticated ? '/grafana' : '/login'}
+            onMouseMove={handleMagneticMove}
+            onMouseLeave={handleMagneticLeave}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition shadow-lg shadow-white/5"
+          >
+            <span>{isAuthenticated ? 'Acessar painel' : 'Entrar no sistema'}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
       </header>
@@ -338,27 +350,18 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Hero Monolito Footer Lead + Magnetic CTA */}
+          {/* Hero Monolito Footer Lead */}
           <div className="hero-reveal pt-4 max-w-2xl mx-auto space-y-6">
             <p className="text-sm sm:text-base text-[#a1a1a6] leading-relaxed">
-              Plataforma corporativa da Claro que integra equipes de campo e coordenação na nuvem — garantindo rastreabilidade, cumprimento de SLAs e proteção de ponta a ponta.
+              Plataforma corporativa da Claro que integra equipes de campo e coordenação na nuvem — garantindo rastreabilidade, cumprimento de prazos e proteção de ponta a ponta.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-4">
-              <Link
-                to={isAuthenticated ? '/grafana' : '/login'}
-                onMouseMove={handleMagneticMove}
-                onMouseLeave={handleMagneticLeave}
-                className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-full text-sm font-bold bg-white text-black hover:bg-neutral-200 transition"
-              >
-                <span>{isAuthenticated ? 'Acessar painel' : 'Entrar no sistema'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+            <div className="flex flex-wrap items-center justify-center">
               <button
                 type="button"
                 onClick={() => scrollToSection('resultados')}
                 className="inline-flex items-center gap-2 px-5 py-3.5 rounded-full text-sm font-medium text-[#a1a1a6] hover:text-white border border-white/[0.1] hover:border-white/25 transition cursor-pointer"
               >
-                <span>Explorar arquitetura</span>
+                <span>Conhecer mais</span>
                 <ArrowDown className="w-4 h-4" />
               </button>
             </div>
