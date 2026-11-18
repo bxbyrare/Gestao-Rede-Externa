@@ -65,6 +65,28 @@ export default function DashboardLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dismissBanner, setDismissBanner] = useState(false);
 
+  const userTheme = useAuth().user?.theme_preference || (user?.id ? (localStorage.getItem(`claro_theme_user_${user.id}`) as 'dark' | 'light' | null) : null) || 'dark';
+  const isLightTheme = userTheme === 'light';
+
+  useEffect(() => {
+    const resolvedTheme = isLightTheme ? 'light' : 'dark';
+    document.documentElement.dataset.theme = resolvedTheme;
+    const metaScheme = document.querySelector('meta[name="color-scheme"]');
+    if (metaScheme) metaScheme.setAttribute('content', resolvedTheme);
+    if (user?.id && user?.theme_preference) {
+      try {
+        localStorage.setItem(`claro_theme_user_${user.id}`, user.theme_preference);
+      } catch {
+        // ignore storage errors
+      }
+    }
+    return () => {
+      document.documentElement.dataset.theme = 'dark';
+      const m = document.querySelector('meta[name="color-scheme"]');
+      if (m) m.setAttribute('content', 'dark');
+    };
+  }, [isLightTheme, user?.id, user?.theme_preference]);
+
   useEffect(() => {
     if (mobileNavOpen) {
       document.body.style.overflow = 'hidden';
@@ -97,9 +119,9 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="anti-print-protected min-h-dvh flex relative bg-[#030305] text-white overflow-x-clip">
+    <div className="dashboard-theme-scope anti-print-protected min-h-dvh flex relative bg-[#030305] text-white overflow-x-clip">
       {/* Precision Lagos Digital Architecture Blueprint Background */}
-      <GsapSecurityBackground />
+      {!isLightTheme && <GsapSecurityBackground />}
       <AntiPrintGuard />
 
       {/* Mandatory Blocking Modal if user has no email registered */}

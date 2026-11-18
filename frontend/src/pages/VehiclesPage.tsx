@@ -93,6 +93,7 @@ export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [search, setSearch] = useState('');
+  const [selectedArea, setSelectedArea] = useState('Todas');
   const [selectedModel, setSelectedModel] = useState('Todos');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -116,19 +117,65 @@ export default function VehiclesPage() {
       .catch(() => setTechnicians([]));
   }, []);
 
-  // Filtra por busca e agrupa ordenado por completude
+  const techAreaById = useMemo(() => {
+    const map = new Map<number, string>();
+    technicians.forEach((t) => {
+      if (t.id && t.area?.trim()) {
+        map.set(t.id, t.area.trim());
+      }
+    });
+    return map;
+  }, [technicians]);
+
+  function getVehicleAreaTokens(v: Vehicle): string[] {
+    const rawValues = [
+      v.area_rede,
+      v.subclus,
+      v.base,
+      v.responsible_tech_id ? techAreaById.get(Number(v.responsible_tech_id)) : '',
+    ];
+    const tokens = new Set<string>();
+    rawValues.forEach((raw) => {
+      if (!raw) return;
+      raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .forEach((item) => tokens.add(item));
+    });
+    return Array.from(tokens);
+  }
+
+  const availableAreas = useMemo(() => {
+    if (!vehicles) return ['Todas'];
+    const setA = new Set<string>();
+    vehicles.forEach((v) => {
+      getVehicleAreaTokens(v).forEach((a) => setA.add(a));
+    });
+    return ['Todas', ...Array.from(setA).sort((a, b) => a.localeCompare(b, 'pt-BR'))];
+  }, [vehicles, techAreaById]);
+
+  // Filtra por busca + área e agrupa ordenado por completude
   const groupedVehicles = useMemo(() => {
     if (!vehicles) return [];
     const q = search.trim().toLowerCase();
 
-    // 1. Filtragem por busca
+    // 1. Filtragem por área e busca
     const filtered = vehicles.filter((v) => {
+      if (selectedArea !== 'Todas') {
+        const vAreas = getVehicleAreaTokens(v);
+        if (!vAreas.some((a) => a.toLowerCase() === selectedArea.toLowerCase())) {
+          return false;
+        }
+      }
       if (!q) return true;
       return (
         v.plate.toLowerCase().includes(q) ||
         v.type.toLowerCase().includes(q) ||
         (v.model || '').toLowerCase().includes(q) ||
         (v.responsible_name || '').toLowerCase().includes(q) ||
+        (v.area_rede || '').toLowerCase().includes(q) ||
+        (v.base || '').toLowerCase().includes(q) ||
         (v.subclus || '').toLowerCase().includes(q) ||
         (v.ticket_car || '').toLowerCase().includes(q)
       );
@@ -187,7 +234,7 @@ export default function VehiclesPage() {
     }
 
     return groups;
-  }, [vehicles, search, selectedModel]);
+  }, [vehicles, search, selectedArea, selectedModel, techAreaById]);
 
   // Lista de modelos disponíveis para o seletor de topo
   const availableModels = useMemo(() => {
@@ -364,15 +411,32 @@ export default function VehiclesPage() {
       </div>
 
       {/* BARRA DE FILTROS & BUSCA */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por placa, modelo, condutor, subcluster..."
-            className="pl-11 rounded-full"
-          />
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por placa, modelo, condutor, área..."
+              className="pl-11 rounded-full"
+            />
+          </div>
+
+          <div className="w-full sm:w-64">
+            <Select
+              value={selectedArea}
+              onChange={(e) => setSelectedArea(e.target.value)}
+              aria-label="Filtrar veículos por área"
+              className="rounded-full"
+            >
+              {availableAreas.map((a) => (
+                <option key={a} value={a}>
+                  {a === 'Todas' ? 'Todas as Áreas / Bases' : `Área: ${a}`}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
 
         {/* Pílulas de Seleção por Modelo */}

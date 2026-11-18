@@ -100,6 +100,8 @@ interface GrafanaTicket {
   status_andamento: string;
   responsible_user_id: number | null;
   responsible_name: string;
+  distancia?: string;
+  referencia?: string;
   is_new: boolean;
   notes: TicketNote[];
   sla_hours: number;
@@ -122,6 +124,8 @@ interface ClearedTicket {
   abertura_raw: string;
   status_andamento: string;
   responsible_name: string;
+  distancia?: string;
+  referencia?: string;
   notes: TicketNote[];
   cleared_at: string;
 }
@@ -316,6 +320,10 @@ export default function GrafanaPage() {
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [distRefDrafts, setDistRefDrafts] = useState<Record<number, { distancia: string; referencia: string }>>({});
+  const [savedDistRefId, setSavedDistRefId] = useState<number | null>(null);
+  const [clearedDistRefDrafts, setClearedDistRefDrafts] = useState<Record<number, { distancia: string; referencia: string }>>({});
+  const [savedClearedDistRefId, setSavedClearedDistRefId] = useState<number | null>(null);
 
   // People autocomplete
   const [peopleList, setPeopleList] = useState<PersonOption[]>([]);
@@ -579,6 +587,58 @@ export default function GrafanaPage() {
     }
   }
 
+  async function handleSaveDistRef(ticket: GrafanaTicket) {
+    const draft = distRefDrafts[ticket.id];
+    const distancia = (draft ? draft.distancia : ticket.distancia || '').trim();
+    const referencia = (draft ? draft.referencia : ticket.referencia || '').trim();
+    if (distancia === (ticket.distancia || '') && referencia === (ticket.referencia || '')) {
+      return;
+    }
+    try {
+      const res = await api.put<{ success: boolean; distancia: string; referencia: string }>(
+        `/api/grafana/tickets/${ticket.id}/dist-ref`,
+        { distancia, referencia }
+      );
+      setTickets((prev) =>
+        prev.map((t) =>
+          t.id === ticket.id
+            ? { ...t, distancia: res.distancia ?? distancia, referencia: res.referencia ?? referencia }
+            : t
+        )
+      );
+      setSavedDistRefId(ticket.id);
+      setTimeout(() => setSavedDistRefId((curr) => (curr === ticket.id ? null : curr)), 2000);
+    } catch (err) {
+      console.error('Erro ao salvar DIST/REF:', err);
+    }
+  }
+
+  async function handleSaveClearedDistRef(item: ClearedTicket) {
+    const draft = clearedDistRefDrafts[item.id];
+    const distancia = (draft ? draft.distancia : item.distancia || '').trim();
+    const referencia = (draft ? draft.referencia : item.referencia || '').trim();
+    if (distancia === (item.distancia || '') && referencia === (item.referencia || '')) {
+      return;
+    }
+    try {
+      const res = await api.put<{ success: boolean; distancia: string; referencia: string }>(
+        `/api/grafana/cleared/${item.id}/dist-ref`,
+        { distancia, referencia }
+      );
+      setClearedList((prev) =>
+        prev.map((c) =>
+          c.id === item.id
+            ? { ...c, distancia: res.distancia ?? distancia, referencia: res.referencia ?? referencia }
+            : c
+        )
+      );
+      setSavedClearedDistRefId(item.id);
+      setTimeout(() => setSavedClearedDistRefId((curr) => (curr === item.id ? null : curr)), 2000);
+    } catch (err) {
+      console.error('Erro ao salvar DIST/REF no histórico:', err);
+    }
+  }
+
   function formatSingleWhatsapp(t: GrafanaTicket): string {
     const lines =
       t.ticket_type === 'REC'
@@ -602,6 +662,12 @@ export default function GrafanaPage() {
     }
     if (t.responsible_name) {
       lines.push(`👷 Acionado / Responsável: ${t.responsible_name}`);
+    }
+    if (t.distancia) {
+      lines.push(`📏 DIST (Distância): ${t.distancia}`);
+    }
+    if (t.referencia) {
+      lines.push(`📍 REF (Referência): ${t.referencia}`);
     }
     if (t.notes && t.notes.length > 0) {
       if (t.notes.length === 1) {
@@ -661,7 +727,9 @@ export default function GrafanaPage() {
         (t.designation || '').toLowerCase().includes(q) ||
         (t.cliente || '').toLowerCase().includes(q) ||
         (t.tipo_ral || '').toLowerCase().includes(q) ||
-        (t.responsible_name || '').toLowerCase().includes(q)
+        (t.responsible_name || '').toLowerCase().includes(q) ||
+        (t.distancia || '').toLowerCase().includes(q) ||
+        (t.referencia || '').toLowerCase().includes(q)
       );
     });
 
@@ -1469,6 +1537,107 @@ export default function GrafanaPage() {
                         )}
                       </div>
 
+                      {/* DIST (Distância) & REF (Referência) Boxes */}
+                      <div className="rounded-xl bg-white/[0.02] border border-white/10 p-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Histórico · Distância & Referência
+                          </span>
+                          {savedDistRefId === t.id ? (
+                            <span className="text-[10px] font-semibold text-emerald-400 inline-flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Salvo no histórico
+                            </span>
+                          ) : (() => {
+                            const d = distRefDrafts[t.id];
+                            const dirty =
+                              d &&
+                              (d.distancia.trim() !== (t.distancia || '') ||
+                                d.referencia.trim() !== (t.referencia || ''));
+                            return dirty ? (
+                              <button
+                                type="button"
+                                onClick={() => handleSaveDistRef(t)}
+                                className="px-2 py-0.5 rounded bg-[#3b82f6] hover:bg-blue-500 text-white text-[10px] font-bold transition"
+                              >
+                                Salvar DIST/REF
+                              </button>
+                            ) : null;
+                          })()}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-300/90 mb-1">
+                              DIST (Distância)
+                            </label>
+                            <input
+                              type="text"
+                              value={
+                                distRefDrafts[t.id] !== undefined
+                                  ? distRefDrafts[t.id].distancia
+                                  : t.distancia || ''
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setDistRefDrafts((prev) => ({
+                                  ...prev,
+                                  [t.id]: {
+                                    distancia: val,
+                                    referencia:
+                                      prev[t.id] !== undefined
+                                        ? prev[t.id].referencia
+                                        : t.referencia || '',
+                                  },
+                                }));
+                              }}
+                              onBlur={() => handleSaveDistRef(t)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveDistRef(t);
+                                }
+                              }}
+                              placeholder="Ex: 1.450m / 2,3 km"
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-[#090C13] border border-white/10 focus:border-amber-400/60 text-xs text-white placeholder-slate-500 focus:outline-none font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-sky-300/90 mb-1">
+                              REF (Referência)
+                            </label>
+                            <input
+                              type="text"
+                              value={
+                                distRefDrafts[t.id] !== undefined
+                                  ? distRefDrafts[t.id].referencia
+                                  : t.referencia || ''
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setDistRefDrafts((prev) => ({
+                                  ...prev,
+                                  [t.id]: {
+                                    distancia:
+                                      prev[t.id] !== undefined
+                                        ? prev[t.id].distancia
+                                        : t.distancia || '',
+                                    referencia: val,
+                                  },
+                                }));
+                              }}
+                              onBlur={() => handleSaveDistRef(t)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveDistRef(t);
+                                }
+                              }}
+                              placeholder="Ex: Próx. CEO-12 / Rua X"
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-[#090C13] border border-white/10 focus:border-sky-400/60 text-xs text-white placeholder-slate-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Notes List */}
                       <div className="space-y-1.5">
                         {t.notes.map((n) => (
@@ -2080,36 +2249,116 @@ export default function GrafanaPage() {
                 clearedList.map((item) => (
                   <div
                     key={item.id}
-                    className="p-3 rounded-xl bg-[#090C13] border border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                    className="p-3.5 rounded-xl bg-[#090C13] border border-white/10 space-y-2.5"
                   >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold text-slate-200">
-                          {item.ticket_type}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-[10px] font-bold text-indigo-300">
-                          {item.cf}
-                        </span>
-                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
-                        <span className="text-[11px] text-slate-400">
-                          {item.cliente || item.tipo_ral}
-                        </span>
-                      </div>
-                      <div className="text-xs font-mono text-slate-300 truncate mt-1">
-                        {item.designation}
-                      </div>
-                      {item.responsible_name && (
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          Responsável: {item.responsible_name}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold text-slate-200">
+                            {item.ticket_type}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-[10px] font-bold text-indigo-300">
+                            {item.cf}
+                          </span>
+                          <span className="text-xs font-bold text-white">{item.ticket_number}</span>
+                          <span className="text-[11px] text-slate-400">
+                            {item.cliente || item.tipo_ral}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[11px] font-semibold text-amber-300">
-                        Sanada em {item.cleared_at}
+                        <div className="text-xs font-mono text-slate-300 truncate mt-1">
+                          {item.designation}
+                        </div>
+                        {item.responsible_name && (
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            Responsável: {item.responsible_name}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-[10px] text-slate-500">
-                        Status final: {item.status_andamento}
+                      <div className="text-right shrink-0">
+                        <div className="text-[11px] font-semibold text-amber-300">
+                          Sanada em {item.cleared_at}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          Status final: {item.status_andamento}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 shrink-0 w-12">
+                          DIST:
+                        </span>
+                        <input
+                          type="text"
+                          value={
+                            clearedDistRefDrafts[item.id] !== undefined
+                              ? clearedDistRefDrafts[item.id].distancia
+                              : item.distancia || ''
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setClearedDistRefDrafts((prev) => ({
+                              ...prev,
+                              [item.id]: {
+                                distancia: val,
+                                referencia:
+                                  prev[item.id] !== undefined
+                                    ? prev[item.id].referencia
+                                    : item.referencia || '',
+                              },
+                            }));
+                          }}
+                          onBlur={() => handleSaveClearedDistRef(item)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveClearedDistRef(item);
+                            }
+                          }}
+                          placeholder="Distância (ex: 1.450m)"
+                          className="flex-1 px-2.5 py-1 rounded-lg bg-[#0d111a] border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-amber-400/60"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300 shrink-0 w-12">
+                          REF:
+                        </span>
+                        <input
+                          type="text"
+                          value={
+                            clearedDistRefDrafts[item.id] !== undefined
+                              ? clearedDistRefDrafts[item.id].referencia
+                              : item.referencia || ''
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setClearedDistRefDrafts((prev) => ({
+                              ...prev,
+                              [item.id]: {
+                                distancia:
+                                  prev[item.id] !== undefined
+                                    ? prev[item.id].distancia
+                                    : item.distancia || '',
+                                referencia: val,
+                              },
+                            }));
+                          }}
+                          onBlur={() => handleSaveClearedDistRef(item)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveClearedDistRef(item);
+                            }
+                          }}
+                          placeholder="Referência (ex: CEO-12)"
+                          className="flex-1 px-2.5 py-1 rounded-lg bg-[#0d111a] border border-white/10 text-xs text-white focus:outline-none focus:border-sky-400/60"
+                        />
+                        {savedClearedDistRefId === item.id && (
+                          <span className="text-[10px] font-semibold text-emerald-400 shrink-0">
+                            Salvo ✓
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

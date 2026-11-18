@@ -22,6 +22,7 @@ export interface User {
   totp_expires_at?: number;
   requires_totp_setup?: boolean;
   requires_totp_verify?: boolean;
+  theme_preference?: 'dark' | 'light';
 }
 
 export interface ProfileUpdatePayload {
@@ -30,6 +31,7 @@ export interface ProfileUpdatePayload {
   phone?: string;
   current_password?: string;
   new_password?: string;
+  theme_preference?: 'dark' | 'light';
 }
 
 export interface Favorite {

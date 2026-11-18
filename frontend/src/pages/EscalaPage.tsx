@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Save, Search, Clock, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Save, Search, Clock, ShieldCheck, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { api } from '../api/client';
 import { Button, Card, Input, PageHeader, Select } from '../components/ui';
 import Modal from '../components/Modal';
@@ -166,17 +166,31 @@ export default function EscalaPage() {
 
   const technicians = useMemo(() => data?.technicians || [], [data]);
 
+  function handleExportCsv() {
+    const params = new URLSearchParams();
+    if (month) params.set('month', month);
+    if (area) params.set('area', area);
+    if (company) params.set('company', company);
+    if (search.trim()) params.set('search', search.trim());
+    window.open(`/api/schedules/export?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  }
+
   return (
     <div>
       <PageHeader
         title="Escala"
         subtitle="Escala de trabalho mensal por área e horários de turno"
         actions={
-          pendingCount > 0 ? (
-            <Button onClick={saveAll} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/20">
-              <Save className="w-4 h-4" /> Salvar {pendingCount} alteraç{pendingCount === 1 ? 'ão' : 'ões'}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" onClick={handleExportCsv}>
+              <Download className="w-4 h-4" /> Exportar Escala (.CSV)
             </Button>
-          ) : undefined
+            {pendingCount > 0 && (
+              <Button onClick={saveAll} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/20">
+                <Save className="w-4 h-4" /> Salvar {pendingCount} alteraç{pendingCount === 1 ? 'ão' : 'ões'}
+              </Button>
+            )}
+          </div>
         }
       />
 

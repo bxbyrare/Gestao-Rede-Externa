@@ -1784,7 +1784,8 @@ def init_db():
             ('permissions', 'JSONB DEFAULT NULL'),
             ('totp_secret', 'VARCHAR(64) DEFAULT NULL'),
             ('totp_enabled', 'BOOLEAN DEFAULT FALSE'),
-            ('totp_verified_at', 'TIMESTAMP DEFAULT NULL')
+            ('totp_verified_at', 'TIMESTAMP DEFAULT NULL'),
+            ('theme_preference', "VARCHAR(10) DEFAULT 'dark'")
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -1799,7 +1800,8 @@ def init_db():
             ('permissions', 'JSONB DEFAULT NULL'),
             ('totp_secret', 'VARCHAR(64) DEFAULT NULL'),
             ('totp_enabled', 'BOOLEAN DEFAULT FALSE'),
-            ('totp_verified_at', 'TIMESTAMP DEFAULT NULL')
+            ('totp_verified_at', 'TIMESTAMP DEFAULT NULL'),
+            ('theme_preference', "VARCHAR(10) DEFAULT 'dark'")
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -2781,6 +2783,8 @@ def init_db():
         """)
         try:
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS responsible_tech_id INT REFERENCES technicians(id) ON DELETE SET NULL;")
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
         except Exception:
             conn.rollback()
         cur.execute("""
@@ -2800,11 +2804,18 @@ def init_db():
                 abertura_dt TIMESTAMP,
                 status_andamento VARCHAR(60),
                 responsible_name VARCHAR(150),
+                distancia VARCHAR(120) DEFAULT '',
+                referencia VARCHAR(255) DEFAULT '',
                 notes_snapshot JSONB DEFAULT '[]'::jsonb,
                 first_seen_at TIMESTAMP,
                 cleared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        try:
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+        except Exception:
+            conn.rollback()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS grafana_ticket_notes (
                 id SERIAL PRIMARY KEY,
@@ -3282,6 +3293,8 @@ def _resolve_required_permission(path, method):
     if p.startswith('/api/grafana/tickets/') and p.endswith('/notes') and method == 'POST':
         return 'grafana.create'
     if p.startswith('/api/grafana/tickets/') and method in ('PUT', 'POST'):
+        return 'grafana.edit'
+    if p.startswith('/api/grafana/cleared/') and method == 'PUT':
         return 'grafana.edit'
     if p.startswith('/api/grafana/notes/') and method == 'PUT':
         return 'grafana.edit'
@@ -4322,7 +4335,7 @@ def get_user_info_dict(user_id):
                 SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
                        u.email as u_email, u.phone as u_phone, u.name as u_name,
                        u.totp_secret, u.totp_enabled, u.totp_verified_at,
-                       u.email_bounced, u.email_bounce_reason,
+                       u.email_bounced, u.email_bounce_reason, u.theme_preference,
                        t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
                        t.registration_claro, t.toa_login
                 FROM users u
@@ -4337,6 +4350,7 @@ def get_user_info_dict(user_id):
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64) DEFAULT NULL;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_verified_at TIMESTAMP DEFAULT NULL;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(10) DEFAULT 'dark';
                 """)
                 _ensure_email_bounce_schema(cur)
                 conn.commit()
@@ -4346,7 +4360,7 @@ def get_user_info_dict(user_id):
                 SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
                        u.email as u_email, u.phone as u_phone, u.name as u_name,
                        u.totp_secret, u.totp_enabled, u.totp_verified_at,
-                       u.email_bounced, u.email_bounce_reason,
+                       u.email_bounced, u.email_bounce_reason, u.theme_preference,
                        t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
                        t.registration_claro, t.toa_login
                 FROM users u
@@ -4430,7 +4444,8 @@ def get_user_info_dict(user_id):
             "totp_verified": totp_verified,
             "totp_expires_at": totp_exp,
             "requires_totp_setup": requires_totp_setup,
-            "requires_totp_verify": requires_totp_verify
+            "requires_totp_verify": requires_totp_verify,
+            "theme_preference": "light" if (row.get('theme_preference') or '').strip().lower() == 'light' else "dark"
         }
     except Exception as e:
         print("get_user_info_dict error:", e)
@@ -4479,6 +4494,8 @@ def api_update_my_profile():
     name = (data.get('name') or '').strip()
     current_password = data.get('current_password') or ''
     new_password = data.get('new_password') or ''
+    raw_theme = (data.get('theme_preference') or '').strip().lower()
+    theme_pref = 'light' if raw_theme == 'light' else ('dark' if raw_theme == 'dark' else None)
 
     if email:
         if '@' not in email or '.' not in email or len(email) < 5:
@@ -4492,6 +4509,17 @@ def api_update_my_profile():
         cur.close()
         conn.close()
         return jsonify({"error": "Usuário não encontrado."}), 404
+
+    if theme_pref and not email and not phone and not name and not new_password:
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(10) DEFAULT 'dark';")
+            cur.execute("UPDATE users SET theme_preference = %s WHERE id = %s;", (theme_pref, user_id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.close()
+        conn.close()
+        return jsonify({"success": True, "user": get_user_info_dict(user_id)})
 
     old_email = (user.get('email') or '').strip().lower()
     email_was_empty = not old_email
@@ -4518,23 +4546,30 @@ def api_update_my_profile():
             return jsonify({"error": "A senha atual informada está incorreta."}), 400
         hashed_pw = generate_password_hash(new_password)
 
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(10) DEFAULT 'dark';")
+    except Exception:
+        conn.rollback()
+
     if hashed_pw:
         cur.execute("""
             UPDATE users 
             SET email = COALESCE(NULLIF(%s, ''), email),
                 phone = COALESCE(NULLIF(%s, ''), phone),
                 name = COALESCE(NULLIF(%s, ''), name),
+                theme_preference = COALESCE(%s, theme_preference, 'dark'),
                 password_hash = %s
             WHERE id = %s;
-        """, (email, phone, name, hashed_pw, user_id))
+        """, (email, phone, name, theme_pref, hashed_pw, user_id))
     else:
         cur.execute("""
             UPDATE users 
             SET email = COALESCE(NULLIF(%s, ''), email),
                 phone = COALESCE(NULLIF(%s, ''), phone),
-                name = COALESCE(NULLIF(%s, ''), name)
+                name = COALESCE(NULLIF(%s, ''), name),
+                theme_preference = COALESCE(%s, theme_preference, 'dark')
             WHERE id = %s;
-        """, (email, phone, name, user_id))
+        """, (email, phone, name, theme_pref, user_id))
 
     # Synchronize with technicians table if user is linked to a technician
     if user.get('tech_id'):
@@ -9790,6 +9825,140 @@ def api_save_schedules_batch():
             except Exception:
                 pass
 
+
+@app.route('/api/schedules/export', methods=['GET'])
+@login_required
+def api_export_schedules():
+    month_str = request.args.get('month', '').strip()
+    area = request.args.get('area', '').strip()
+    company = request.args.get('company', '').strip()
+    search = request.args.get('search', '').strip()
+
+    if not month_str or len(month_str) != 7 or '-' not in month_str:
+        now = datetime.datetime.now()
+        month_str = now.strftime('%Y-%m')
+
+    try:
+        year, month = map(int, month_str.split('-'))
+    except Exception:
+        now = datetime.datetime.now()
+        year, month = now.year, now.month
+        month_str = f"{year:04d}-{month:02d}"
+
+    conn = None
+    cur = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        tech_query = "SELECT * FROM technicians WHERE 1=1"
+        params = []
+
+        if area:
+            tech_query += " AND (UPPER(area) = UPPER(%s) OR UPPER(area) LIKE %s)"
+            params.extend([area, f"%{area.upper()}%"])
+
+        if company and company.lower() != 'todas':
+            tech_query += " AND UPPER(company) = UPPER(%s)"
+            params.append(company)
+
+        if search:
+            tech_query += " AND (UPPER(name) LIKE %s OR UPPER(role) LIKE %s OR UPPER(phone) LIKE %s)"
+            s_pattern = f"%{search.upper()}%"
+            params.extend([s_pattern, s_pattern, s_pattern])
+
+        tech_query += """ ORDER BY 
+            CASE 
+                WHEN UPPER(role) LIKE 'COORDENADOR%%' THEN 1 
+                WHEN UPPER(role) LIKE 'ADMIN%%' THEN 2 
+                ELSE 3 
+            END, name ASC;"""
+
+        cur.execute(tech_query, tuple(params))
+        technicians = cur.fetchall()
+        tech_ids = [t['id'] for t in technicians]
+
+        num_days = calendar.monthrange(year, month)[1]
+        days_in_month = []
+        for day in range(1, num_days + 1):
+            dt = datetime.date(year, month, day)
+            day_str = dt.strftime('%Y-%m-%d')
+            weekday_idx = dt.weekday()
+            days_in_month.append({
+                "date": day_str,
+                "header": f"{day:02d}/{month:02d} ({DAY_NAMES_PT[weekday_idx]})"
+            })
+
+        schedules_map = {}
+        if tech_ids:
+            start_date = f"{year:04d}-{month:02d}-01"
+            end_date = f"{year:04d}-{month:02d}-{num_days:02d}"
+            placeholders = ','.join(['%s'] * len(tech_ids))
+            cur.execute(f"""
+                SELECT tech_id, date::text as date_str, status, work_hours, on_call
+                FROM work_schedules
+                WHERE tech_id IN ({placeholders}) AND date >= %s AND date <= %s;
+            """, tuple(list(tech_ids) + [start_date, end_date]))
+            for r in cur.fetchall():
+                schedules_map[(r['tech_id'], r['date_str'])] = {
+                    "status": r['status'] or 'Trabalho',
+                    "work_hours": r['work_hours'] or '08 às 17:48hs',
+                    "on_call": r['on_call'] or '0'
+                }
+
+        output = io.StringIO()
+        output.write("\ufeff")
+        writer = safe_csv_writer(output, delimiter=";")
+
+        headers = ["Colaborador", "Cargo", "Empresa", "Área"] + [d["header"] for d in days_in_month]
+        writer.writerow(headers)
+
+        for t in technicians:
+            row_cells = [
+                format_person_name(t.get('name') or ''),
+                t.get('role') or 'Técnico',
+                t.get('company') or 'Claro',
+                t.get('area') or '',
+            ]
+            for d in days_in_month:
+                rec = schedules_map.get((t['id'], d['date']), {
+                    "status": "Trabalho",
+                    "work_hours": "08 às 17:48hs",
+                    "on_call": "0"
+                })
+                status_val = rec["status"]
+                hours_val = rec["work_hours"]
+                on_call_val = " [Sobreaviso]" if str(rec["on_call"]) == "1" else ""
+                if status_val in ("Trabalho", "Plantão") and hours_val and hours_val != status_val:
+                    cell_txt = f"{status_val} ({hours_val}){on_call_val}"
+                else:
+                    cell_txt = f"{status_val}{on_call_val}"
+                row_cells.append(cell_txt)
+            writer.writerow(row_cells)
+
+        csv_bytes = output.getvalue().encode("utf-8")
+        area_slug = re.sub(r'[^a-zA-Z0-9_-]+', '_', area.strip()) if area else 'todas_areas'
+        filename = f"Escala_{month_str}_{area_slug}.csv"
+        return Response(
+            csv_bytes,
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        print("[ESCALA EXPORT ERROR]", e)
+        return jsonify({"error": "Falha ao exportar escala."}), 500
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 # --- MAPA DE EVENTOS API ---
 # All coordinates cover the Rio de Janeiro metro area (State of RJ)
 # SubCluster code â†’ approximate center coordinates
@@ -14637,12 +14806,18 @@ def _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt):
                 "created_at": n["created_at"].strftime("%d/%m %H:%M") if n.get("created_at") else "",
             })
         if to_archive:
+            try:
+                cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
+                cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+            except Exception:
+                pass
             from psycopg2.extras import execute_values
             archive_rows = [
                 (
                     t["ticket_key"], t["ticket_type"], t["ticket_number"], t["cf"], t["regional"], t["cf_exec_raw"],
                     t["designation"], t["tipo_ral"], t["is_qualidade"], t["cliente"], t["abertura_raw"], t["abertura_dt"],
                     t["status_andamento"], t["responsible_name"],
+                    t.get("distancia") or "", t.get("referencia") or "",
                     json.dumps(notes_by_key.get(t["ticket_key"], []), ensure_ascii=False),
                     t["first_seen_at"], now_brt
                 )
@@ -14652,9 +14827,10 @@ def _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt):
                 INSERT INTO grafana_cleared_tickets (
                     ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
                     designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
-                    status_andamento, responsible_name, notes_snapshot, first_seen_at, cleared_at
+                    status_andamento, responsible_name, distancia, referencia,
+                    notes_snapshot, first_seen_at, cleared_at
                 ) VALUES %s;
-            """, archive_rows, template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)", page_size=500)
+            """, archive_rows, template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)", page_size=500)
             cleared_now = len(archive_rows)
         cur.execute("DELETE FROM grafana_ticket_notes WHERE ticket_key = ANY(%s);", (removed_keys,))
         cur.execute("DELETE FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
@@ -15301,18 +15477,25 @@ def api_grafana_tickets():
             params.append(status_filter)
         if search:
             like = f"%{search}%"
-            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(tipo_ral) LIKE %s OR LOWER(COALESCE(responsible_name, '')) LIKE %s)")
-            params.extend([like, like, like, like, like])
+            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(tipo_ral) LIKE %s OR LOWER(COALESCE(responsible_name, '')) LIKE %s OR LOWER(COALESCE(distancia, '')) LIKE %s OR LOWER(COALESCE(referencia, '')) LIKE %s)")
+            params.extend([like, like, like, like, like, like, like])
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         conn = get_db()
         cur = conn.cursor()
+        try:
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+        except Exception:
+            conn.rollback()
         cur.execute(f"""
             SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
                    designation, tipo_ral, is_qualidade, cliente, anorm, abertura_raw, abertura_dt,
                    duracao_raw, resp_code, tecnico_csv, anatel, prejuizo,
-                   status_andamento, responsible_user_id, responsible_name, is_new, first_seen_at
+                   status_andamento, responsible_user_id, responsible_name,
+                   COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia,
+                   is_new, first_seen_at
             FROM grafana_tickets
             {where_sql}
             ORDER BY abertura_dt ASC NULLS LAST, id ASC;
@@ -15367,6 +15550,8 @@ def api_grafana_tickets():
                 "status_andamento": r["status_andamento"] or "Sem classificação",
                 "responsible_user_id": r["responsible_user_id"],
                 "responsible_name": r["responsible_name"] or "",
+                "distancia": r.get("distancia") or "",
+                "referencia": r.get("referencia") or "",
                 "is_new": bool(r.get("is_new")),
                 "notes": notes_by_key.get(r["ticket_key"], []),
                 **sla,
@@ -15406,16 +15591,22 @@ def api_grafana_cleared():
             where_clauses.append("(is_qualidade = TRUE OR UPPER(COALESCE(tipo_ral, '')) = 'QUALIDADE')")
         if search:
             like = f"%{search}%"
-            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s)")
-            params.extend([like, like, like])
+            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(COALESCE(distancia, '')) LIKE %s OR LOWER(COALESCE(referencia, '')) LIKE %s)")
+            params.extend([like, like, like, like, like])
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
         conn = get_db()
         cur = conn.cursor()
+        try:
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+        except Exception:
+            conn.rollback()
         cur.execute(f"""
             SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, designation,
                    tipo_ral, is_qualidade, cliente, abertura_raw, status_andamento,
-                   responsible_name, notes_snapshot, first_seen_at, cleared_at
+                   responsible_name, COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia,
+                   notes_snapshot, first_seen_at, cleared_at
             FROM grafana_cleared_tickets
             {where_sql}
             ORDER BY cleared_at DESC, id DESC
@@ -15439,6 +15630,8 @@ def api_grafana_cleared():
                 "abertura_raw": r["abertura_raw"],
                 "status_andamento": r["status_andamento"] or "Sem classificação",
                 "responsible_name": r["responsible_name"] or "",
+                "distancia": r.get("distancia") or "",
+                "referencia": r.get("referencia") or "",
                 "notes": r.get("notes_snapshot") or [],
                 "cleared_at": r["cleared_at"].strftime("%d/%m/%Y %H:%M") if r.get("cleared_at") else "",
             })
@@ -15474,6 +15667,80 @@ def api_grafana_update_status(ticket_id):
     except Exception as e:
         print("[GRAFANA STATUS ERROR]", e)
         return jsonify({"error": "Falha ao atualizar status."}), 500
+
+
+@app.route('/api/grafana/tickets/<int:ticket_id>/dist-ref', methods=['PUT'])
+@login_required
+def api_grafana_update_dist_ref(ticket_id):
+    data = request.get_json(silent=True) or {}
+    distancia = (data.get("distancia") or "").strip()[:120]
+    referencia = (data.get("referencia") or "").strip()[:255]
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        try:
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+        except Exception:
+            conn.rollback()
+        cur.execute("""
+            UPDATE grafana_tickets
+            SET distancia = %s, referencia = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            RETURNING id, ticket_number, distancia, referencia;
+        """, (distancia, referencia, ticket_id))
+        updated = cur.fetchone()
+        if not updated:
+            cur.close()
+            return jsonify({"error": "Atividade não encontrada."}), 404
+        conn.commit()
+        cur.close()
+        log_action(session['user_id'], session.get('username'), f"Grafana DIST/REF {updated['ticket_number']} -> DIST={distancia} REF={referencia}")
+        return jsonify({
+            "success": True,
+            "distancia": updated["distancia"] or "",
+            "referencia": updated["referencia"] or "",
+        })
+    except Exception as e:
+        print("[GRAFANA DIST-REF ERROR]", e)
+        return jsonify({"error": "Falha ao salvar DIST / REF."}), 500
+
+
+@app.route('/api/grafana/cleared/<int:cleared_id>/dist-ref', methods=['PUT'])
+@login_required
+def api_grafana_update_cleared_dist_ref(cleared_id):
+    data = request.get_json(silent=True) or {}
+    distancia = (data.get("distancia") or "").strip()[:120]
+    referencia = (data.get("referencia") or "").strip()[:255]
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        try:
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+        except Exception:
+            conn.rollback()
+        cur.execute("""
+            UPDATE grafana_cleared_tickets
+            SET distancia = %s, referencia = %s
+            WHERE id = %s
+            RETURNING id, ticket_number, distancia, referencia;
+        """, (distancia, referencia, cleared_id))
+        updated = cur.fetchone()
+        if not updated:
+            cur.close()
+            return jsonify({"error": "Registro histórico não encontrado."}), 404
+        conn.commit()
+        cur.close()
+        log_action(session['user_id'], session.get('username'), f"Grafana Histórico DIST/REF {updated['ticket_number']} -> DIST={distancia} REF={referencia}")
+        return jsonify({
+            "success": True,
+            "distancia": updated["distancia"] or "",
+            "referencia": updated["referencia"] or "",
+        })
+    except Exception as e:
+        print("[GRAFANA CLEARED DIST-REF ERROR]", e)
+        return jsonify({"error": "Falha ao salvar DIST / REF no histórico."}), 500
 
 @app.route('/api/grafana/tickets/<int:ticket_id>/responsible', methods=['PUT'])
 @login_required
@@ -15768,7 +16035,7 @@ def api_grafana_export():
         writer.writerow([
             "Base", "Tipo", "Numero", "Regional", "CF", "CF Exec.", "Designacao",
             "Tipo RAL", "Qualidade", "Cliente", "Abertura", "SLA",
-            "Status Andamento", "Responsavel", "Notas", "Sanada Em"
+            "Status Andamento", "Responsavel", "DIST (Distancia)", "REF (Referencia)", "Notas", "Sanada Em"
         ])
 
         now_brt = _grafana_now_brt()
@@ -15800,7 +16067,8 @@ def api_grafana_export():
             cur.execute(f"""
                 SELECT ticket_key, ticket_type, ticket_number, regional, cf, cf_exec_raw,
                        designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
-                       status_andamento, responsible_name
+                       status_andamento, responsible_name,
+                       COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia
                 FROM grafana_tickets
                 {where_sql}
                 ORDER BY regional, cf, abertura_dt ASC NULLS LAST;
@@ -15829,6 +16097,8 @@ def api_grafana_export():
                     sla["sla_label"],
                     r["status_andamento"] or "Sem classificação",
                     r["responsible_name"] or "",
+                    r.get("distancia") or "",
+                    r.get("referencia") or "",
                     " | ".join(notes_map.get(r["ticket_key"], [])),
                     "",
                 ])
@@ -15837,7 +16107,9 @@ def api_grafana_export():
             cur.execute(f"""
                 SELECT ticket_type, ticket_number, regional, cf, cf_exec_raw,
                        designation, tipo_ral, is_qualidade, cliente, abertura_raw,
-                       status_andamento, responsible_name, notes_snapshot, cleared_at
+                       status_andamento, responsible_name,
+                       COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia,
+                       notes_snapshot, cleared_at
                 FROM grafana_cleared_tickets
                 {where_sql}
                 ORDER BY cleared_at DESC;
@@ -15860,6 +16132,8 @@ def api_grafana_export():
                     "SANADA",
                     r["status_andamento"] or "Sem classificação",
                     r["responsible_name"] or "",
+                    r.get("distancia") or "",
+                    r.get("referencia") or "",
                     notes_txt,
                     r["cleared_at"].strftime("%d/%m/%Y %H:%M") if r.get("cleared_at") else "",
                 ])

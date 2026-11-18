@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ClipboardList,
   Download,
@@ -276,7 +276,9 @@ export default function PessoasPage() {
   const canEdit = hasPermission(user, 'pessoas.edit');
   const canDelete = hasPermission(user, 'pessoas.delete');
   const [people, setPeople] = useState<Technician[] | null>(null);
+  const [allAreas, setAllAreas] = useState<string[]>([]);
   const [search, setSearch] = useState('');
+  const [selectedArea, setSelectedArea] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Technician | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -287,15 +289,39 @@ export default function PessoasPage() {
   function load(q = '') {
     api
       .get<Technician[]>('/api/technicians', q ? { search: q } : undefined)
-      .then((list) =>
-        setPeople(
-          sortPeopleByCompliance(
-            list.map((p) => ({ ...p, name: formatPersonName(p.name) }))
-          )
-        )
-      )
+      .then((list) => {
+        const sorted = sortPeopleByCompliance(
+          list.map((p) => ({ ...p, name: formatPersonName(p.name) }))
+        );
+        setPeople(sorted);
+        if (!q) {
+          const areaSet = new Set<string>();
+          list.forEach((p) => {
+            if (!p.area) return;
+            p.area
+              .split(',')
+              .map((a) => a.trim())
+              .filter(Boolean)
+              .forEach((a) => areaSet.add(a));
+          });
+          setAllAreas(Array.from(areaSet).sort((a, b) => a.localeCompare(b, 'pt-BR')));
+        }
+      })
       .catch(() => setPeople([]));
   }
+
+  const filteredPeople = useMemo(() => {
+    if (!people) return null;
+    if (!selectedArea) return people;
+    const target = selectedArea.trim().toLowerCase();
+    return people.filter((p) => {
+      if (!p.area) return false;
+      return p.area
+        .split(',')
+        .map((a) => a.trim().toLowerCase())
+        .includes(target);
+    });
+  }, [people, selectedArea]);
 
   useEffect(() => {
     const t = setTimeout(() => load(search), search ? 300 : 0);
@@ -420,7 +446,11 @@ export default function PessoasPage() {
     <div className="space-y-6">
       <PageHeader
         title="Gestão de Pessoas & NRs"
-        subtitle={people ? `${people.length} colaboradores técnicos cadastrados` : 'Carregando equipe...'}
+        subtitle={
+          filteredPeople
+            ? `${filteredPeople.length} colaborador${filteredPeople.length === 1 ? '' : 'es'} técnico${filteredPeople.length === 1 ? '' : 's'}${selectedArea ? ` na área ${selectedArea}` : ' cadastrados'}`
+            : 'Carregando equipe...'
+        }
         actions={
           <div className="flex gap-2 flex-wrap">
             {canExport && (
@@ -444,23 +474,51 @@ export default function PessoasPage() {
         }
       />
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nome, CPF, empresa, matrícula ou área..."
-          className="pl-10"
-        />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-faint)]" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome, CPF, empresa, matrícula ou área..."
+            className="pl-10"
+          />
+        </div>
+
+        <div className="w-full sm:w-64">
+          <Select
+            value={selectedArea}
+            onChange={(e) => setSelectedArea(e.target.value)}
+            aria-label="Filtrar colaboradores por área"
+          >
+            <option value="">Todas as áreas de atuação</option>
+            {allAreas.map((a) => (
+              <option key={a} value={a}>
+                Área: {a}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {selectedArea && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setSelectedArea('')}
+            className="h-11 px-3 text-xs"
+          >
+            <X className="w-3.5 h-3.5" /> Limpar área
+          </Button>
+        )}
       </div>
 
       <Card className="overflow-hidden">
-        {people === null ? (
+        {filteredPeople === null ? (
           <div className="p-12 text-center text-sm text-[var(--color-text-muted)] flex items-center justify-center gap-2">
             <div className="w-4 h-4 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
             Carregando lista de técnicos...
           </div>
-        ) : people.length === 0 ? (
+        ) : filteredPeople.length === 0 ? (
           <div className="p-12 text-center text-sm text-[var(--color-text-muted)] flex flex-col items-center gap-3">
             <Users className="w-10 h-10 text-[var(--color-text-faint)]" />
             <div className="font-semibold text-[var(--color-text)]">Nenhum colaborador encontrado.</div>
@@ -481,7 +539,7 @@ export default function PessoasPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {people.map((p) => {
+                {filteredPeople.map((p) => {
                   const s6 = getExpirationStatus(p.nr6_expiration);
                   const s10 = getExpirationStatus(p.nr10_expiration);
                   const s35 = getExpirationStatus(p.nr35_expiration);
