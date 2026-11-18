@@ -10105,6 +10105,451 @@ def api_get_users():
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
 
+def _collect_user_all_activities(cur, target_id, uname, display_name, tech_id):
+    """Reúne todas as atividades em que o usuário publicou/executou, foi incluído/responsável ou foi citado."""
+    items = []
+    name_clean = (display_name or '').strip()
+    uname_clean = (uname or '').strip().lower()
+    name_like = f"%{name_clean.lower()}%" if len(name_clean) >= 3 else None
+    uname_like = f"%{uname_clean}%" if len(uname_clean) >= 3 else None
+
+    def _fmt_ts(dt_val):
+        if not dt_val:
+            return ("1970-01-01T00:00:00", "Data não informada")
+        if isinstance(dt_val, datetime.datetime):
+            return (dt_val.isoformat(), dt_val.strftime("%d/%m/%Y às %H:%M:%S"))
+        if isinstance(dt_val, datetime.date):
+            dt_full = datetime.datetime(dt_val.year, dt_val.month, dt_val.day)
+            return (dt_full.isoformat(), dt_full.strftime("%d/%m/%Y"))
+        s = str(dt_val)
+        return (s, s)
+
+    # 1. Área de Trabalho (user_tasks)
+    try:
+        conds = ["user_id = %s"]
+        params = [target_id]
+        if tech_id:
+            conds.append("assigned_tech_id = %s")
+            params.append(tech_id)
+        if name_like:
+            conds.append("LOWER(COALESCE(assigned_tech_name, '')) LIKE %s")
+            conds.append("LOWER(COALESCE(title, '')) LIKE %s")
+            conds.append("LOWER(COALESCE(description, '')) LIKE %s")
+            params.extend([name_like, name_like, name_like])
+        cur.execute(f"""
+            SELECT id, user_id, title, priority, status, assigned_tech_id, assigned_tech_name, description, created_at
+            FROM user_tasks
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 250;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            if r.get("user_id") == target_id:
+                rel = "publicou"
+                rel_label = "Publicou / Criou"
+            elif (tech_id and r.get("assigned_tech_id") == tech_id) or (name_clean and name_clean.lower() in (r.get("assigned_tech_name") or "").lower()):
+                rel = "incluido"
+                rel_label = "Incluído / Responsável"
+            else:
+                rel = "citado"
+                rel_label = "Citado na Demanda"
+            items.append({
+                "id": f"task-{r['id']}",
+                "module": "Área de Trabalho",
+                "relation": rel,
+                "relation_label": rel_label,
+                "title": f"Demanda: {r.get('title') or 'Sem título'}",
+                "detail": f"Status: {r.get('status') or 'Pendente'} · Prioridade: {r.get('priority') or 'Média'}"
+                          + (f" · Responsável: {r.get('assigned_tech_name')}" if r.get("assigned_tech_name") else "")
+                          + (f" — {r.get('description')[:140]}" if r.get("description") else ""),
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 2. Notas no Grafana (grafana_ticket_notes)
+    try:
+        conds = ["author_user_id = %s"]
+        params = [target_id]
+        if name_like:
+            conds.append("LOWER(COALESCE(author_name, '')) LIKE %s")
+            conds.append("LOWER(COALESCE(content, '')) LIKE %s")
+            params.extend([name_like, name_like])
+        cur.execute(f"""
+            SELECT id, ticket_key, content, author_user_id, author_name, created_at
+            FROM grafana_ticket_notes
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 250;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            is_author = r.get("author_user_id") == target_id or (name_clean and name_clean.lower() == (r.get("author_name") or "").strip().lower())
+            items.append({
+                "id": f"gnote-{r['id']}",
+                "module": "Grafana · COP REDE",
+                "relation": "publicou" if is_author else "citado",
+                "relation_label": "Publicou Nota" if is_author else "Citado em Nota",
+                "title": f"Nota no Ticket {r.get('ticket_key')}",
+                "detail": f"{r.get('content') or ''} (Autor: {r.get('author_name') or ''})",
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 3. Tickets Ativos no Grafana onde está incluído/responsável (grafana_tickets)
+    try:
+        conds = ["responsible_user_id = %s"]
+        params = [target_id]
+        if tech_id:
+            conds.append("responsible_tech_id = %s")
+            params.append(tech_id)
+        if name_like:
+            conds.append("LOWER(COALESCE(responsible_name, '')) LIKE %s")
+            params.append(name_like)
+        cur.execute(f"""
+            SELECT id, ticket_type, ticket_number, cf, designation, status_andamento, responsible_name, updated_at
+            FROM grafana_tickets
+            WHERE {" OR ".join(conds)}
+            ORDER BY updated_at DESC NULLS LAST, id DESC
+            LIMIT 250;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("updated_at"))
+            items.append({
+                "id": f"gticket-{r['id']}",
+                "module": "Grafana · COP REDE",
+                "relation": "incluido",
+                "relation_label": "Incluído / Acionado",
+                "title": f"{r.get('ticket_type')} {r.get('ticket_number')} (CF {r.get('cf')})",
+                "detail": f"Designação: {r.get('designation') or '-'} · Status: {r.get('status_andamento') or '-'}",
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 4. Histórico de Falhas Sanadas no Grafana (grafana_cleared_tickets)
+    try:
+        if name_like:
+            cur.execute("""
+                SELECT id, ticket_type, ticket_number, cf, designation, status_andamento, responsible_name, cleared_at
+                FROM grafana_cleared_tickets
+                WHERE LOWER(COALESCE(responsible_name, '')) LIKE %s
+                   OR LOWER(COALESCE(notes_snapshot::text, '')) LIKE %s
+                ORDER BY cleared_at DESC NULLS LAST, id DESC
+                LIMIT 200;
+            """, (name_like, name_like))
+            for r in cur.fetchall():
+                iso_s, fmt_s = _fmt_ts(r.get("cleared_at"))
+                is_resp = name_clean.lower() in (r.get("responsible_name") or "").lower()
+                items.append({
+                    "id": f"gcleared-{r['id']}",
+                    "module": "Grafana · Histórico Sanadas",
+                    "relation": "incluido" if is_resp else "citado",
+                    "relation_label": "Responsável (Sanada)" if is_resp else "Citado nas Notas",
+                    "title": f"Falha Sanada: {r.get('ticket_type')} {r.get('ticket_number')} (CF {r.get('cf')})",
+                    "detail": f"Designação: {r.get('designation') or '-'} · Status final: {r.get('status_andamento') or '-'}",
+                    "timestamp_iso": iso_s,
+                    "timestamp_fmt": fmt_s,
+                })
+    except Exception:
+        cur.connection.rollback()
+
+    # 5. Auditorias de Campo (auditorias)
+    try:
+        conds = ["created_by_id = %s"]
+        params = [target_id]
+        if tech_id:
+            conds.append("responsible_id = %s")
+            params.append(tech_id)
+        if name_like:
+            conds.extend([
+                "LOWER(COALESCE(created_by, '')) LIKE %s",
+                "LOWER(COALESCE(responsible, '')) LIKE %s",
+                "LOWER(COALESCE(observations, '')) LIKE %s",
+            ])
+            params.extend([name_like, name_like, name_like])
+        cur.execute(f"""
+            SELECT id, os, created_by, created_by_id, responsible, responsible_id, status, observations, created_at
+            FROM auditorias
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 200;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            is_creator = r.get("created_by_id") == target_id or (name_clean and name_clean.lower() in (r.get("created_by") or "").lower())
+            is_resp = (tech_id and r.get("responsible_id") == tech_id) or (name_clean and name_clean.lower() in (r.get("responsible") or "").lower())
+            rel = "publicou" if is_creator else ("incluido" if is_resp else "citado")
+            rel_label = "Publicou Auditoria" if is_creator else ("Responsável" if is_resp else "Citado nas Observações")
+            items.append({
+                "id": f"aud-{r['id']}",
+                "module": "Auditoria",
+                "relation": rel,
+                "relation_label": rel_label,
+                "title": f"Auditoria OS {r.get('os')}",
+                "detail": f"Status: {r.get('status')} · Criada por: {r.get('created_by')} · Responsável: {r.get('responsible')}"
+                          + (f" — {r.get('observations')[:120]}" if r.get("observations") else ""),
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 6. Aceitação de Rede (aceitacoes)
+    try:
+        conds = ["created_by_id = %s"]
+        params = [target_id]
+        if tech_id:
+            conds.append("responsible_id = %s")
+            params.append(tech_id)
+        if name_like:
+            conds.extend([
+                "LOWER(COALESCE(created_by, '')) LIKE %s",
+                "LOWER(COALESCE(responsible, '')) LIKE %s",
+                "LOWER(COALESCE(observations, '')) LIKE %s",
+            ])
+            params.extend([name_like, name_like, name_like])
+        cur.execute(f"""
+            SELECT id, os, created_by, created_by_id, responsible, responsible_id, status, observations, created_at
+            FROM aceitacoes
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 200;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            is_creator = r.get("created_by_id") == target_id or (name_clean and name_clean.lower() in (r.get("created_by") or "").lower())
+            is_resp = (tech_id and r.get("responsible_id") == tech_id) or (name_clean and name_clean.lower() in (r.get("responsible") or "").lower())
+            rel = "publicou" if is_creator else ("incluido" if is_resp else "citado")
+            rel_label = "Publicou Aceitação" if is_creator else ("Responsável" if is_resp else "Citado nas Observações")
+            items.append({
+                "id": f"aceit-{r['id']}",
+                "module": "Aceitação de Rede",
+                "relation": rel,
+                "relation_label": rel_label,
+                "title": f"Aceitação OS {r.get('os')}",
+                "detail": f"Status: {r.get('status')} · Criada por: {r.get('created_by')} · Responsável: {r.get('responsible')}"
+                          + (f" — {r.get('observations')[:120]}" if r.get("observations") else ""),
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 7. Pós-Evento (pos_eventos)
+    try:
+        conds = ["created_by_id = %s"]
+        params = [target_id]
+        if name_like:
+            conds.extend([
+                "LOWER(COALESCE(created_by, '')) LIKE %s",
+                "LOWER(COALESCE(responsible, '')) LIKE %s",
+            ])
+            params.extend([name_like, name_like])
+        cur.execute(f"""
+            SELECT id, ticket_type, ticket_number, area, responsible, status, created_by, created_by_id, created_at
+            FROM pos_eventos
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 200;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            is_creator = r.get("created_by_id") == target_id or (name_clean and name_clean.lower() in (r.get("created_by") or "").lower())
+            items.append({
+                "id": f"posev-{r['id']}",
+                "module": "Pós-Evento",
+                "relation": "publicou" if is_creator else "incluido",
+                "relation_label": "Publicou Pós-Evento" if is_creator else "Incluído / Responsável",
+                "title": f"Pós-Evento {r.get('ticket_type')} {r.get('ticket_number')} ({r.get('area') or '-'})",
+                "detail": f"Status: {r.get('status')} · Responsável: {r.get('responsible') or '-'}",
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 8. Vistorias Veiculares 4 Lados & Repasses (vehicle_inspections)
+    try:
+        conds = ["created_by_user_id = %s", "approved_by_user_id = %s"]
+        params = [target_id, target_id]
+        if tech_id:
+            conds.append("to_tech_id = %s")
+            params.append(tech_id)
+        if name_like:
+            conds.extend([
+                "LOWER(COALESCE(from_person_name, '')) LIKE %s",
+                "LOWER(COALESCE(to_person_name, '')) LIKE %s",
+                "LOWER(COALESCE(created_by_name, '')) LIKE %s",
+                "LOWER(COALESCE(approved_by_name, '')) LIKE %s",
+            ])
+            params.extend([name_like, name_like, name_like, name_like])
+        cur.execute(f"""
+            SELECT id, plate, inspection_type, from_person_name, to_person_name, km, status,
+                   created_by_user_id, created_by_name, approved_by_user_id, approved_by_name, created_at
+            FROM vehicle_inspections
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 200;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            is_pub = r.get("created_by_user_id") == target_id or r.get("approved_by_user_id") == target_id
+            items.append({
+                "id": f"vinsp-{r['id']}",
+                "module": "Frota & Veículos",
+                "relation": "publicou" if is_pub else "incluido",
+                "relation_label": "Publicou / Revisou Vistoria" if is_pub else "Incluído no Repasse",
+                "title": f"Vistoria 4 Lados ({r.get('plate')}): {r.get('from_person_name')} ➔ {r.get('to_person_name')}",
+                "detail": f"Status: {r.get('status', '').upper()} · KM: {r.get('km')}"
+                          + (f" · Aprovado por: {r.get('approved_by_name')}" if r.get("approved_by_name") else ""),
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 9. Avarias Veiculares (vehicle_damages)
+    try:
+        if name_like:
+            cur.execute("""
+                SELECT id, plate, occurrence_type, severity, affected_part, description,
+                       reported_by_name, driver_name, resolved_by_name, status, created_at
+                FROM vehicle_damages
+                WHERE LOWER(COALESCE(reported_by_name, '')) LIKE %s
+                   OR LOWER(COALESCE(driver_name, '')) LIKE %s
+                   OR LOWER(COALESCE(resolved_by_name, '')) LIKE %s
+                   OR LOWER(COALESCE(description, '')) LIKE %s
+                ORDER BY created_at DESC NULLS LAST, id DESC
+                LIMIT 150;
+            """, (name_like, name_like, name_like, name_like))
+            for r in cur.fetchall():
+                iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+                is_rep = name_clean.lower() in (r.get("reported_by_name") or "").lower()
+                is_drv = name_clean.lower() in (r.get("driver_name") or "").lower() or name_clean.lower() in (r.get("resolved_by_name") or "").lower()
+                rel = "publicou" if is_rep else ("incluido" if is_drv else "citado")
+                rel_label = "Reportou Avaria" if is_rep else ("Condutor / Tratativa" if is_drv else "Citado na Avaria")
+                items.append({
+                    "id": f"vdmg-{r['id']}",
+                    "module": "Frota · Avarias",
+                    "relation": rel,
+                    "relation_label": rel_label,
+                    "title": f"Avaria ({r.get('plate')}): {r.get('occurrence_type')} — {r.get('affected_part') or 'Geral'}",
+                    "detail": f"Status: {r.get('status')} · Gravidade: {r.get('severity')} — {r.get('description')[:120]}",
+                    "timestamp_iso": iso_s,
+                    "timestamp_fmt": fmt_s,
+                })
+    except Exception:
+        cur.connection.rollback()
+
+    # 10. Avaliações Técnicas (collaborator_evaluations)
+    try:
+        conds = ["evaluator_id = %s", "LOWER(COALESCE(evaluator_username, '')) = %s"]
+        params = [target_id, uname_clean]
+        if tech_id:
+            conds.append("technician_id = %s")
+            params.append(tech_id)
+        if name_like:
+            conds.append("LOWER(COALESCE(technician_name, '')) LIKE %s")
+            params.append(name_like)
+        cur.execute(f"""
+            SELECT id, technician_id, technician_name, overall_score, comments, evaluator_id, evaluator_username, created_at
+            FROM collaborator_evaluations
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 150;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            is_eval = r.get("evaluator_id") == target_id or (r.get("evaluator_username") or "").lower() == uname_clean
+            items.append({
+                "id": f"eval-{r['id']}",
+                "module": "Avaliação Técnica",
+                "relation": "publicou" if is_eval else "incluido",
+                "relation_label": "Publicou Avaliação" if is_eval else "Avaliado",
+                "title": f"Avaliação de {r.get('technician_name')} (Nota: {r.get('overall_score')})",
+                "detail": f"Avaliador: {r.get('evaluator_username') or '-'}" + (f" — {r.get('comments')[:120]}" if r.get("comments") else ""),
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 11. Comunicados / Notificações (notifications)
+    try:
+        conds = ["created_by = %s"]
+        params = [target_id]
+        if name_like:
+            conds.extend([
+                "LOWER(COALESCE(coordinator_name, '')) LIKE %s",
+                "LOWER(COALESCE(reason, '')) LIKE %s",
+                "LOWER(COALESCE(description, '')) LIKE %s",
+            ])
+            params.extend([name_like, name_like, name_like])
+        cur.execute(f"""
+            SELECT id, reason, description, coordinator_name, created_by, created_at
+            FROM notifications
+            WHERE {" OR ".join(conds)}
+            ORDER BY created_at DESC NULLS LAST, id DESC
+            LIMIT 150;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("created_at"))
+            is_pub = r.get("created_by") == target_id or (name_clean and name_clean.lower() in (r.get("coordinator_name") or "").lower())
+            items.append({
+                "id": f"notif-{r['id']}",
+                "module": "Notificações",
+                "relation": "publicou" if is_pub else "citado",
+                "relation_label": "Publicou Comunicado" if is_pub else "Citado no Comunicado",
+                "title": f"Comunicado: {r.get('reason')}",
+                "detail": (r.get("description") or "")[:140],
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    # 12. Logs Gerais do Sistema & Citações (audit_logs)
+    try:
+        conds = ["user_id = %s", "LOWER(COALESCE(username, '')) = %s"]
+        params = [target_id, uname_clean]
+        if name_like:
+            conds.append("LOWER(COALESCE(action, '')) LIKE %s")
+            params.append(name_like)
+        if uname_like:
+            conds.append("LOWER(COALESCE(action, '')) LIKE %s")
+            params.append(uname_like)
+        cur.execute(f"""
+            SELECT id, user_id, username, action, timestamp
+            FROM audit_logs
+            WHERE {" OR ".join(conds)}
+            ORDER BY timestamp DESC NULLS LAST, id DESC
+            LIMIT 400;
+        """, tuple(params))
+        for r in cur.fetchall():
+            iso_s, fmt_s = _fmt_ts(r.get("timestamp"))
+            is_actor = r.get("user_id") == target_id or (r.get("username") or "").lower() == uname_clean
+            items.append({
+                "id": f"log-{r['id']}",
+                "module": "Auditoria do Sistema",
+                "relation": "publicou" if is_actor else "citado",
+                "relation_label": "Executou no Sistema" if is_actor else "Citado / Incluído em Ação",
+                "title": r.get("action") or "Ação registrada",
+                "detail": f"Operador: @{r.get('username') or 'sistema'}",
+                "timestamp_iso": iso_s,
+                "timestamp_fmt": fmt_s,
+            })
+    except Exception:
+        cur.connection.rollback()
+
+    items.sort(key=lambda x: x.get("timestamp_iso") or "", reverse=True)
+    return items
+
 @app.route('/api/users/<int:target_id>/profile-detail', methods=['GET'])
 @login_required
 def api_get_user_profile_detail(target_id):
@@ -10147,20 +10592,13 @@ def api_get_user_profile_detail(target_id):
         """, (target_id,))
         login_history = cur.fetchall()
 
-        cur.execute("""
-            SELECT id, action, TO_CHAR(timestamp, 'DD/MM/YYYY às HH24:MI:SS') AS timestamp_fmt
-            FROM audit_logs
-            WHERE user_id = %s
-            ORDER BY timestamp DESC, id DESC
-            LIMIT 15;
-        """, (target_id,))
-        recent_actions = cur.fetchall()
+        uname = (row.get('username') or '').strip().lower()
+        display_name = format_person_name(row.get('u_name') or row.get('tech_name') or row['username'])
+        all_activities = _collect_user_all_activities(cur, target_id, uname, display_name, row.get('tech_id'))
+        recent_actions = []
 
         cur.close()
         conn.close()
-
-        uname = (row.get('username') or '').strip().lower()
-        display_name = format_person_name(row.get('u_name') or row.get('tech_name') or row['username'])
         email = (row.get('u_email') or row.get('tech_email') or '').strip()
         phone = (row.get('u_phone') or row.get('tech_phone') or '').strip()
         company = (row.get('company') or '').strip() or 'Claro'
@@ -10218,6 +10656,12 @@ def api_get_user_profile_detail(target_id):
             "missing_fields": missing_fields,
             "login_history": login_history,
             "recent_actions": recent_actions,
+            "all_activities": all_activities,
+            "activities_counts": {
+                "all": len(all_activities),
+                "published": sum(1 for a in all_activities if a.get("relation") == "publicou"),
+                "included": sum(1 for a in all_activities if a.get("relation") in ("incluido", "citado")),
+            },
         }
         return jsonify(profile)
     except Exception as e:

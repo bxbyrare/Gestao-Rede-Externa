@@ -126,6 +126,21 @@ interface UserProfileDetail {
     action: string;
     timestamp_fmt: string;
   }>;
+  all_activities?: Array<{
+    id: string;
+    module: string;
+    relation: 'publicou' | 'incluido' | 'citado';
+    relation_label: string;
+    title: string;
+    detail: string;
+    timestamp_iso: string;
+    timestamp_fmt: string;
+  }>;
+  activities_counts?: {
+    all: number;
+    published: number;
+    included: number;
+  };
 }
 
 export default function UsersPage() {
@@ -163,11 +178,16 @@ export default function UsersPage() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<UserProfileDetail | null>(null);
+  const [activityFilter, setActivityFilter] = useState<'all' | 'published' | 'included'>('all');
+  const [activityPage, setActivityPage] = useState(1);
+  const ACTIVITIES_PER_PAGE = 8;
 
   async function openUserProfile(u: ManagedUser) {
     setProfileModalOpen(true);
     setLoadingProfile(true);
     setSelectedProfile(null);
+    setActivityFilter('all');
+    setActivityPage(1);
     try {
       const detail = await api.get<UserProfileDetail>(`/api/users/${u.id}/profile-detail`);
       setSelectedProfile(detail);
@@ -1089,22 +1109,155 @@ export default function UsersPage() {
               </div>
             )}
 
-            {/* ÚLTIMAS AÇÕES NA AUDITORIA */}
-            {selectedProfile.recent_actions && selectedProfile.recent_actions.length > 0 && (
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2.5">
-                  Últimas Ações Realizadas no Sistema
-                </h4>
-                <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-44 overflow-y-auto bg-white/[0.015]">
-                  {selectedProfile.recent_actions.map((act) => (
-                    <div key={act.id} className="px-3.5 py-2 flex items-center justify-between gap-2 text-xs">
-                      <span className="text-slate-200 truncate">{act.action}</span>
-                      <span className="font-mono text-[11px] text-slate-400 shrink-0">{act.timestamp_fmt}</span>
+            {/* TODAS AS ATIVIDADES DO USUÁRIO (PUBLICADAS, INCLUÍDO E CITADO) COM PAGINAÇÃO DE 1 ATÉ O FIM */}
+            {(() => {
+              const allItems = selectedProfile.all_activities || [];
+              const filteredItems = allItems.filter((item) => {
+                if (activityFilter === 'published') return item.relation === 'publicou';
+                if (activityFilter === 'included') return item.relation === 'incluido' || item.relation === 'citado';
+                return true;
+              });
+              const totalItems = filteredItems.length;
+              const totalPages = Math.max(1, Math.ceil(totalItems / ACTIVITIES_PER_PAGE));
+              const safePage = Math.min(Math.max(1, activityPage), totalPages);
+              const startIdx = (safePage - 1) * ACTIVITIES_PER_PAGE;
+              const pageItems = filteredItems.slice(startIdx, startIdx + ACTIVITIES_PER_PAGE);
+
+              return (
+                <div className="space-y-3 pt-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div>
+                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-white">
+                        Todas as Atividades do Usuário ({totalItems})
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Atividades que publicou/executou, em que está incluído como responsável ou em que foi citado.
+                      </p>
                     </div>
-                  ))}
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(
+                        [
+                          { id: 'all', label: `Todas (${selectedProfile.activities_counts?.all ?? allItems.length})` },
+                          {
+                            id: 'published',
+                            label: `Publicou (${selectedProfile.activities_counts?.published ?? 0})`,
+                          },
+                          {
+                            id: 'included',
+                            label: `Incluído / Citado (${selectedProfile.activities_counts?.included ?? 0})`,
+                          },
+                        ] as const
+                      ).map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => {
+                            setActivityFilter(tab.id);
+                            setActivityPage(1);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                            activityFilter === tab.id
+                              ? 'bg-white text-black shadow'
+                              : 'bg-white/[0.04] text-slate-300 hover:bg-white/10 border border-white/10'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {totalItems === 0 ? (
+                    <div className="p-8 rounded-2xl border border-white/10 bg-white/[0.015] text-center text-xs text-slate-400">
+                      Nenhuma atividade encontrada para este filtro.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="rounded-2xl border border-white/10 divide-y divide-white/5 bg-white/[0.015] overflow-hidden">
+                        {pageItems.map((act) => {
+                          const relStyle =
+                            act.relation === 'publicou'
+                              ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                              : act.relation === 'incluido'
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+
+                          return (
+                            <div key={act.id} className="p-3.5 space-y-1.5 hover:bg-white/[0.02] transition-colors">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold text-slate-200 uppercase tracking-wider">
+                                    {act.module}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${relStyle}`}>
+                                    {act.relation_label}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-[11px] text-slate-400">{act.timestamp_fmt}</span>
+                              </div>
+                              <div className="text-xs font-bold text-white">{act.title}</div>
+                              {act.detail && (
+                                <div className="text-[11px] text-slate-300 leading-relaxed break-words">
+                                  {act.detail}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* BARRA DE PAGINAÇÃO DE 1 ATÉ A ÚLTIMA PÁGINA */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                        <span className="text-[11px] text-slate-400">
+                          Página <strong className="text-white">{safePage}</strong> de{' '}
+                          <strong className="text-white">{totalPages}</strong> · Exibindo{' '}
+                          <strong className="text-white">
+                            {startIdx + 1}–{Math.min(startIdx + ACTIVITIES_PER_PAGE, totalItems)}
+                          </strong>{' '}
+                          de <strong className="text-white">{totalItems}</strong> atividades
+                        </span>
+
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <button
+                            type="button"
+                            disabled={safePage <= 1}
+                            onClick={() => setActivityPage((p) => Math.max(1, p - 1))}
+                            className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-white/[0.04] hover:bg-white/10 border border-white/10 text-slate-200 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            &larr; Anterior
+                          </button>
+
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                            <button
+                              key={pageNum}
+                              type="button"
+                              onClick={() => setActivityPage(pageNum)}
+                              className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold font-mono transition cursor-pointer ${
+                                pageNum === safePage
+                                  ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/25'
+                                  : 'bg-white/[0.04] hover:bg-white/10 border border-white/10 text-slate-300'
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          ))}
+
+                          <button
+                            type="button"
+                            disabled={safePage >= totalPages}
+                            onClick={() => setActivityPage((p) => Math.min(totalPages, p + 1))}
+                            className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-white/[0.04] hover:bg-white/10 border border-white/10 text-slate-200 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            Próxima &rarr;
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
       </Modal>
