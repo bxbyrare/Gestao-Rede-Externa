@@ -18131,19 +18131,40 @@ def handle_403(e):
 def handle_413(e):
     return jsonify({"error": "O arquivo enviado excede o limite máximo permitido (500 MB).", "status": 413}), 413
 
+def _serve_custom_error_html(status_code=500):
+    err_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist', 'error.html')
+    if not os.path.exists(err_path):
+        err_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'error.html')
+    if os.path.exists(err_path):
+        with open(err_path, 'r', encoding='utf-8') as f:
+            return Response(f.read(), status=status_code, mimetype='text/html; charset=utf-8')
+    return render_template('dashboard.html'), status_code
+
 @app.errorhandler(500)
 def handle_500(e):
     traceback.print_exc()
     if request.path.startswith('/api/') or request.is_json:
         return jsonify({"error": "Instabilidade interna temporária no servidor. A equipe técnica foi informada.", "status": 500}), 500
-    return render_template('dashboard.html'), 500
+    return _serve_custom_error_html(500)
+
+@app.errorhandler(502)
+def handle_502(e):
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({"error": "Gateway temporariamente indisponível.", "status": 502}), 502
+    return _serve_custom_error_html(502)
+
+@app.errorhandler(503)
+def handle_503(e):
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({"error": "Serviço temporariamente em manutenção.", "status": 503}), 503
+    return _serve_custom_error_html(503)
 
 @app.errorhandler(Exception)
 def handle_uncaught_exception(e):
     traceback.print_exc()
     if request.path.startswith('/api/') or request.is_json:
         return jsonify({"error": "Ocorreu uma falha no processamento da solicitação.", "status": 500}), 500
-    return render_template('dashboard.html'), 500
+    return _serve_custom_error_html(500)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
