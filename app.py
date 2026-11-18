@@ -5159,7 +5159,182 @@ def api_delete_technician(tech_id):
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
 
 
-# --- 2. VEHICLES ---
+# --- 2. VEHICLES & COMPLETE FLEET MANAGEMENT ---
+_FLEET_SCHEMA_READY = False
+
+def _ensure_fleet_schema(cur):
+    global _FLEET_SCHEMA_READY
+    if _FLEET_SCHEMA_READY:
+        return
+    for col_sql in [
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS current_km INT DEFAULT 0;",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS crlv_number VARCHAR(80) DEFAULT '';",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS crlv_expiration VARCHAR(30) DEFAULT '';",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_company VARCHAR(120) DEFAULT '';",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_expiration VARCHAR(30) DEFAULT '';",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rental_company VARCHAR(120) DEFAULT '';",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS contract_number VARCHAR(80) DEFAULT '';",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS operational_status VARCHAR(40) DEFAULT 'Operacional';",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS tires_json JSONB DEFAULT '{}'::jsonb;",
+    ]:
+        try:
+            cur.execute(col_sql)
+        except Exception:
+            pass
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_inspections (
+            id SERIAL PRIMARY KEY,
+            vehicle_id INT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+            plate VARCHAR(30) NOT NULL,
+            inspection_type VARCHAR(40) NOT NULL DEFAULT 'entrega',
+            from_person_name VARCHAR(150) NOT NULL,
+            to_person_name VARCHAR(150) NOT NULL,
+            to_tech_id INT REFERENCES technicians(id) ON DELETE SET NULL,
+            km INT NOT NULL DEFAULT 0,
+            fuel_level VARCHAR(20) DEFAULT '1/2',
+            checklist_json JSONB DEFAULT '{}'::jsonb,
+            has_damage BOOLEAN DEFAULT FALSE,
+            damage_notes TEXT DEFAULT '',
+            observations TEXT DEFAULT '',
+            photo_front TEXT NOT NULL,
+            photo_back TEXT NOT NULL,
+            photo_left TEXT NOT NULL,
+            photo_right TEXT NOT NULL,
+            photo_extra TEXT DEFAULT '',
+            signature_data TEXT DEFAULT '',
+            photos_sha256 VARCHAR(128) DEFAULT '',
+            status VARCHAR(30) DEFAULT 'pendente',
+            created_by_user_id INT,
+            created_by_name VARCHAR(150) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            approved_by_user_id INT,
+            approved_by_name VARCHAR(150) DEFAULT '',
+            approved_by_role VARCHAR(60) DEFAULT '',
+            approved_at TIMESTAMP,
+            review_notes TEXT DEFAULT ''
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_damages (
+            id SERIAL PRIMARY KEY,
+            vehicle_id INT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+            plate VARCHAR(30) NOT NULL,
+            area VARCHAR(100) DEFAULT '',
+            occurrence_type VARCHAR(50) DEFAULT 'Avaria / Quebrado',
+            severity VARCHAR(30) DEFAULT 'Média',
+            affected_part VARCHAR(120) DEFAULT '',
+            description TEXT NOT NULL,
+            bo_number VARCHAR(80) DEFAULT '',
+            reported_by_name VARCHAR(150) NOT NULL,
+            driver_name VARCHAR(150) DEFAULT '',
+            km INT DEFAULT 0,
+            photos_json JSONB DEFAULT '[]'::jsonb,
+            status VARCHAR(30) DEFAULT 'Aberta',
+            resolution_notes TEXT DEFAULT '',
+            resolved_by_name VARCHAR(150) DEFAULT '',
+            resolved_at TIMESTAMP,
+            inspection_id INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_maintenances (
+            id SERIAL PRIMARY KEY,
+            vehicle_id INT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+            plate VARCHAR(30) NOT NULL,
+            area VARCHAR(100) DEFAULT '',
+            maintenance_type VARCHAR(50) DEFAULT 'Preventiva',
+            title VARCHAR(180) NOT NULL,
+            description TEXT DEFAULT '',
+            scheduled_date VARCHAR(30) NOT NULL,
+            target_km INT DEFAULT 0,
+            workshop VARCHAR(150) DEFAULT '',
+            cost DECIMAL(12,2) DEFAULT 0,
+            downtime_hours VARCHAR(60) DEFAULT '',
+            status VARCHAR(30) DEFAULT 'Agendada',
+            voucher_photo TEXT DEFAULT '',
+            completed_by_name VARCHAR(150) DEFAULT '',
+            completed_at TIMESTAMP,
+            completion_notes TEXT DEFAULT '',
+            created_by_name VARCHAR(150) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_fines (
+            id SERIAL PRIMARY KEY,
+            vehicle_id INT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+            plate VARCHAR(30) NOT NULL,
+            area VARCHAR(100) DEFAULT '',
+            auto_number VARCHAR(80) NOT NULL,
+            infraction_date VARCHAR(40) NOT NULL,
+            due_date VARCHAR(40) DEFAULT '',
+            description TEXT NOT NULL,
+            location VARCHAR(200) DEFAULT '',
+            amount DECIMAL(12,2) DEFAULT 0,
+            discount_amount DECIMAL(12,2) DEFAULT 0,
+            driver_name VARCHAR(150) DEFAULT '',
+            driver_response TEXT DEFAULT '',
+            driver_responded_at TIMESTAMP,
+            status VARCHAR(40) DEFAULT 'Aguardando Condutor',
+            company_decision TEXT DEFAULT '',
+            decided_by_name VARCHAR(150) DEFAULT '',
+            decided_at TIMESTAMP,
+            attachment_photo TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    for idx_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_veh_insp_vid ON vehicle_inspections(vehicle_id, created_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_veh_insp_status ON vehicle_inspections(status, created_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_veh_dmg_vid ON vehicle_damages(vehicle_id, created_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_veh_dmg_status ON vehicle_damages(status, created_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_veh_maint_vid ON vehicle_maintenances(vehicle_id, scheduled_date DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_veh_fines_vid ON vehicle_fines(vehicle_id, created_at DESC);",
+    ]:
+        try:
+            cur.execute(idx_sql)
+        except Exception:
+            pass
+
+    _FLEET_SCHEMA_READY = True
+
+
+def _is_fleet_supervisor_or_coord():
+    auth = get_current_user_auth()
+    if not auth:
+        return False
+    if auth.get("is_master") or auth.get("is_coordenador"):
+        return True
+    role = (auth.get("role") or "").strip().lower()
+    if role in ("supervisor", "coordenador", "administrador", "admin"):
+        return True
+    perms = auth.get("permissions") or []
+    return "veiculos.edit" in perms
+
+
+def _current_operator_Identity(cur):
+    uid = session.get("user_id")
+    cur.execute("""
+        SELECT u.username, u.role, u.name AS u_name, t.name AS tech_name
+        FROM users u
+        LEFT JOIN technicians t ON u.tech_id = t.id
+        WHERE u.id = %s;
+    """, (uid,))
+    row = cur.fetchone() or {}
+    raw_name = row.get("u_name") or row.get("tech_name") or (row.get("username") or session.get("username") or "Operador").replace(".", " ")
+    return {
+        "user_id": uid,
+        "name": format_person_name(raw_name),
+        "role": row.get("role") or session.get("role") or "Colaborador",
+    }
+
+
 @app.route('/api/vehicles', methods=['GET'])
 @login_required
 def api_get_vehicles():
@@ -5167,10 +5342,16 @@ def api_get_vehicles():
     try:
         conn = get_db()
         cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+        conn.commit()
         if search:
             cur.execute(
                 """
-                SELECT v.*, t.name AS responsible_name 
+                SELECT v.*, t.name AS responsible_name,
+                       (SELECT COUNT(*) FROM vehicle_damages d WHERE d.vehicle_id = v.id AND d.status != 'Concluída') AS open_damages_count,
+                       (SELECT COUNT(*) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS pending_inspections_count,
+                       (SELECT i.approved_by_name FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_by_name,
+                       (SELECT TO_CHAR(i.approved_at, 'DD/MM/YYYY HH24:MI') FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_at
                 FROM vehicles v 
                 LEFT JOIN technicians t ON v.responsible_tech_id = t.id 
                 WHERE UPPER(v.plate) LIKE %s OR UPPER(v.type) LIKE %s OR UPPER(v.model) LIKE %s 
@@ -5186,7 +5367,11 @@ def api_get_vehicles():
         else:
             cur.execute(
                 """
-                SELECT v.*, t.name AS responsible_name 
+                SELECT v.*, t.name AS responsible_name,
+                       (SELECT COUNT(*) FROM vehicle_damages d WHERE d.vehicle_id = v.id AND d.status != 'Concluída') AS open_damages_count,
+                       (SELECT COUNT(*) FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'pendente') AS pending_inspections_count,
+                       (SELECT i.approved_by_name FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_by_name,
+                       (SELECT TO_CHAR(i.approved_at, 'DD/MM/YYYY HH24:MI') FROM vehicle_inspections i WHERE i.vehicle_id = v.id AND i.status = 'aprovado' ORDER BY i.approved_at DESC NULLS LAST, i.id DESC LIMIT 1) AS last_approved_at
                 FROM vehicles v 
                 LEFT JOIN technicians t ON v.responsible_tech_id = t.id 
                 ORDER BY v.plate ASC;
@@ -5203,7 +5388,7 @@ def api_get_vehicles():
 @app.route('/api/vehicles', methods=['POST'])
 @login_required
 def api_create_vehicle():
-    data = request.get_json()
+    data = request.get_json() or {}
     plate = data.get('plate', '').strip().upper()
     v_type = data.get('type', '').strip() or 'Utilitário'
     model = data.get('model', '').strip() or None
@@ -5225,6 +5410,17 @@ def api_create_vehicle():
     condutor_tarde = data.get('condutor_tarde', '').strip() or None
     condutor_madrugada = data.get('condutor_madrugada', '').strip() or None
     subclus = data.get('subclus', '').strip() or None
+    try:
+        current_km = int(data.get('current_km') or 0)
+    except (TypeError, ValueError):
+        current_km = 0
+    crlv_number = (data.get('crlv_number') or '').strip()
+    crlv_expiration = (data.get('crlv_expiration') or '').strip()
+    insurance_company = (data.get('insurance_company') or '').strip()
+    insurance_expiration = (data.get('insurance_expiration') or '').strip()
+    rental_company = (data.get('rental_company') or '').strip()
+    contract_number = (data.get('contract_number') or '').strip()
+    operational_status = (data.get('operational_status') or 'Operacional').strip()
 
     if not plate:
         return jsonify({"error": "Placa do Veículo é obrigatória."}), 400
@@ -5232,6 +5428,7 @@ def api_create_vehicle():
     try:
         conn = get_db()
         cur = conn.cursor()
+        _ensure_fleet_schema(cur)
 
         # Check unique plate
         cur.execute("SELECT id FROM vehicles WHERE plate = %s;", (plate,))
@@ -5244,11 +5441,15 @@ def api_create_vehicle():
             """
             INSERT INTO vehicles (plate, type, model, responsible_tech_id, has_rack, has_basket, 
                 has_giroflex, has_inverter, ticket_car, area_rede, base, setor, 
-                condutor_dia, condutor_tarde, condutor_madrugada, subclus, created_by) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                condutor_dia, condutor_tarde, condutor_madrugada, subclus,
+                current_km, crlv_number, crlv_expiration, insurance_company, insurance_expiration,
+                rental_company, contract_number, operational_status, created_by) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
             """,
             (plate, v_type, model, responsible_tech_id, has_rack, has_basket, has_giroflex, has_inverter, 
-             ticket_car, area_rede, base, setor, condutor_dia, condutor_tarde, condutor_madrugada, subclus, session['user_id'])
+             ticket_car, area_rede, base, setor, condutor_dia, condutor_tarde, condutor_madrugada, subclus,
+             current_km, crlv_number, crlv_expiration, insurance_company, insurance_expiration,
+             rental_company, contract_number, operational_status, session['user_id'])
         )
         vehicle_id = cur.fetchone()['id']
         conn.commit()
@@ -5264,7 +5465,7 @@ def api_create_vehicle():
 @app.route('/api/vehicles/<int:v_id>', methods=['PUT'])
 @login_required
 def api_update_vehicle(v_id):
-    data = request.get_json()
+    data = request.get_json() or {}
     plate = data.get('plate', '').strip().upper()
     v_type = data.get('type', '').strip() or 'Utilitário'
     model = data.get('model', '').strip() or None
@@ -5286,6 +5487,17 @@ def api_update_vehicle(v_id):
     condutor_tarde = data.get('condutor_tarde', '').strip() or None
     condutor_madrugada = data.get('condutor_madrugada', '').strip() or None
     subclus = data.get('subclus', '').strip() or None
+    try:
+        current_km = int(data.get('current_km') or 0)
+    except (TypeError, ValueError):
+        current_km = 0
+    crlv_number = (data.get('crlv_number') or '').strip()
+    crlv_expiration = (data.get('crlv_expiration') or '').strip()
+    insurance_company = (data.get('insurance_company') or '').strip()
+    insurance_expiration = (data.get('insurance_expiration') or '').strip()
+    rental_company = (data.get('rental_company') or '').strip()
+    contract_number = (data.get('contract_number') or '').strip()
+    operational_status = (data.get('operational_status') or 'Operacional').strip()
     
     if not plate:
         return jsonify({"error": "Placa do Veículo é obrigatória."}), 400
@@ -5293,6 +5505,7 @@ def api_update_vehicle(v_id):
     try:
         conn = get_db()
         cur = conn.cursor()
+        _ensure_fleet_schema(cur)
         
         # Check unique plate (excluding current vehicle)
         cur.execute("SELECT id FROM vehicles WHERE plate = %s AND id != %s;", (plate, v_id))
@@ -5307,11 +5520,15 @@ def api_update_vehicle(v_id):
             SET plate = %s, type = %s, model = %s, responsible_tech_id = %s, 
                 has_rack = %s, has_basket = %s, has_giroflex = %s, has_inverter = %s, ticket_car = %s,
                 area_rede = %s, base = %s, setor = %s, condutor_dia = %s, condutor_tarde = %s, condutor_madrugada = %s,
-                subclus = %s
+                subclus = %s, current_km = %s, crlv_number = %s, crlv_expiration = %s,
+                insurance_company = %s, insurance_expiration = %s, rental_company = %s,
+                contract_number = %s, operational_status = %s
             WHERE id = %s;
             """,
             (plate, v_type, model, responsible_tech_id, has_rack, has_basket, has_giroflex, has_inverter, 
-             ticket_car, area_rede, base, setor, condutor_dia, condutor_tarde, condutor_madrugada, subclus, v_id)
+             ticket_car, area_rede, base, setor, condutor_dia, condutor_tarde, condutor_madrugada, subclus,
+             current_km, crlv_number, crlv_expiration, insurance_company, insurance_expiration,
+             rental_company, contract_number, operational_status, v_id)
         )
         conn.commit()
         cur.close()
@@ -5347,6 +5564,974 @@ def api_delete_vehicle(v_id):
     except Exception as e:
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
+
+# --- FLEET MANAGEMENT (VISTORIAS 4 LADOS, AVARIAS, PNEUS, MANUTENÇÕES, MULTAS & ALERTAS) ---
+
+@app.route('/api/fleet/overview', methods=['GET'])
+@login_required
+def api_fleet_overview():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+        conn.commit()
+
+        cur.execute("""
+            SELECT i.id, i.vehicle_id, i.plate, i.inspection_type, i.from_person_name, i.to_person_name,
+                   i.to_tech_id, i.km, i.fuel_level, i.checklist_json, i.has_damage, i.damage_notes,
+                   i.observations, i.photos_sha256,
+                   (CASE WHEN COALESCE(i.signature_data, '') != '' THEN TRUE ELSE FALSE END) AS has_signature,
+                   i.status, i.created_by_user_id, i.created_by_name,
+                   TO_CHAR(i.created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   i.approved_by_user_id, i.approved_by_name, i.approved_by_role,
+                   TO_CHAR(i.approved_at, 'DD/MM/YYYY HH24:MI') AS approved_at_fmt,
+                   i.review_notes,
+                   v.model AS vehicle_model, v.area_rede, v.base, v.subclus
+            FROM vehicle_inspections i
+            LEFT JOIN vehicles v ON v.id = i.vehicle_id
+            ORDER BY i.created_at DESC, i.id DESC
+            LIMIT 250;
+        """)
+        inspections = cur.fetchall()
+
+        cur.execute("""
+            SELECT d.id, d.vehicle_id, d.plate, d.area, d.occurrence_type, d.severity,
+                   d.affected_part, d.description, d.bo_number, d.reported_by_name, d.driver_name,
+                   d.km, d.photos_json, d.status, d.resolution_notes, d.resolved_by_name,
+                   TO_CHAR(d.resolved_at, 'DD/MM/YYYY HH24:MI') AS resolved_at_fmt,
+                   d.inspection_id,
+                   TO_CHAR(d.created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   v.model AS vehicle_model, v.area_rede, v.base
+            FROM vehicle_damages d
+            LEFT JOIN vehicles v ON v.id = d.vehicle_id
+            ORDER BY CASE WHEN d.status != 'Concluída' THEN 0 ELSE 1 END, d.created_at DESC, d.id DESC
+            LIMIT 250;
+        """)
+        damages = cur.fetchall()
+
+        cur.execute("""
+            SELECT m.id, m.vehicle_id, m.plate, m.area, m.maintenance_type, m.title,
+                   m.description, m.scheduled_date, m.target_km, m.workshop,
+                   COALESCE(m.cost, 0)::float AS cost, m.downtime_hours, m.status,
+                   m.voucher_photo, m.completed_by_name,
+                   TO_CHAR(m.completed_at, 'DD/MM/YYYY HH24:MI') AS completed_at_fmt,
+                   m.completion_notes, m.created_by_name,
+                   TO_CHAR(m.created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   v.model AS vehicle_model, v.current_km
+            FROM vehicle_maintenances m
+            LEFT JOIN vehicles v ON v.id = m.vehicle_id
+            ORDER BY CASE WHEN m.status IN ('Agendada', 'Em Oficina') THEN 0 ELSE 1 END, m.scheduled_date ASC, m.id DESC
+            LIMIT 250;
+        """)
+        maintenances = cur.fetchall()
+
+        cur.execute("""
+            SELECT f.id, f.vehicle_id, f.plate, f.area, f.auto_number, f.infraction_date,
+                   f.due_date, f.description, f.location,
+                   COALESCE(f.amount, 0)::float AS amount,
+                   COALESCE(f.discount_amount, 0)::float AS discount_amount,
+                   f.driver_name, f.driver_response,
+                   TO_CHAR(f.driver_responded_at, 'DD/MM/YYYY HH24:MI') AS driver_responded_at_fmt,
+                   f.status, f.company_decision, f.decided_by_name,
+                   TO_CHAR(f.decided_at, 'DD/MM/YYYY HH24:MI') AS decided_at_fmt,
+                   f.attachment_photo,
+                   TO_CHAR(f.created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   v.model AS vehicle_model
+            FROM vehicle_fines f
+            LEFT JOIN vehicles v ON v.id = f.vehicle_id
+            ORDER BY CASE WHEN f.status != 'Concluída' THEN 0 ELSE 1 END, f.created_at DESC, f.id DESC
+            LIMIT 250;
+        """)
+        fines = cur.fetchall()
+
+        cur.execute("""
+            SELECT id, plate, model, type, area_rede, base, subclus, current_km,
+                   crlv_expiration, insurance_expiration, operational_status, tires_json,
+                   condutor_dia
+            FROM vehicles
+            ORDER BY plate ASC;
+        """)
+        veh_rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        # Build actionable alerts
+        alerts = []
+        today = datetime.date.today()
+
+        for insp in inspections:
+            if insp.get("status") == "pendente":
+                alerts.append({
+                    "id": f"insp-{insp['id']}",
+                    "category": "Vistoria Pendente",
+                    "severity": "warning",
+                    "plate": insp["plate"],
+                    "vehicle_id": insp["vehicle_id"],
+                    "area": insp.get("area_rede") or insp.get("base") or insp.get("subclus") or "Geral",
+                    "title": f"Aprovação de Repasse Pendente ({insp['plate']})",
+                    "description": f"{insp['from_person_name']} ➔ {insp['to_person_name']} ({insp['created_at_fmt']}) aguarda revisão de supervisor.",
+                    "target_tab": "checklists",
+                })
+
+        for dmg in damages:
+            if dmg.get("status") != "Concluída":
+                sev = "critical" if "Crítica" in (dmg.get("severity") or "") or dmg.get("severity") == "Alta" else "warning"
+                alerts.append({
+                    "id": f"dmg-{dmg['id']}",
+                    "category": "Avaria / Quebrado",
+                    "severity": sev,
+                    "plate": dmg["plate"],
+                    "vehicle_id": dmg["vehicle_id"],
+                    "area": dmg.get("area") or dmg.get("area_rede") or dmg.get("base") or "Geral",
+                    "title": f"{dmg.get('occurrence_type')}: {dmg.get('affected_part') or dmg['plate']}",
+                    "description": f"{dmg.get('description')[:120]} — Status: {dmg.get('status')} (Reportado por {dmg.get('reported_by_name')})",
+                    "target_tab": "ocorrencias",
+                })
+
+        for m in maintenances:
+            if m.get("status") in ("Agendada", "Em Oficina"):
+                alerts.append({
+                    "id": f"maint-{m['id']}",
+                    "category": "Manutenção",
+                    "severity": "info" if m.get("status") == "Agendada" else "warning",
+                    "plate": m["plate"],
+                    "vehicle_id": m["vehicle_id"],
+                    "area": m.get("area") or "Geral",
+                    "title": f"{m['maintenance_type']}: {m['title']} ({m['plate']})",
+                    "description": f"Data programada: {m.get('scheduled_date')} · Status: {m.get('status')}",
+                    "target_tab": "manutencoes",
+                })
+
+        for fn in fines:
+            if fn.get("status") != "Concluída":
+                alerts.append({
+                    "id": f"fine-{fn['id']}",
+                    "category": "Multa",
+                    "severity": "warning",
+                    "plate": fn["plate"],
+                    "vehicle_id": fn["vehicle_id"],
+                    "area": fn.get("area") or "Geral",
+                    "title": f"Multa {fn['auto_number']} ({fn['plate']}) — {fn['status']}",
+                    "description": f"Condutor: {fn.get('driver_name') or 'A indicar'} · Vencimento: {fn.get('due_date') or 'N/A'}",
+                    "target_tab": "multas",
+                })
+
+        for v in veh_rows:
+            v_area = v.get("area_rede") or v.get("base") or v.get("subclus") or "Geral"
+            v_km = int(v.get("current_km") or 0)
+            tires = v.get("tires_json") or {}
+            if isinstance(tires, dict):
+                for pos_key, pos_label in [("fl", "Dianteiro Esq."), ("fr", "Dianteiro Dir."), ("rl", "Traseiro Esq."), ("rr", "Traseiro Dir."), ("spare", "Estepe")]:
+                    t_info = tires.get(pos_key) or {}
+                    if not isinstance(t_info, dict):
+                        continue
+                    cond = t_info.get("condition") or "ok"
+                    next_km = int(t_info.get("next_check_km") or 0)
+                    if cond == "critical" or (next_km > 0 and v_km >= next_km):
+                        alerts.append({
+                            "id": f"tire-crit-{v['id']}-{pos_key}",
+                            "category": "Pneus",
+                            "severity": "critical",
+                            "plate": v["plate"],
+                            "vehicle_id": v["id"],
+                            "area": v_area,
+                            "title": f"Troca / Verificação Imediata de Pneu ({v['plate']})",
+                            "description": f"Pneu {pos_label} atingiu limite ({v_km} km / meta {next_km} km).",
+                            "target_tab": "pneus",
+                        })
+                    elif cond == "warning" or (next_km > 0 and v_km >= next_km - 1500):
+                        alerts.append({
+                            "id": f"tire-warn-{v['id']}-{pos_key}",
+                            "category": "Pneus",
+                            "severity": "warning",
+                            "plate": v["plate"],
+                            "vehicle_id": v["id"],
+                            "area": v_area,
+                            "title": f"Rodízio / Verificação Próxima de Pneu ({v['plate']})",
+                            "description": f"Pneu {pos_label} próximo da revisão ({v_km} km).",
+                            "target_tab": "pneus",
+                        })
+
+            for doc_col, doc_label in [("crlv_expiration", "CRLV"), ("insurance_expiration", "Seguro")]:
+                exp_str = (v.get(doc_col) or "").strip()
+                if exp_str and len(exp_str) == 10 and exp_str[4] == '-':
+                    try:
+                        exp_dt = datetime.date.fromisoformat(exp_str)
+                        days_left = (exp_dt - today).days
+                        if days_left <= 30:
+                            alerts.append({
+                                "id": f"doc-{v['id']}-{doc_col}",
+                                "category": "Documento Veicular",
+                                "severity": "critical" if days_left < 0 else "warning",
+                                "plate": v["plate"],
+                                "vehicle_id": v["id"],
+                                "area": v_area,
+                                "title": f"{doc_label} {'Vencido' if days_left < 0 else f'Vence em {days_left}d'} ({v['plate']})",
+                                "description": f"Vencimento registrado: {exp_dt.strftime('%d/%m/%Y')}",
+                                "target_tab": "veiculos",
+                            })
+                    except Exception:
+                        pass
+
+        return jsonify({
+            "inspections": inspections,
+            "damages": damages,
+            "maintenances": maintenances,
+            "fines": fines,
+            "alerts": alerts,
+            "can_review": _is_fleet_supervisor_or_coord(),
+        })
+    except Exception as e:
+        print("[FLEET OVERVIEW ERROR]", e)
+        return jsonify({"error": "Falha ao carregar gestão de frotas."}), 500
+
+
+@app.route('/api/fleet/inspections/<int:insp_id>', methods=['GET'])
+@login_required
+def api_fleet_get_inspection_detail(insp_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+        cur.execute("""
+            SELECT i.*,
+                   TO_CHAR(i.created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   TO_CHAR(i.approved_at, 'DD/MM/YYYY HH24:MI') AS approved_at_fmt,
+                   v.model AS vehicle_model, v.type AS vehicle_type, v.area_rede, v.base, v.subclus
+            FROM vehicle_inspections i
+            LEFT JOIN vehicles v ON v.id = i.vehicle_id
+            WHERE i.id = %s;
+        """, (insp_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if not row:
+            return jsonify({"error": "Vistoria não encontrada."}), 404
+        return jsonify(row)
+    except Exception as e:
+        print("[FLEET INSP DETAIL ERROR]", e)
+        return jsonify({"error": "Falha ao carregar detalhes da vistoria."}), 500
+
+
+@app.route('/api/fleet/inspections', methods=['POST'])
+@login_required
+def api_fleet_create_inspection():
+    data = request.get_json(silent=True) or {}
+    try:
+        vehicle_id = int(data.get("vehicle_id") or 0)
+    except (TypeError, ValueError):
+        vehicle_id = 0
+
+    inspection_type = (data.get("inspection_type") or "entrega").strip().lower()
+    if inspection_type not in ("entrega", "recebimento", "periodica"):
+        inspection_type = "entrega"
+
+    from_person_name = format_person_name((data.get("from_person_name") or "").strip())
+    to_person_name = format_person_name((data.get("to_person_name") or "").strip())
+    to_tech_raw = data.get("to_tech_id")
+    to_tech_id = int(to_tech_raw) if to_tech_raw and str(to_tech_raw).isdigit() else None
+
+    try:
+        km = max(0, int(data.get("km") or 0))
+    except (TypeError, ValueError):
+        km = 0
+
+    fuel_level = (data.get("fuel_level") or "1/2").strip()[:20]
+    checklist_json = data.get("checklist") if isinstance(data.get("checklist"), dict) else {}
+    has_damage = bool(data.get("has_damage"))
+    damage_notes = (data.get("damage_notes") or "").strip()
+    observations = (data.get("observations") or "").strip()
+
+    photo_front = (data.get("photo_front") or "").strip()
+    photo_back = (data.get("photo_back") or "").strip()
+    photo_left = (data.get("photo_left") or "").strip()
+    photo_right = (data.get("photo_right") or "").strip()
+    photo_extra = (data.get("photo_extra") or "").strip()
+    signature_data = (data.get("signature_data") or "").strip()
+
+    if not vehicle_id:
+        return jsonify({"error": "Selecione o veículo da vistoria."}), 400
+    if not from_person_name or not to_person_name:
+        return jsonify({"error": "Informe obrigatoriamente de qual pessoa está saindo e para qual pessoa está indo o veículo."}), 400
+    if not (photo_front.startswith("data:image/") and photo_back.startswith("data:image/") and photo_left.startswith("data:image/") and photo_right.startswith("data:image/")):
+        return jsonify({"error": "As fotos dos 4 lados do veículo (Frente, Traseira, Lateral Esquerda e Lateral Direita) são obrigatórias."}), 400
+    if not signature_data.startswith("data:image/"):
+        return jsonify({"error": "A assinatura digital do condutor na tela é obrigatória."}), 400
+
+    import hashlib
+    sha256_hash = hashlib.sha256(
+        f"{photo_front}|{photo_back}|{photo_left}|{photo_right}|{signature_data}".encode("utf-8")
+    ).hexdigest()
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("SELECT id, plate, area_rede, base, subclus, current_km FROM vehicles WHERE id = %s;", (vehicle_id,))
+        vrow = cur.fetchone()
+        if not vrow:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Veículo não encontrado."}), 404
+
+        op = _current_operator_Identity(cur)
+        plate = vrow["plate"]
+        v_area = vrow.get("area_rede") or vrow.get("base") or vrow.get("subclus") or ""
+
+        cur.execute("""
+            INSERT INTO vehicle_inspections (
+                vehicle_id, plate, inspection_type, from_person_name, to_person_name, to_tech_id,
+                km, fuel_level, checklist_json, has_damage, damage_notes, observations,
+                photo_front, photo_back, photo_left, photo_right, photo_extra, signature_data,
+                photos_sha256, status, created_by_user_id, created_by_name
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pendente', %s, %s)
+            RETURNING id;
+        """, (
+            vehicle_id, plate, inspection_type, from_person_name, to_person_name, to_tech_id,
+            km, fuel_level, json.dumps(checklist_json, ensure_ascii=False), has_damage, damage_notes, observations,
+            photo_front, photo_back, photo_left, photo_right, photo_extra, signature_data,
+            sha256_hash, op["user_id"], op["name"]
+        ))
+        insp_id = cur.fetchone()["id"]
+
+        # Update vehicle KM
+        if km > int(vrow.get("current_km") or 0):
+            cur.execute("UPDATE vehicles SET current_km = %s WHERE id = %s;", (km, vehicle_id))
+
+        # If damage was reported during checklist, automatically persist it in vehicle_damages history!
+        if has_damage or damage_notes:
+            dmg_desc = damage_notes or "Avaria apontada durante o checklist de entrega/recebimento."
+            dmg_photos = [p for p in [photo_extra, photo_front, photo_back, photo_left, photo_right] if p.startswith("data:image/")][:4]
+            cur.execute("""
+                INSERT INTO vehicle_damages (
+                    vehicle_id, plate, area, occurrence_type, severity, affected_part,
+                    description, reported_by_name, driver_name, km, photos_json, status, inspection_id
+                )
+                VALUES (%s, %s, %s, 'Avaria em Vistoria', 'Média', 'Apontado no Checklist', %s, %s, %s, %s, %s::jsonb, 'Aberta', %s);
+            """, (
+                vehicle_id, plate, v_area, dmg_desc, op["name"], to_person_name, km,
+                json.dumps(dmg_photos, ensure_ascii=False), insp_id
+            ))
+            cur.execute("UPDATE vehicles SET operational_status = 'Com Avaria' WHERE id = %s;", (vehicle_id,))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(op["user_id"], session.get("username"), f"Registrou vistoria veicular #{insp_id} ({plate}: {from_person_name} -> {to_person_name})")
+        return jsonify({"success": True, "id": insp_id, "photos_sha256": sha256_hash}), 201
+    except Exception as e:
+        print("[FLEET CREATE INSP ERROR]", e)
+        return jsonify({"error": "Falha ao salvar vistoria veicular no banco de dados."}), 500
+
+
+@app.route('/api/fleet/inspections/<int:insp_id>/review', methods=['POST'])
+@login_required
+def api_fleet_review_inspection(insp_id):
+    if not _is_fleet_supervisor_or_coord():
+        return jsonify({"error": "Apenas Supervisores ou Coordenadores podem revisar e aprovar formulários veiculares."}), 403
+
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "aprovar").strip().lower()
+    review_notes = (data.get("review_notes") or "").strip()
+    new_status = "aprovado" if action == "aprovar" else "reprovado"
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("SELECT * FROM vehicle_inspections WHERE id = %s;", (insp_id,))
+        insp = cur.fetchone()
+        if not insp:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Formulário veicular não encontrado."}), 404
+
+        op = _current_operator_Identity(cur)
+        now_brt = _grafana_now_brt()
+
+        cur.execute("""
+            UPDATE vehicle_inspections
+            SET status = %s,
+                approved_by_user_id = %s,
+                approved_by_name = %s,
+                approved_by_role = %s,
+                approved_at = %s,
+                review_notes = %s
+            WHERE id = %s
+            RETURNING id, TO_CHAR(approved_at, 'DD/MM/YYYY HH24:MI') AS approved_at_fmt;
+        """, (new_status, op["user_id"], op["name"], op["role"], now_brt, review_notes, insp_id))
+        updated = cur.fetchone()
+
+        # When approved, officially transfer vehicle responsibility to to_person_name!
+        if new_status == "aprovado":
+            vid = insp["vehicle_id"]
+            to_name = insp["to_person_name"]
+            to_tech_id = insp.get("to_tech_id")
+            km = int(insp.get("km") or 0)
+            if not to_tech_id and to_name:
+                cur.execute("SELECT id FROM technicians WHERE LOWER(name) = LOWER(%s) LIMIT 1;", (to_name,))
+                tmatch = cur.fetchone()
+                if tmatch:
+                    to_tech_id = tmatch["id"]
+
+            cur.execute("""
+                UPDATE vehicles
+                SET condutor_dia = %s,
+                    responsible_tech_id = COALESCE(%s, responsible_tech_id),
+                    current_km = GREATEST(COALESCE(current_km, 0), %s)
+                WHERE id = %s;
+            """, (to_name, to_tech_id, km, vid))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(
+            op["user_id"],
+            session.get("username"),
+            f"Revisou formulário veicular #{insp_id} ({insp['plate']}: {insp['from_person_name']} -> {insp['to_person_name']}) -> {new_status.upper()}"
+        )
+        return jsonify({
+            "success": True,
+            "status": new_status,
+            "approved_by_name": op["name"],
+            "approved_by_role": op["role"],
+            "approved_at_fmt": updated["approved_at_fmt"],
+            "review_notes": review_notes,
+        })
+    except Exception as e:
+        print("[FLEET REVIEW INSP ERROR]", e)
+        return jsonify({"error": "Falha ao registrar aprovação do formulário veicular."}), 500
+
+
+@app.route('/api/fleet/vehicles/<int:v_id>/history', methods=['GET'])
+@login_required
+def api_fleet_vehicle_history(v_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("""
+            SELECT v.*, t.name AS responsible_name
+            FROM vehicles v
+            LEFT JOIN technicians t ON v.responsible_tech_id = t.id
+            WHERE v.id = %s;
+        """, (v_id,))
+        vehicle = cur.fetchone()
+        if not vehicle:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Veículo não encontrado."}), 404
+
+        cur.execute("""
+            SELECT id, vehicle_id, plate, inspection_type, from_person_name, to_person_name,
+                   km, fuel_level, checklist_json, has_damage, damage_notes, observations,
+                   photo_front, photo_back, photo_left, photo_right, photo_extra, signature_data,
+                   photos_sha256, status, created_by_name,
+                   TO_CHAR(created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt,
+                   approved_by_name, approved_by_role,
+                   TO_CHAR(approved_at, 'DD/MM/YYYY HH24:MI') AS approved_at_fmt,
+                   review_notes
+            FROM vehicle_inspections
+            WHERE vehicle_id = %s
+            ORDER BY created_at DESC, id DESC;
+        """, (v_id,))
+        inspections = cur.fetchall()
+
+        cur.execute("""
+            SELECT id, vehicle_id, plate, area, occurrence_type, severity, affected_part,
+                   description, bo_number, reported_by_name, driver_name, km, photos_json,
+                   status, resolution_notes, resolved_by_name,
+                   TO_CHAR(resolved_at, 'DD/MM/YYYY HH24:MI') AS resolved_at_fmt,
+                   TO_CHAR(created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt
+            FROM vehicle_damages
+            WHERE vehicle_id = %s
+            ORDER BY created_at DESC, id DESC;
+        """, (v_id,))
+        damages = cur.fetchall()
+
+        cur.execute("""
+            SELECT id, vehicle_id, plate, area, maintenance_type, title, description,
+                   scheduled_date, target_km, workshop, COALESCE(cost, 0)::float AS cost,
+                   downtime_hours, status, voucher_photo, completed_by_name,
+                   TO_CHAR(completed_at, 'DD/MM/YYYY HH24:MI') AS completed_at_fmt,
+                   completion_notes, created_by_name,
+                   TO_CHAR(created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt
+            FROM vehicle_maintenances
+            WHERE vehicle_id = %s
+            ORDER BY created_at DESC, id DESC;
+        """, (v_id,))
+        maintenances = cur.fetchall()
+
+        cur.execute("""
+            SELECT id, vehicle_id, plate, area, auto_number, infraction_date, due_date,
+                   description, location, COALESCE(amount, 0)::float AS amount,
+                   COALESCE(discount_amount, 0)::float AS discount_amount,
+                   driver_name, driver_response,
+                   TO_CHAR(driver_responded_at, 'DD/MM/YYYY HH24:MI') AS driver_responded_at_fmt,
+                   status, company_decision, decided_by_name,
+                   TO_CHAR(decided_at, 'DD/MM/YYYY HH24:MI') AS decided_at_fmt,
+                   TO_CHAR(created_at, 'DD/MM/YYYY HH24:MI') AS created_at_fmt
+            FROM vehicle_fines
+            WHERE vehicle_id = %s
+            ORDER BY created_at DESC, id DESC;
+        """, (v_id,))
+        fines = cur.fetchall()
+
+        cur.close()
+        conn.close()
+        return jsonify({
+            "vehicle": vehicle,
+            "inspections": inspections,
+            "damages": damages,
+            "maintenances": maintenances,
+            "fines": fines,
+        })
+    except Exception as e:
+        print("[FLEET VEHICLE HISTORY ERROR]", e)
+        return jsonify({"error": "Falha ao carregar histórico do veículo."}), 500
+
+
+@app.route('/api/fleet/damages', methods=['POST'])
+@login_required
+def api_fleet_create_damage():
+    data = request.get_json(silent=True) or {}
+    try:
+        vehicle_id = int(data.get("vehicle_id") or 0)
+    except (TypeError, ValueError):
+        vehicle_id = 0
+
+    occurrence_type = (data.get("occurrence_type") or "Avaria / Quebrado").strip()[:50]
+    severity = (data.get("severity") or "Média").strip()[:30]
+    affected_part = (data.get("affected_part") or "").strip()[:120]
+    description = (data.get("description") or "").strip()
+    bo_number = (data.get("bo_number") or "").strip()[:80]
+    driver_name = format_person_name((data.get("driver_name") or "").strip())
+    try:
+        km = max(0, int(data.get("km") or 0))
+    except (TypeError, ValueError):
+        km = 0
+    photos = data.get("photos") if isinstance(data.get("photos"), list) else []
+    clean_photos = [str(p).strip() for p in photos if isinstance(p, str) and str(p).strip().startswith("data:image/")][:6]
+
+    if not vehicle_id or not description:
+        return jsonify({"error": "Selecione o veículo e descreva a avaria ou ocorrência."}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("SELECT id, plate, area_rede, base, subclus FROM vehicles WHERE id = %s;", (vehicle_id,))
+        vrow = cur.fetchone()
+        if not vrow:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Veículo não encontrado."}), 404
+
+        op = _current_operator_Identity(cur)
+        v_area = (data.get("area") or vrow.get("area_rede") or vrow.get("base") or vrow.get("subclus") or "").strip()
+
+        cur.execute("""
+            INSERT INTO vehicle_damages (
+                vehicle_id, plate, area, occurrence_type, severity, affected_part,
+                description, bo_number, reported_by_name, driver_name, km, photos_json, status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, 'Aberta')
+            RETURNING id;
+        """, (
+            vehicle_id, vrow["plate"], v_area, occurrence_type, severity, affected_part,
+            description, bo_number, op["name"], driver_name or op["name"], km,
+            json.dumps(clean_photos, ensure_ascii=False)
+        ))
+        dmg_id = cur.fetchone()["id"]
+
+        cur.execute("UPDATE vehicles SET operational_status = 'Com Avaria' WHERE id = %s;", (vehicle_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(op["user_id"], session.get("username"), f"Reportou avaria #{dmg_id} no veículo {vrow['plate']} ({affected_part})")
+        return jsonify({"success": True, "id": dmg_id}), 201
+    except Exception as e:
+        print("[FLEET CREATE DAMAGE ERROR]", e)
+        return jsonify({"error": "Falha ao registrar avaria no banco de dados."}), 500
+
+
+@app.route('/api/fleet/damages/<int:dmg_id>', methods=['PUT'])
+@login_required
+def api_fleet_update_damage(dmg_id):
+    if not _is_fleet_supervisor_or_coord():
+        return jsonify({"error": "Apenas Supervisores ou Coordenadores podem alterar o status de avarias."}), 403
+
+    data = request.get_json(silent=True) or {}
+    status = (data.get("status") or "Em Análise").strip()
+    resolution_notes = (data.get("resolution_notes") or "").strip()
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("SELECT * FROM vehicle_damages WHERE id = %s;", (dmg_id,))
+        dmg = cur.fetchone()
+        if not dmg:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Registro de avaria não encontrado."}), 404
+
+        op = _current_operator_Identity(cur)
+        now_brt = _grafana_now_brt() if status == "Concluída" else None
+
+        cur.execute("""
+            UPDATE vehicle_damages
+            SET status = %s,
+                resolution_notes = %s,
+                resolved_by_name = CASE WHEN %s = 'Concluída' THEN %s ELSE resolved_by_name END,
+                resolved_at = CASE WHEN %s = 'Concluída' THEN %s ELSE resolved_at END
+            WHERE id = %s;
+        """, (status, resolution_notes, status, op["name"], status, now_brt, dmg_id))
+
+        # Check if vehicle still has any open damages
+        cur.execute("SELECT COUNT(*) AS c FROM vehicle_damages WHERE vehicle_id = %s AND status != 'Concluída';", (dmg["vehicle_id"],))
+        open_c = cur.fetchone()["c"]
+        if open_c == 0:
+            cur.execute("UPDATE vehicles SET operational_status = 'Operacional' WHERE id = %s;", (dmg["vehicle_id"],))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        log_action(op["user_id"], session.get("username"), f"Atualizou avaria #{dmg_id} ({dmg['plate']}) para {status}")
+        return jsonify({"success": True})
+    except Exception as e:
+        print("[FLEET UPDATE DAMAGE ERROR]", e)
+        return jsonify({"error": "Falha ao atualizar avaria."}), 500
+
+
+@app.route('/api/fleet/vehicles/<int:v_id>/tires', methods=['PUT'])
+@login_required
+def api_fleet_update_tires(v_id):
+    data = request.get_json(silent=True) or {}
+    tires = data.get("tires") if isinstance(data.get("tires"), dict) else {}
+    try:
+        current_km = int(data.get("current_km") or 0)
+    except (TypeError, ValueError):
+        current_km = 0
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("""
+            UPDATE vehicles
+            SET tires_json = %s::jsonb,
+                current_km = CASE WHEN %s > 0 THEN %s ELSE current_km END
+            WHERE id = %s
+            RETURNING plate;
+        """, (json.dumps(tires, ensure_ascii=False), current_km, current_km, v_id))
+        vrow = cur.fetchone()
+        if not vrow:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Veículo não encontrado."}), 404
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        log_action(session.get("user_id"), session.get("username"), f"Atualizou controle de pneus do veículo {vrow['plate']}")
+        return jsonify({"success": True})
+    except Exception as e:
+        print("[FLEET TIRES ERROR]", e)
+        return jsonify({"error": "Falha ao salvar dados dos pneus."}), 500
+
+
+@app.route('/api/fleet/maintenances', methods=['POST'])
+@login_required
+def api_fleet_create_maintenance():
+    data = request.get_json(silent=True) or {}
+    try:
+        vehicle_id = int(data.get("vehicle_id") or 0)
+    except (TypeError, ValueError):
+        vehicle_id = 0
+
+    maintenance_type = (data.get("maintenance_type") or "Preventiva").strip()[:50]
+    title = (data.get("title") or "").strip()[:180]
+    description = (data.get("description") or "").strip()
+    scheduled_date = (data.get("scheduled_date") or "").strip()[:30]
+    try:
+        target_km = max(0, int(data.get("target_km") or 0))
+    except (TypeError, ValueError):
+        target_km = 0
+    workshop = (data.get("workshop") or "").strip()[:150]
+    try:
+        cost = float(str(data.get("cost") or 0).replace(",", "."))
+    except (TypeError, ValueError):
+        cost = 0.0
+    downtime_hours = (data.get("downtime_hours") or "").strip()[:60]
+    status = (data.get("status") or "Agendada").strip()[:30]
+    voucher_photo = (data.get("voucher_photo") or "").strip()
+
+    if not vehicle_id or not title or not scheduled_date:
+        return jsonify({"error": "Informe o veículo, título da manutenção e data programada."}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("SELECT id, plate, area_rede, base, subclus FROM vehicles WHERE id = %s;", (vehicle_id,))
+        vrow = cur.fetchone()
+        if not vrow:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Veículo não encontrado."}), 404
+
+        op = _current_operator_Identity(cur)
+        v_area = vrow.get("area_rede") or vrow.get("base") or vrow.get("subclus") or ""
+
+        cur.execute("""
+            INSERT INTO vehicle_maintenances (
+                vehicle_id, plate, area, maintenance_type, title, description,
+                scheduled_date, target_km, workshop, cost, downtime_hours, status,
+                voucher_photo, created_by_name
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id;
+        """, (
+            vehicle_id, vrow["plate"], v_area, maintenance_type, title, description,
+            scheduled_date, target_km, workshop, cost, downtime_hours, status,
+            voucher_photo, op["name"]
+        ))
+        m_id = cur.fetchone()["id"]
+        if status == "Em Oficina":
+            cur.execute("UPDATE vehicles SET operational_status = 'Em Manutenção' WHERE id = %s;", (vehicle_id,))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        log_action(op["user_id"], session.get("username"), f"Agendou manutenção #{m_id} para {vrow['plate']} ({title})")
+        return jsonify({"success": True, "id": m_id}), 201
+    except Exception as e:
+        print("[FLEET CREATE MAINT ERROR]", e)
+        return jsonify({"error": "Falha ao registrar manutenção."}), 500
+
+
+@app.route('/api/fleet/maintenances/<int:maint_id>', methods=['PUT'])
+@login_required
+def api_fleet_update_maintenance(maint_id):
+    data = request.get_json(silent=True) or {}
+    status = (data.get("status") or "Concluída").strip()[:30]
+    completion_notes = (data.get("completion_notes") or "").strip()
+    downtime_hours = (data.get("downtime_hours") or "").strip()[:60]
+    try:
+        cost = float(str(data.get("cost") or 0).replace(",", "."))
+    except (TypeError, ValueError):
+        cost = None
+    voucher_photo = (data.get("voucher_photo") or "").strip()
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("SELECT * FROM vehicle_maintenances WHERE id = %s;", (maint_id,))
+        m = cur.fetchone()
+        if not m:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Manutenção não encontrada."}), 404
+
+        op = _current_operator_Identity(cur)
+        now_brt = _grafana_now_brt() if status == "Concluída" else None
+
+        cur.execute("""
+            UPDATE vehicle_maintenances
+            SET status = %s,
+                completion_notes = COALESCE(NULLIF(%s, ''), completion_notes),
+                downtime_hours = COALESCE(NULLIF(%s, ''), downtime_hours),
+                cost = COALESCE(%s, cost),
+                voucher_photo = COALESCE(NULLIF(%s, ''), voucher_photo),
+                completed_by_name = CASE WHEN %s = 'Concluída' THEN %s ELSE completed_by_name END,
+                completed_at = CASE WHEN %s = 'Concluída' THEN %s ELSE completed_at END
+            WHERE id = %s;
+        """, (
+            status, completion_notes, downtime_hours, cost, voucher_photo,
+            status, op["name"], status, now_brt, maint_id
+        ))
+
+        if status == "Concluída":
+            cur.execute("UPDATE vehicles SET operational_status = 'Operacional' WHERE id = %s AND operational_status = 'Em Manutenção';", (m["vehicle_id"],))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        log_action(op["user_id"], session.get("username"), f"Atualizou manutenção #{maint_id} ({m['plate']}) para {status}")
+        return jsonify({"success": True})
+    except Exception as e:
+        print("[FLEET UPDATE MAINT ERROR]", e)
+        return jsonify({"error": "Falha ao atualizar manutenção."}), 500
+
+
+@app.route('/api/fleet/fines', methods=['POST'])
+@login_required
+def api_fleet_create_fine():
+    if not _is_fleet_supervisor_or_coord():
+        return jsonify({"error": "Apenas Supervisores ou Coordenadores podem cadastrar autos de infração."}), 403
+
+    data = request.get_json(silent=True) or {}
+    try:
+        vehicle_id = int(data.get("vehicle_id") or 0)
+    except (TypeError, ValueError):
+        vehicle_id = 0
+
+    auto_number = (data.get("auto_number") or "").strip()[:80]
+    infraction_date = (data.get("infraction_date") or "").strip()[:40]
+    due_date = (data.get("due_date") or "").strip()[:40]
+    description = (data.get("description") or "").strip()
+    location = (data.get("location") or "").strip()[:200]
+    driver_name = format_person_name((data.get("driver_name") or "").strip())
+    try:
+        amount = float(str(data.get("amount") or 0).replace(",", "."))
+    except (TypeError, ValueError):
+        amount = 0.0
+    try:
+        discount_amount = float(str(data.get("discount_amount") or 0).replace(",", "."))
+    except (TypeError, ValueError):
+        discount_amount = 0.0
+    attachment_photo = (data.get("attachment_photo") or "").strip()
+
+    if not vehicle_id or not auto_number or not description:
+        return jsonify({"error": "Informe o veículo, número do auto de infração e descrição da multa."}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+
+        cur.execute("SELECT id, plate, area_rede, base, subclus, condutor_dia FROM vehicles WHERE id = %s;", (vehicle_id,))
+        vrow = cur.fetchone()
+        if not vrow:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Veículo não encontrado."}), 404
+
+        v_area = vrow.get("area_rede") or vrow.get("base") or vrow.get("subclus") or ""
+        effective_driver = driver_name or vrow.get("condutor_dia") or ""
+
+        cur.execute("""
+            INSERT INTO vehicle_fines (
+                vehicle_id, plate, area, auto_number, infraction_date, due_date,
+                description, location, amount, discount_amount, driver_name,
+                status, attachment_photo
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Aguardando Condutor', %s)
+            RETURNING id;
+        """, (
+            vehicle_id, vrow["plate"], v_area, auto_number, infraction_date, due_date,
+            description, location, amount, discount_amount, effective_driver, attachment_photo
+        ))
+        fine_id = cur.fetchone()["id"]
+        conn.commit()
+        cur.close()
+        conn.close()
+        log_action(session.get("user_id"), session.get("username"), f"Registrou multa {auto_number} no veículo {vrow['plate']}")
+        return jsonify({"success": True, "id": fine_id}), 201
+    except Exception as e:
+        print("[FLEET CREATE FINE ERROR]", e)
+        return jsonify({"error": "Falha ao registrar multa."}), 500
+
+
+@app.route('/api/fleet/fines/<int:fine_id>/respond', methods=['PUT'])
+@login_required
+def api_fleet_respond_fine(fine_id):
+    data = request.get_json(silent=True) or {}
+    driver_name = format_person_name((data.get("driver_name") or "").strip())
+    driver_response = (data.get("driver_response") or "").strip()
+    if not driver_response:
+        return jsonify({"error": "Escreva a resposta ou justificativa do condutor."}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+        op = _current_operator_Identity(cur)
+        now_brt = _grafana_now_brt()
+
+        cur.execute("""
+            UPDATE vehicle_fines
+            SET driver_name = COALESCE(NULLIF(%s, ''), driver_name, %s),
+                driver_response = %s,
+                driver_responded_at = %s,
+                status = 'Em Análise'
+            WHERE id = %s
+            RETURNING plate, auto_number;
+        """, (driver_name, op["name"], driver_response, now_brt, fine_id))
+        updated = cur.fetchone()
+        if not updated:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Multa não encontrada."}), 404
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        log_action(op["user_id"], session.get("username"), f"Respondeu multa {updated['auto_number']} ({updated['plate']}) -> Em Análise")
+        return jsonify({"success": True})
+    except Exception as e:
+        print("[FLEET RESPOND FINE ERROR]", e)
+        return jsonify({"error": "Falha ao enviar resposta da multa."}), 500
+
+
+@app.route('/api/fleet/fines/<int:fine_id>/decide', methods=['PUT'])
+@login_required
+def api_fleet_decide_fine(fine_id):
+    if not _is_fleet_supervisor_or_coord():
+        return jsonify({"error": "Apenas Supervisores ou Coordenadores podem registrar a decisão da empresa."}), 403
+
+    data = request.get_json(silent=True) or {}
+    company_decision = (data.get("company_decision") or "").strip()
+    status = (data.get("status") or "Concluída").strip()
+    if not company_decision:
+        return jsonify({"error": "Informe a decisão e observação da empresa."}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_fleet_schema(cur)
+        op = _current_operator_Identity(cur)
+        now_brt = _grafana_now_brt()
+
+        cur.execute("""
+            UPDATE vehicle_fines
+            SET company_decision = %s,
+                decided_by_name = %s,
+                decided_at = %s,
+                status = %s
+            WHERE id = %s
+            RETURNING plate, auto_number;
+        """, (company_decision, op["name"], now_brt, status, fine_id))
+        updated = cur.fetchone()
+        if not updated:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Multa não encontrada."}), 404
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        log_action(op["user_id"], session.get("username"), f"Concluiu análise da multa {updated['auto_number']} ({updated['plate']})")
+        return jsonify({"success": True})
+    except Exception as e:
+        print("[FLEET DECIDE FINE ERROR]", e)
+        return jsonify({"error": "Falha ao registrar decisão da multa."}), 500
 
 
 # --- 4. PROJECTS ---

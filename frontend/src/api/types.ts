@@ -77,6 +77,17 @@ export interface Technician {
   created_at: string | null;
 }
 
+export interface TirePositionInfo {
+  brand?: string;
+  install_km?: number;
+  last_rotation_km?: number;
+  next_check_km?: number;
+  tread_mm?: string;
+  condition?: 'ok' | 'warning' | 'critical';
+  notes?: string;
+  updated_at?: string;
+}
+
 export interface Vehicle {
   id: number;
   plate: string;
@@ -96,6 +107,19 @@ export interface Vehicle {
   condutor_tarde: string | null;
   condutor_madrugada: string | null;
   subclus: string | null;
+  current_km?: number | null;
+  crlv_number?: string | null;
+  crlv_expiration?: string | null;
+  insurance_company?: string | null;
+  insurance_expiration?: string | null;
+  rental_company?: string | null;
+  contract_number?: string | null;
+  operational_status?: string | null;
+  tires_json?: Record<string, TirePositionInfo> | null;
+  open_damages_count?: number;
+  pending_inspections_count?: number;
+  last_approved_by_name?: string | null;
+  last_approved_at?: string | null;
 }
 
 export interface InventoryItem {
