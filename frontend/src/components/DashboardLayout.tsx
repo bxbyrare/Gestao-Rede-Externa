@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
@@ -65,6 +65,17 @@ export default function DashboardLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dismissBanner, setDismissBanner] = useState(false);
 
+  useEffect(() => {
+    if (mobileNavOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileNavOpen]);
+
   const items = NAV_ITEMS;
 
   async function handleLogout() {
@@ -77,7 +88,7 @@ export default function DashboardLayout() {
   // If user is not TOTP verified yet, block full layout and render exclusive security prompt
   if (user && !user.totp_verified) {
     return (
-      <div className="anti-print-protected min-h-screen flex items-center justify-center relative overflow-hidden bg-[#030305] text-white">
+      <div className="anti-print-protected min-h-dvh flex items-center justify-center relative overflow-x-clip bg-[#030305] text-white">
         <GsapSecurityBackground />
         <AntiPrintGuard />
         <AuthenticatorModal />
@@ -86,7 +97,7 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="anti-print-protected min-h-screen flex relative bg-[#030305] text-white overflow-x-hidden">
+    <div className="anti-print-protected min-h-dvh flex relative bg-[#030305] text-white overflow-x-clip">
       {/* Precision Lagos Digital Architecture Blueprint Background */}
       <GsapSecurityBackground />
       <AntiPrintGuard />
@@ -104,7 +115,7 @@ export default function DashboardLayout() {
 
       {/* Primary Sidebar */}
       <aside
-        className={`glass fixed lg:sticky top-0 left-0 h-screen w-72 shrink-0 z-50 flex flex-col transition-transform duration-300 ease-out bg-[#090C13]/90 backdrop-blur-2xl border-r border-white/[0.08] ${
+        className={`glass fixed lg:sticky top-0 left-0 h-dvh w-[min(18rem,85vw)] lg:w-72 shrink-0 z-50 flex flex-col transition-transform duration-300 ease-out bg-[#090C13]/95 backdrop-blur-2xl border-r border-white/[0.08] ${
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
@@ -239,7 +250,7 @@ export default function DashboardLayout() {
           )}
         </header>
 
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 min-w-0 w-full max-w-[1920px] mx-auto p-3 sm:p-5 lg:p-7 xl:p-8">
           {/* Missing Profile Notification Banner */}
           {hasMissingProfile && (
             <div className="mb-6 p-4 rounded-2xl bg-[#090C13]/90 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm animate-fade-in shadow-xl backdrop-blur-xl">
@@ -249,7 +260,7 @@ export default function DashboardLayout() {
                 </div>
                 <div className="min-w-0">
                   <div className="font-bold text-white text-sm">Aviso de Cadastro Incompleto</div>
-                  <div className="text-amber-300/80 text-xs mt-0.5 truncate">
+                  <div className="text-amber-300/80 text-xs mt-0.5 break-words sm:truncate">
                     Faltam informações no seu perfil: <span className="font-semibold text-white">{user.missing_fields?.join(', ')}</span>.
                   </div>
                 </div>

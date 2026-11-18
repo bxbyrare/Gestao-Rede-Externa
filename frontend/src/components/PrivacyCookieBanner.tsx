@@ -100,7 +100,7 @@ export default function PrivacyCookieBanner() {
       ref={bannerRef}
       role="dialog"
       aria-label="Preferências de privacidade e cookies"
-      className="fixed bottom-4 left-4 right-4 z-[950] flex justify-center pointer-events-none"
+      className="fixed bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-[950] flex justify-center pointer-events-none"
     >
       {/* Double-Bezel Studio Black Card */}
       <div
@@ -111,7 +111,7 @@ export default function PrivacyCookieBanner() {
             'radial-gradient(420px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(255,255,255,0.22), transparent 50%)',
         }}
       >
-        <div className="rounded-2xl bg-[#090C13]/95 backdrop-blur-2xl px-6 py-5 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="rounded-2xl bg-[#090C13]/95 backdrop-blur-2xl px-4 py-4 sm:px-6 sm:py-5 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
           <div className="space-y-1.5 flex-1">
             <div className="flex items-center gap-2.5">
               <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#a1a1a6]">
@@ -144,18 +144,18 @@ export default function PrivacyCookieBanner() {
             )}
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="grid grid-cols-2 sm:flex items-center gap-2.5 w-full md:w-auto shrink-0">
             <button
               type="button"
               onClick={() => applyChoice(false)}
-              className="px-4 py-2.5 rounded-full text-xs font-semibold bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.12] text-white transition cursor-pointer"
+              className="px-3.5 sm:px-4 py-2.5 rounded-full text-xs font-semibold bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.12] text-white transition cursor-pointer text-center"
             >
               Recusar métricas
             </button>
             <button
               type="button"
               onClick={() => applyChoice(true)}
-              className="px-5 py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition cursor-pointer"
+              className="px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition cursor-pointer text-center"
             >
               Aceitar métricas
             </button>

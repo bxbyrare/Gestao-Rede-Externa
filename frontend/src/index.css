@@ -115,11 +115,18 @@ select option {
   }
 }
 
-/* Touch-friendly baseline: every tap target on touch devices gets real room */
+/* Touch-friendly baseline for form controls without distorting inline links or compact pills */
 @media (pointer: coarse) {
-  button, a, input, select, textarea, [role="button"] {
-    min-height: 44px;
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    min-height: 42px;
   }
+}
+
+/* Smooth horizontal scroll for wide tables on mobile & tablet */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
 }
 
 @keyframes shimmer {

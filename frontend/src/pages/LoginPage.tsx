@@ -47,17 +47,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#030305] text-white">
+    <div className="min-h-dvh flex items-center justify-center px-4 py-20 sm:p-6 relative overflow-x-clip bg-[#030305] text-white">
       {/* Precision Lagos Digital Blueprint Background */}
       <GsapSecurityBackground />
 
       {/* Atmospheric Ambient Lighting Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-red-600/[0.07] blur-[150px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(650px,95vw)] h-[min(650px,95vw)] rounded-full bg-red-600/[0.07] blur-[150px] pointer-events-none" />
 
       {/* Top-Left Back to Home Button */}
       <Link
         to="/"
-        className="absolute top-5 left-5 sm:top-7 sm:left-8 z-20 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-[#090C13]/90 hover:bg-white/[0.08] border border-white/[0.12] hover:border-white/25 text-neutral-200 hover:text-white backdrop-blur-xl transition-all shadow-lg"
+        className="fixed sm:absolute top-4 left-4 sm:top-7 sm:left-8 z-20 inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold bg-[#090C13]/90 hover:bg-white/[0.08] border border-white/[0.12] hover:border-white/25 text-neutral-200 hover:text-white backdrop-blur-xl transition-all shadow-lg"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>Página principal</span>

@@ -230,15 +230,15 @@ export default function LandingPage() {
 
       {/* Minimalist Full-Width Header */}
       <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#030305]/80 backdrop-blur-xl">
-        <div className="w-full px-5 sm:px-8 lg:px-12 h-[76px] flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3 shrink-0 group">
-            <div className="relative flex items-center justify-center">
+        <div className="w-full px-4 sm:px-8 lg:px-12 h-16 sm:h-[76px] flex items-center justify-between gap-3">
+          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 min-w-0 group">
+            <div className="relative flex items-center justify-center shrink-0">
               <div className="absolute inset-0 bg-[#EE2C24]/25 blur-lg rounded-full opacity-80 group-hover:opacity-100 transition" />
-              <img src="/claro-icon.png" alt="Claro" className="relative w-8 h-8 object-contain" />
+              <img src="/claro-icon.png" alt="Claro" className="relative w-7 h-7 sm:w-8 sm:h-8 object-contain" />
             </div>
-            <div className="leading-tight">
-              <span className="block text-sm font-bold tracking-tight text-white">Claro</span>
-              <span className="block text-[10px] font-bold uppercase tracking-[0.18em] bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent">
+            <div className="leading-tight min-w-0">
+              <span className="block text-sm font-bold tracking-tight text-white truncate">Claro</span>
+              <span className="block text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.14em] sm:tracking-[0.18em] bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent truncate">
                 Gestão Rede Externa
               </span>
             </div>
@@ -248,7 +248,7 @@ export default function LandingPage() {
             to={isAuthenticated ? '/grafana' : '/login'}
             onMouseMove={handleMagneticMove}
             onMouseLeave={handleMagneticLeave}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition shadow-lg shadow-white/5"
+            className="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs font-bold bg-white text-black hover:bg-neutral-200 transition shadow-lg shadow-white/5 shrink-0"
           >
             <span>{isAuthenticated ? 'Acessar painel' : 'Entrar no sistema'}</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -257,14 +257,14 @@ export default function LandingPage() {
       </header>
 
       {/* SECTION 1: HERO MONOLITO (Transparent over GSAP Canvas) */}
-      <section className="relative z-10 bg-transparent pt-14 pb-20 sm:pt-20 sm:pb-24 px-5 sm:px-8">
-        <div className="max-w-5xl mx-auto text-center space-y-6">
-          <h1 className="hero-reveal text-4xl sm:text-6xl lg:text-[64px] font-extrabold tracking-[-0.04em] leading-[1.03] text-white">
+      <section className="relative z-10 bg-transparent pt-10 pb-16 sm:pt-20 sm:pb-24 px-4 sm:px-8">
+        <div className="max-w-5xl mx-auto text-center space-y-5 sm:space-y-6">
+          <h1 className="hero-reveal text-3xl sm:text-5xl lg:text-[64px] font-extrabold tracking-[-0.04em] leading-[1.06] text-white px-1">
             Precisão operacional em tempo real.
           </h1>
 
           {/* Animated Pristine Claro 3D Orb */}
-          <div className="hero-claro-orb py-6 sm:py-9 flex items-center justify-center">
+          <div className="hero-claro-orb py-4 sm:py-9 flex items-center justify-center">
             <div
               onMouseMove={(e) => {
                 if (window.innerWidth < 1024) return;
@@ -278,11 +278,11 @@ export default function LandingPage() {
               }}
               className="relative flex items-center justify-center select-none cursor-default"
             >
-              <div className="hero-claro-bloom absolute w-44 h-44 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-full bg-[#EE2C24]/25 blur-3xl pointer-events-none" />
+              <div className="hero-claro-bloom absolute w-36 h-36 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-full bg-[#EE2C24]/25 blur-3xl pointer-events-none" />
               <img
                 src="/claro-icon.png"
                 alt="Claro"
-                className="hero-claro-orb-img relative z-10 w-36 h-36 sm:w-44 sm:h-44 lg:w-48 lg:h-48 object-contain drop-shadow-[0_22px_44px_rgba(0,0,0,0.85)]"
+                className="hero-claro-orb-img relative z-10 w-28 h-28 sm:w-44 sm:h-44 lg:w-48 lg:h-48 object-contain drop-shadow-[0_22px_44px_rgba(0,0,0,0.85)]"
               />
             </div>
           </div>
@@ -301,7 +301,7 @@ export default function LandingPage() {
             >
               <div className="rounded-2xl bg-[#090C13]/95 backdrop-blur-2xl overflow-hidden text-left">
                 {/* Top Chrome Bar */}
-                <div className="px-6 py-3.5 border-b border-white/[0.08] flex items-center justify-between bg-white/[0.02]">
+                <div className="px-4 sm:px-6 py-3.5 border-b border-white/[0.08] flex items-center justify-between bg-white/[0.02]">
                   <div className="flex items-center gap-2.5">
                     <span className="relative flex h-2 w-2">
                       <span className="studio-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
@@ -317,7 +317,7 @@ export default function LandingPage() {
                 </div>
 
                 {/* Unified Human-Friendly Content */}
-                <div className="p-6 sm:p-8 space-y-6">
+                <div className="p-4 sm:p-8 space-y-5 sm:space-y-6">
                   <div className="space-y-2 max-w-2xl">
                     <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
                       Tudo o que a equipe de campo e a gestão precisam, em um só lugar
