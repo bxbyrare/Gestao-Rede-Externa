@@ -140,7 +140,16 @@ export interface ManagedUser {
   role: string;
   tech_id: number | null;
   tech_name: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  area?: string | null;
   created_at: string;
+  last_login_at?: string | null;
+  last_login_at_fmt?: string | null;
+  last_login_device?: string | null;
+  last_login_ip?: string | null;
+  last_login_location?: string | null;
   permissions?: string[];
   is_master?: boolean;
   is_coordenador?: boolean;

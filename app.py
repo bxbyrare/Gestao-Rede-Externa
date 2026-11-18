@@ -831,6 +831,173 @@ def _resolve_ip_location(ip_address, cf_city=None, cf_region=None, cf_country=No
     return "LOCALIZAÇÃO NÃO IDENTIFICADA"
 
 
+_LOGIN_TRACKING_SCHEMA_READY = False
+
+def _ensure_login_tracking_schema(cur):
+    global _LOGIN_TRACKING_SCHEMA_READY
+    if _LOGIN_TRACKING_SCHEMA_READY:
+        return
+    for sql_stmt in [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_device VARCHAR(180) DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ua VARCHAR(255) DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(80) DEFAULT NULL;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_location VARCHAR(180) DEFAULT NULL;",
+        """
+        CREATE TABLE IF NOT EXISTS user_login_history (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            login_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            device VARCHAR(180) DEFAULT '',
+            user_agent VARCHAR(255) DEFAULT '',
+            ip_address VARCHAR(80) DEFAULT '',
+            location VARCHAR(180) DEFAULT '',
+            auth_stage VARCHAR(40) DEFAULT 'login'
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_user_login_hist_uid ON user_login_history(user_id, login_at DESC);",
+    ]:
+        try:
+            cur.execute(sql_stmt)
+        except Exception:
+            pass
+    _LOGIN_TRACKING_SCHEMA_READY = True
+
+
+def _parse_user_agent_device(ua_str):
+    ua = str(ua_str or '').strip()
+    if not ua:
+        return "Dispositivo não identificado"
+    ua_l = ua.lower()
+
+    # Form factor & OS
+    if 'iphone' in ua_l:
+        device_type = "Celular"
+        os_name = "iPhone (iOS)"
+    elif 'ipad' in ua_l:
+        device_type = "Tablet"
+        os_name = "iPad (iPadOS)"
+    elif 'android' in ua_l:
+        device_type = "Tablet" if ('tablet' in ua_l or 'sm-t' in ua_l) else "Celular"
+        model_match = re.search(r'Android\s+[\d\.]+;\s*([^;\)]+?)(?:\s+Build/|\))', ua, re.I)
+        if model_match:
+            model_clean = model_match.group(1).strip()[:32]
+            os_name = f"Android ({model_clean})"
+        else:
+            os_name = "Android"
+    elif 'windows nt 10.0' in ua_l:
+        device_type = "Computador"
+        os_name = "Windows 10/11"
+    elif 'windows' in ua_l:
+        device_type = "Computador"
+        os_name = "Windows"
+    elif 'macintosh' in ua_l or 'mac os x' in ua_l:
+        device_type = "Computador"
+        os_name = "Mac (macOS)"
+    elif 'linux' in ua_l:
+        device_type = "Computador"
+        os_name = "Linux"
+    else:
+        device_type = "Dispositivo"
+        os_name = "Sistema Web"
+
+    # Browser
+    if 'edg/' in ua_l or 'edga/' in ua_l or 'edgios/' in ua_l:
+        browser = "Microsoft Edge"
+    elif 'opr/' in ua_l or 'opera' in ua_l:
+        browser = "Opera"
+    elif 'samsungbrowser/' in ua_l:
+        browser = "Samsung Internet"
+    elif 'crios/' in ua_l:
+        browser = "Google Chrome"
+    elif 'fxios/' in ua_l or 'firefox/' in ua_l:
+        browser = "Mozilla Firefox"
+    elif 'chrome/' in ua_l and 'edg/' not in ua_l:
+        browser = "Google Chrome"
+    elif 'safari/' in ua_l and 'chrome/' not in ua_l:
+        browser = "Apple Safari"
+    else:
+        browser = "Navegador Web"
+
+    return f"{device_type} · {os_name} · {browser}"[:180]
+
+
+def _record_user_login_event(user_id, auth_stage='login'):
+    try:
+        client_ip = get_client_ip()
+        client_ua = (request.headers.get('User-Agent') or '')[:250]
+        device_label = _parse_user_agent_device(client_ua)
+        cf_city = request.headers.get('CF-IPCity')
+        cf_region = request.headers.get('CF-Region')
+        cf_country = request.headers.get('CF-IPCountry')
+
+        brt_tz = datetime.timezone(datetime.timedelta(hours=-3))
+        now_brt = datetime.datetime.now(brt_tz).replace(tzinfo=None)
+
+        # Quick synchronous check if Cloudflare headers or local IP are available
+        cf_parts = [p.strip() for p in (cf_city, cf_region, cf_country) if p and str(p).strip()]
+        if len(cf_parts) >= 2:
+            initial_location = " - ".join(cf_parts).upper()[:180]
+            needs_async_geo = False
+        elif not client_ip or client_ip.startswith(('127.', '10.', '192.168.', '::1', 'fe80:')):
+            initial_location = "REDE LOCAL / INTERNA"
+            needs_async_geo = False
+        else:
+            initial_location = f"IP {client_ip}"
+            needs_async_geo = True
+
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_login_tracking_schema(cur)
+
+        cur.execute("""
+            UPDATE users
+            SET last_login_at = %s,
+                last_login_device = %s,
+                last_login_ua = %s,
+                last_login_ip = %s,
+                last_login_location = %s
+            WHERE id = %s;
+        """, (now_brt, device_label, client_ua, client_ip, initial_location, user_id))
+
+        cur.execute("""
+            INSERT INTO user_login_history (user_id, login_at, device, user_agent, ip_address, location, auth_stage)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id;
+        """, (user_id, now_brt, device_label, client_ua, client_ip, initial_location, auth_stage))
+        hist_row = cur.fetchone()
+        hist_id = hist_row["id"] if hist_row else None
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if needs_async_geo:
+            def _bg_resolve_geo(uid, hid, ip_val, c_city, c_reg, c_cnt):
+                try:
+                    resolved = _resolve_ip_location(ip_val, cf_city=c_city, cf_region=c_reg, cf_country=c_cnt)
+                    if resolved and resolved != "LOCALIZAÇÃO NÃO IDENTIFICADA":
+                        loc_txt = f"{resolved} ({ip_val})"[:180]
+                    else:
+                        loc_txt = f"IP {ip_val}"[:180]
+                    c_bg = get_db()
+                    cur_bg = c_bg.cursor()
+                    cur_bg.execute("UPDATE users SET last_login_location = %s WHERE id = %s;", (loc_txt, uid))
+                    if hid:
+                        cur_bg.execute("UPDATE user_login_history SET location = %s WHERE id = %s;", (loc_txt, hid))
+                    c_bg.commit()
+                    cur_bg.close()
+                    c_bg.close()
+                except Exception:
+                    pass
+            threading.Thread(
+                target=_bg_resolve_geo,
+                args=(user_id, hist_id, client_ip, cf_city, cf_region, cf_country),
+                daemon=True
+            ).start()
+    except Exception as e_rec:
+        print("[RECORD LOGIN EVENT ERROR]", e_rec)
+
+
 def send_security_alert_email(
     to_email,
     user_display,
@@ -1785,7 +1952,12 @@ def init_db():
             ('totp_secret', 'VARCHAR(64) DEFAULT NULL'),
             ('totp_enabled', 'BOOLEAN DEFAULT FALSE'),
             ('totp_verified_at', 'TIMESTAMP DEFAULT NULL'),
-            ('theme_preference', "VARCHAR(10) DEFAULT 'dark'")
+            ('theme_preference', "VARCHAR(10) DEFAULT 'dark'"),
+            ('last_login_at', 'TIMESTAMP DEFAULT NULL'),
+            ('last_login_device', 'VARCHAR(180) DEFAULT NULL'),
+            ('last_login_ua', 'VARCHAR(255) DEFAULT NULL'),
+            ('last_login_ip', 'VARCHAR(80) DEFAULT NULL'),
+            ('last_login_location', 'VARCHAR(180) DEFAULT NULL')
         ]:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
@@ -3928,6 +4100,7 @@ def api_login():
             session['totp_expires_at'] = 0
 
             log_action(user['id'], user['username'], "Efetuou validação de senha (credenciais primárias aceitas).")
+            _record_user_login_event(user['id'], 'senha')
 
             # Security IP Check & Alert
             try:
@@ -4118,6 +4291,7 @@ def api_totp_enable():
     session['totp_expires_at'] = time.time() + (12 * 3600)
 
     log_action(user_id, u['username'], 'Ativou e validou o aplicativo autenticador (2FA) com sucesso.')
+    _record_user_login_event(user_id, '2fa_setup')
     return jsonify({
         'success': True,
         'message': 'Aplicativo autenticador ativado com sucesso! Sessão autorizada por 12 horas.',
@@ -4189,6 +4363,7 @@ def api_totp_verify():
     session['totp_expires_at'] = time.time() + (12 * 3600)
 
     log_action(user_id, u['username'], 'Validou sessão de 12 horas via aplicativo autenticador (TOTP).')
+    _record_user_login_event(user_id, '2fa_verify')
     return jsonify({
         'success': True,
         'message': 'Código confirmado! Acesso autorizado por 12 horas.',
@@ -4468,6 +4643,9 @@ def api_auth_me():
             if user_payload:
                 return jsonify({"user": user_payload})
         return jsonify({"error": "Não autenticado."}), 401
+    if not session.get('_login_event_tracked'):
+        _record_user_login_event(user_id, 'sessao_ativa')
+        session['_login_event_tracked'] = True
     user_payload = get_user_info_dict(user_id)
     if not user_payload:
         return jsonify({"error": "Usuário não encontrado."}), 404
@@ -9884,8 +10062,19 @@ def api_get_users():
     try:
         conn = get_db()
         cur = conn.cursor()
+        _ensure_login_tracking_schema(cur)
+        conn.commit()
         cur.execute("""
-            SELECT u.id, u.username, u.role, u.tech_id, u.permissions, u.totp_enabled, t.name AS tech_name, u.created_at 
+            SELECT u.id, u.username, u.role, u.tech_id, u.permissions, u.totp_enabled,
+                   COALESCE(u.name, t.name) AS tech_name,
+                   COALESCE(u.email, t.email) AS email,
+                   COALESCE(u.phone, t.phone) AS phone,
+                   t.company, t.area,
+                   u.created_at,
+                   u.last_login_at,
+                   u.last_login_device,
+                   u.last_login_ip,
+                   u.last_login_location
             FROM users u 
             LEFT JOIN technicians t ON u.tech_id = t.id 
             ORDER BY u.username ASC;
@@ -9895,8 +10084,16 @@ def api_get_users():
         conn.close()
         
         for u in users:
-            if u['created_at']:
+            if u.get('created_at'):
                 u['created_at'] = u['created_at'].strftime('%d/%m/%Y %H:%M')
+            if u.get('last_login_at'):
+                u['last_login_at_fmt'] = u['last_login_at'].strftime('%d/%m/%Y às %H:%M:%S')
+                u['last_login_at'] = u['last_login_at'].isoformat()
+            else:
+                u['last_login_at_fmt'] = None
+                u['last_login_at'] = None
+            if u.get('tech_name'):
+                u['tech_name'] = format_person_name(u['tech_name'])
             uname = (u.get('username') or '').strip().lower()
             u['permissions'] = resolve_user_permissions(uname, u.get('role'), u.get('permissions'))
             u['is_master'] = (uname == MASTER_COORDINATOR_USERNAME)
@@ -9906,6 +10103,126 @@ def api_get_users():
     except Exception as e:
         print("Backend error log:", e)
         return jsonify({"error": "Erro interno ao processar a requisição."}), 500
+
+
+@app.route('/api/users/<int:target_id>/profile-detail', methods=['GET'])
+@login_required
+def api_get_user_profile_detail(target_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        _ensure_login_tracking_schema(cur)
+        conn.commit()
+
+        cur.execute("""
+            SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
+                   u.email AS u_email, u.phone AS u_phone, u.name AS u_name,
+                   u.totp_enabled, u.totp_verified_at, u.email_bounced, u.email_bounce_reason,
+                   u.theme_preference, u.created_at,
+                   u.last_login_at, u.last_login_device, u.last_login_ua,
+                   u.last_login_ip, u.last_login_location,
+                   t.name AS tech_name, t.cpf, t.phone AS tech_phone, t.identity, t.dob,
+                   t.role AS tech_role, t.area, t.team_type, t.team, t.company,
+                   t.registration_claro, t.registration_third, t.toa_login,
+                   t.phone_model, t.imei_1, t.imei_2, t.email AS tech_email,
+                   t.shirt_size, t.boot_size, t.pants_size, t.jacket_size,
+                   t.nr6_expiration, t.nr10_expiration, t.nr35_expiration, t.aso_expiration
+            FROM users u
+            LEFT JOIN technicians t ON u.tech_id = t.id
+            WHERE u.id = %s;
+        """, (target_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Usuário não encontrado."}), 404
+
+        cur.execute("""
+            SELECT id, TO_CHAR(login_at, 'DD/MM/YYYY às HH24:MI:SS') AS login_at_fmt,
+                   device, user_agent, ip_address, location, auth_stage
+            FROM user_login_history
+            WHERE user_id = %s
+            ORDER BY login_at DESC, id DESC
+            LIMIT 15;
+        """, (target_id,))
+        login_history = cur.fetchall()
+
+        cur.execute("""
+            SELECT id, action, TO_CHAR(timestamp, 'DD/MM/YYYY às HH24:MI:SS') AS timestamp_fmt
+            FROM audit_logs
+            WHERE user_id = %s
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 15;
+        """, (target_id,))
+        recent_actions = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        uname = (row.get('username') or '').strip().lower()
+        display_name = format_person_name(row.get('u_name') or row.get('tech_name') or row['username'])
+        email = (row.get('u_email') or row.get('tech_email') or '').strip()
+        phone = (row.get('u_phone') or row.get('tech_phone') or '').strip()
+        company = (row.get('company') or '').strip() or 'Claro'
+
+        missing_fields = []
+        if not email or '@' not in email:
+            missing_fields.append('E-mail')
+        if not phone:
+            missing_fields.append('Telefone / WhatsApp')
+        if not (row.get('cpf') or '').strip():
+            missing_fields.append('CPF')
+        if not (row.get('identity') or '').strip():
+            missing_fields.append('RG / Identidade')
+
+        profile = {
+            "id": row["id"],
+            "username": row["username"],
+            "display_name": display_name,
+            "role": row["role"],
+            "tech_id": row.get("tech_id"),
+            "company": company,
+            "email": email,
+            "email_bounced": bool(row.get("email_bounced")),
+            "email_bounce_reason": row.get("email_bounce_reason"),
+            "phone": phone,
+            "cpf": row.get("cpf") or "",
+            "identity": row.get("identity") or "",
+            "dob": row.get("dob") or "",
+            "area": row.get("area") or "",
+            "team": row.get("team") or "",
+            "team_type": row.get("team_type") or "",
+            "registration_claro": row.get("registration_claro") or "",
+            "registration_third": row.get("registration_third") or "",
+            "toa_login": row.get("toa_login") or "",
+            "phone_model": row.get("phone_model") or "",
+            "imei_1": row.get("imei_1") or "",
+            "shirt_size": row.get("shirt_size") or "",
+            "boot_size": row.get("boot_size") or "",
+            "pants_size": row.get("pants_size") or "",
+            "jacket_size": row.get("jacket_size") or "",
+            "nr6_expiration": row.get("nr6_expiration") or "",
+            "nr10_expiration": row.get("nr10_expiration") or "",
+            "nr35_expiration": row.get("nr35_expiration") or "",
+            "aso_expiration": row.get("aso_expiration") or "",
+            "totp_enabled": bool(row.get("totp_enabled")),
+            "totp_verified_at_fmt": row["totp_verified_at"].strftime("%d/%m/%Y às %H:%M:%S") if row.get("totp_verified_at") else None,
+            "theme_preference": row.get("theme_preference") or "dark",
+            "created_at_fmt": row["created_at"].strftime("%d/%m/%Y às %H:%M") if row.get("created_at") else None,
+            "last_login_at_fmt": row["last_login_at"].strftime("%d/%m/%Y às %H:%M:%S") if row.get("last_login_at") else None,
+            "last_login_device": row.get("last_login_device") or None,
+            "last_login_ua": row.get("last_login_ua") or None,
+            "last_login_ip": row.get("last_login_ip") or None,
+            "last_login_location": row.get("last_login_location") or None,
+            "permissions": resolve_user_permissions(uname, row.get("role"), row.get("permissions")),
+            "missing_fields": missing_fields,
+            "login_history": login_history,
+            "recent_actions": recent_actions,
+        }
+        return jsonify(profile)
+    except Exception as e:
+        print("[USER PROFILE DETAIL ERROR]", e)
+        return jsonify({"error": "Falha ao carregar perfil detalhado do usuário."}), 500
 
 @app.route('/api/users', methods=['POST'])
 @login_required

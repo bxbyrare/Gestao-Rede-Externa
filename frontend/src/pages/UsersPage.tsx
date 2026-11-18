@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, CheckCircle2, KeyRound, Lock, Mail, Plus, Send, Shield, Trash2, Smartphone } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock, Eye, KeyRound, Loader2, Lock, Mail, MapPin, Monitor, Plus, Search, Send, Shield, Smartphone, Trash2, User as UserIcon } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { ManagedUser, Technician } from '../api/types';
 import { Button, Card, Field, Input, PageHeader, Select } from '../components/ui';
@@ -71,6 +71,63 @@ interface DispatchResult {
   results?: Array<{ email: string; name: string; status: 'sent' | 'failed'; detail: string }>;
 }
 
+interface UserProfileDetail {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  tech_id: number | null;
+  company: string;
+  email: string;
+  email_bounced: boolean;
+  email_bounce_reason?: string | null;
+  phone: string;
+  cpf: string;
+  identity: string;
+  dob: string;
+  area: string;
+  team: string;
+  team_type: string;
+  registration_claro: string;
+  registration_third: string;
+  toa_login: string;
+  phone_model: string;
+  imei_1: string;
+  shirt_size: string;
+  boot_size: string;
+  pants_size: string;
+  jacket_size: string;
+  nr6_expiration: string;
+  nr10_expiration: string;
+  nr35_expiration: string;
+  aso_expiration: string;
+  totp_enabled: boolean;
+  totp_verified_at_fmt?: string | null;
+  theme_preference: string;
+  created_at_fmt?: string | null;
+  last_login_at_fmt?: string | null;
+  last_login_device?: string | null;
+  last_login_ua?: string | null;
+  last_login_ip?: string | null;
+  last_login_location?: string | null;
+  permissions: string[];
+  missing_fields: string[];
+  login_history: Array<{
+    id: number;
+    login_at_fmt: string;
+    device: string;
+    user_agent: string;
+    ip_address: string;
+    location: string;
+    auth_stage: string;
+  }>;
+  recent_actions: Array<{
+    id: number;
+    action: string;
+    timestamp_fmt: string;
+  }>;
+}
+
 export default function UsersPage() {
   const { user: currentUser, refreshUser } = useAuth();
   const [users, setUsers] = useState<ManagedUser[] | null>(null);
@@ -101,6 +158,41 @@ export default function UsersPage() {
   const [sendingGlobalEmails, setSendingGlobalEmails] = useState(false);
   const [dispatchResult, setDispatchResult] = useState<DispatchResult | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+
+  const [userSearch, setUserSearch] = useState('');
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState<UserProfileDetail | null>(null);
+
+  async function openUserProfile(u: ManagedUser) {
+    setProfileModalOpen(true);
+    setLoadingProfile(true);
+    setSelectedProfile(null);
+    try {
+      const detail = await api.get<UserProfileDetail>(`/api/users/${u.id}/profile-detail`);
+      setSelectedProfile(detail);
+    } catch {
+      setProfileModalOpen(false);
+      alert('Não foi possível carregar o perfil detalhado do usuário.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  }
+
+  const filteredUsers = useMemo(() => {
+    if (!users) return null;
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        u.username.toLowerCase().includes(q) ||
+        (u.tech_name || '').toLowerCase().includes(q) ||
+        (u.role || '').toLowerCase().includes(q) ||
+        (u.last_login_device || '').toLowerCase().includes(q) ||
+        (u.last_login_location || '').toLowerCase().includes(q) ||
+        (u.area || '').toLowerCase().includes(q)
+    );
+  }, [users, userSearch]);
 
   const isMaster = isMasterCoordenador(currentUser);
   const canCreateUser = hasPermission(currentUser, 'gerenciamento.create');
@@ -440,44 +532,99 @@ export default function UsersPage() {
         }
       />
 
-      {users === null ? (
+      <div className="mb-4 max-w-md relative">
+        <Search className="w-4 h-4 text-[var(--color-text-faint)] absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <Input
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder="Buscar por usuário, nome, cargo, dispositivo ou local..."
+          className="pl-10"
+        />
+      </div>
+
+      {filteredUsers === null ? (
         <p className="text-sm text-[var(--color-text-muted)]">Carregando...</p>
-      ) : users.length === 0 ? (
+      ) : filteredUsers.length === 0 ? (
         <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">
-          Nenhum usuário cadastrado.
+          Nenhum usuário encontrado.
         </Card>
       ) : (
         <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1060px]">
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-[var(--color-text-faint)] border-b border-white/10">
-                <th className="px-5 py-3">Usuário</th>
-                <th className="px-5 py-3">Pessoa</th>
-                <th className="px-5 py-3">Cargo</th>
-                <th className="px-5 py-3">Permissões Liberadas</th>
-                <th className="px-5 py-3">Autenticador (2FA)</th>
-                <th className="px-5 py-3">Criado em</th>
-                <th className="px-5 py-3 text-right">Ações</th>
+                <th className="px-4 py-3">Usuário / Pessoa</th>
+                <th className="px-4 py-3">Cargo</th>
+                <th className="px-4 py-3">Último Login (Data Exata, Dispositivo & Local)</th>
+                <th className="px-4 py-3">Permissões Liberadas</th>
+                <th className="px-4 py-3">2FA</th>
+                <th className="px-4 py-3 text-right">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
+              {filteredUsers.map((u) => {
                 const editable = canEditRow(u);
                 const deletable = canDeleteRow(u);
+                const isMobileDevice = (u.last_login_device || '').toLowerCase().includes('celular');
+
                 return (
                   <tr
                     key={u.id}
-                    className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
+                    className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors"
                   >
-                    <td className="px-5 py-3 mono font-semibold text-white">{u.username}</td>
-                    <td className="px-5 py-3 text-[var(--color-text-muted)]">{u.tech_name || '—'}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => openUserProfile(u)}
+                        className="text-left group cursor-pointer"
+                        title="Clique para abrir o Perfil Completo do Usuário"
+                      >
+                        <div className="mono font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
+                          {u.username}
+                        </div>
+                        <div className="text-xs text-[var(--color-text-muted)]">
+                          {u.tech_name || '—'}
+                        </div>
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
                       <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-neutral-200">
                         {u.role}
                       </span>
                     </td>
-                    <td className="px-5 py-3">{renderPermissionSummary(u)}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3">
+                      {u.last_login_at_fmt ? (
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center gap-1.5 font-semibold text-emerald-300">
+                            <Clock className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                            <span>{u.last_login_at_fmt}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                            {isMobileDevice ? (
+                              <Smartphone className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                            ) : (
+                              <Monitor className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                            )}
+                            <span className="truncate max-w-[260px]" title={u.last_login_device || ''}>
+                              {u.last_login_device || 'Dispositivo não identificado'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] text-amber-300/90">
+                            <MapPin className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                            <span className="truncate max-w-[260px]" title={u.last_login_location || ''}>
+                              {u.last_login_location || 'Local não identificado'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/10 text-[11px] text-[var(--color-text-muted)]">
+                          <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          <span>Nunca fez login desde que esta opção foi implementada</span>
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{renderPermissionSummary(u)}</td>
+                    <td className="px-4 py-3">
                       {u.totp_enabled ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
                           <Check className="w-3 h-3" /> Ativo
@@ -488,15 +635,23 @@ export default function UsersPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-[var(--color-text-faint)]">{u.created_at}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openUserProfile(u)}
+                          title="Abrir Perfil do Usuário (Último login, dispositivo, local e ficha completa)"
+                          className="h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold text-sky-300 bg-sky-500/12 hover:bg-sky-500/22 border border-sky-500/30 transition-colors cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Perfil
+                        </button>
                         {isMaster && (
                           <button
                             onClick={() => handleResetTotp(u)}
                             aria-label="Resetar Autenticador 2FA"
                             title="Resetar Autenticador 2FA (força novo QR Code)"
-                            className="h-8 px-2.5 rounded-lg flex items-center gap-1 text-xs font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-colors"
+                            className="h-8 px-2.5 rounded-lg flex items-center gap-1 text-xs font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-colors cursor-pointer"
                           >
                             <Smartphone className="w-3.5 h-3.5" />
                             Reset 2FA
@@ -507,7 +662,7 @@ export default function UsersPage() {
                             onClick={() => openEdit(u)}
                             aria-label="Editar permissões e usuário"
                             title="Editar cargo e permissões"
-                            className="h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium text-neutral-200 bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 transition-colors"
+                            className="h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium text-neutral-200 bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 transition-colors cursor-pointer"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                             Permissões
@@ -525,7 +680,7 @@ export default function UsersPage() {
                             onClick={() => handleDelete(u)}
                             aria-label="Excluir usuário"
                             title="Excluir usuário"
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-dim)] transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -719,6 +874,239 @@ export default function UsersPage() {
             })}
           </div>
         </div>
+      </Modal>
+
+      {/* MODAL: PERFIL COMPLETO DO USUÁRIO (ÚLTIMO LOGIN, DISPOSITIVO, LOCAL E DADOS CADASTRAIS) */}
+      <Modal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        title={
+          selectedProfile
+            ? `Perfil do Usuário — ${selectedProfile.display_name} (@${selectedProfile.username})`
+            : 'Carregando Perfil do Usuário...'
+        }
+        maxWidth="max-w-3xl"
+        footer={
+          <Button variant="ghost" onClick={() => setProfileModalOpen(false)}>
+            Fechar Perfil
+          </Button>
+        }
+      >
+        {loadingProfile || !selectedProfile ? (
+          <div className="py-12 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Carregando informações de acesso e perfil do usuário...</span>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* CABEÇALHO DO PERFIL */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary-dim)] border border-[var(--color-primary)]/30 text-white font-black text-lg flex items-center justify-center shrink-0">
+                  {(selectedProfile.display_name || 'U').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-extrabold text-white">{selectedProfile.display_name}</h3>
+                    <span className="text-[11px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-white/10 text-slate-200">
+                      {selectedProfile.role}
+                    </span>
+                    <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                      {selectedProfile.company}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    <span className="mono text-slate-200">@{selectedProfile.username}</span>
+                    {selectedProfile.area ? ` · Área: ${selectedProfile.area}` : ''}
+                    {selectedProfile.created_at_fmt ? ` · Criado em ${selectedProfile.created_at_fmt}` : ''}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                {selectedProfile.totp_enabled ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> 2FA Vinculado
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold">
+                    <AlertTriangle className="w-3.5 h-3.5" /> 2FA Pendente
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* BLOCO PRINCIPAL: DATA/HORA EXATA DO ÚLTIMO LOGIN, DISPOSITIVO E LOCAL */}
+            <div className="p-5 rounded-2xl bg-gradient-to-b from-white/[0.04] to-white/[0.015] border border-white/15 space-y-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-white flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-[var(--color-primary)]" />
+                  Telemetria do Último Login
+                </h4>
+                {selectedProfile.last_login_ip && (
+                  <span className="text-[11px] font-mono text-slate-400">
+                    IP: <strong className="text-slate-200">{selectedProfile.last_login_ip}</strong>
+                  </span>
+                )}
+              </div>
+
+              {selectedProfile.last_login_at_fmt ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div className="p-3.5 rounded-xl bg-black/30 border border-white/10 space-y-1">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Data e Hora Exata</span>
+                    </div>
+                    <div className="text-sm font-extrabold text-white font-mono">
+                      {selectedProfile.last_login_at_fmt}
+                    </div>
+                    <div className="text-[10px] text-slate-400">Horário Oficial de Brasília</div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-black/30 border border-white/10 space-y-1">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-400">
+                      {(selectedProfile.last_login_device || '').toLowerCase().includes('celular') ? (
+                        <Smartphone className="w-3.5 h-3.5" />
+                      ) : (
+                        <Monitor className="w-3.5 h-3.5" />
+                      )}
+                      <span>Dispositivo Usado</span>
+                    </div>
+                    <div className="text-xs font-bold text-white leading-snug">
+                      {selectedProfile.last_login_device || 'Dispositivo não identificado'}
+                    </div>
+                    {selectedProfile.last_login_ua && (
+                      <div className="text-[10px] text-slate-500 truncate" title={selectedProfile.last_login_ua}>
+                        {selectedProfile.last_login_ua}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-black/30 border border-white/10 space-y-1">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Local do Último Login</span>
+                    </div>
+                    <div className="text-xs font-bold text-white leading-snug">
+                      {selectedProfile.last_login_location || 'Local não identificado'}
+                    </div>
+                    {selectedProfile.last_login_ip && (
+                      <div className="text-[10px] font-mono text-slate-400">
+                        Endereço IP: {selectedProfile.last_login_ip}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-3 text-amber-200 text-xs">
+                  <Clock className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <div className="font-bold text-sm text-white">
+                      Nunca realizou login desde que esta opção foi implementada
+                    </div>
+                    <div className="text-[11px] text-amber-200/80 mt-0.5">
+                      Assim que o usuário entrar no sistema, a data/hora exata, o dispositivo utilizado e a localização aparecerão automaticamente aqui.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* DADOS DO PERFIL DO USUÁRIO / FICHA CADASTRAL */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-2">
+                <UserIcon className="w-3.5 h-3.5 text-sky-400" />
+                Dados Cadastrais do Perfil do Usuário
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-white/[0.02] border border-white/10 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">E-mail</span>
+                  <span className="text-white font-medium break-all">{selectedProfile.email || 'Não informado'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">Telefone / WhatsApp</span>
+                  <span className="text-white font-mono">{selectedProfile.phone || 'Não informado'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">CPF</span>
+                  <span className="text-white font-mono">{selectedProfile.cpf || 'Não informado'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">RG / Identidade</span>
+                  <span className="text-white font-mono">{selectedProfile.identity || 'Não informado'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">Área de Atuação</span>
+                  <span className="text-white font-medium">{selectedProfile.area || 'Não informada'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">Equipe / Tipo</span>
+                  <span className="text-white font-medium">
+                    {[selectedProfile.team, selectedProfile.team_type].filter(Boolean).join(' · ') || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">Matrícula Claro / Terceiro</span>
+                  <span className="text-white font-mono">
+                    {[selectedProfile.registration_claro, selectedProfile.registration_third].filter(Boolean).join(' / ') || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">Login TOA</span>
+                  <span className="text-white font-mono">{selectedProfile.toa_login || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase text-slate-400 block font-bold">Tema Escolhido</span>
+                  <span className="text-white font-medium">
+                    {selectedProfile.theme_preference === 'light' ? 'Claro (Branco)' : 'Escuro (Preto — Padrão)'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* HISTÓRICO DE LOGINS DO USUÁRIO */}
+            {selectedProfile.login_history && selectedProfile.login_history.length > 0 && (
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2.5">
+                  Histórico Recente de Acessos ({selectedProfile.login_history.length})
+                </h4>
+                <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-48 overflow-y-auto bg-white/[0.015]">
+                  {selectedProfile.login_history.map((h) => (
+                    <div
+                      key={h.id}
+                      className="px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-emerald-300">{h.login_at_fmt}</span>
+                        <span className="text-slate-300">· {h.device}</span>
+                      </div>
+                      <div className="text-[11px] text-amber-300 font-mono">
+                        {h.location} {h.ip_address && !h.location.includes(h.ip_address) ? `(${h.ip_address})` : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ÚLTIMAS AÇÕES NA AUDITORIA */}
+            {selectedProfile.recent_actions && selectedProfile.recent_actions.length > 0 && (
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2.5">
+                  Últimas Ações Realizadas no Sistema
+                </h4>
+                <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-44 overflow-y-auto bg-white/[0.015]">
+                  {selectedProfile.recent_actions.map((act) => (
+                    <div key={act.id} className="px-3.5 py-2 flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-200 truncate">{act.action}</span>
+                      <span className="font-mono text-[11px] text-slate-400 shrink-0">{act.timestamp_fmt}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
 
       <Modal
