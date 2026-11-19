@@ -3079,39 +3079,19 @@ def init_db():
                 print(f"Cleanup unwanted user {unwanted_user} error:", e_del)
                 conn.rollback()
 
-        # Remove 2FA requirement / secret for davi.rezende as requested
+        # Remove 2FA requirement / secret for davi.rezende (only when still set, commit immediately to avoid holding row lock)
         try:
             cur.execute("""
                 UPDATE users
                 SET totp_secret = NULL,
                     totp_enabled = FALSE,
                     totp_verified_at = NULL
-                WHERE LOWER(username) = 'davi.rezende';
+                WHERE LOWER(username) = 'davi.rezende'
+                  AND (totp_enabled IS TRUE OR totp_secret IS NOT NULL);
             """)
+            conn.commit()
         except Exception as e_totp_rm:
             print("Warning removing 2FA for davi.rezende:", e_totp_rm)
-            conn.rollback()
-
-        # Repair legacy RAL records where col9 mistakenly captured 'Tipo Ocorrência' (COM/SEM PREJUÍZO)
-        try:
-            cur.execute("""
-                UPDATE fault_searcher_records
-                SET col9 = CASE (ABS(id) % 10)
-                    WHEN 0 THEN 'VANDALISMO · ' || UPPER(TRIM(col9))
-                    WHEN 1 THEN 'VANDALISMO · ' || UPPER(TRIM(col9))
-                    WHEN 2 THEN 'VANDALISMO · ' || UPPER(TRIM(col9))
-                    WHEN 3 THEN 'VANDALISMO · ' || UPPER(TRIM(col9))
-                    WHEN 4 THEN 'REDE BAIXA · ' || UPPER(TRIM(col9))
-                    WHEN 5 THEN 'REDE BAIXA · ' || UPPER(TRIM(col9))
-                    WHEN 6 THEN 'FIBRA QUEBRADA · ' || UPPER(TRIM(col9))
-                    WHEN 7 THEN 'ATENUAÇÃO · ' || UPPER(TRIM(col9))
-                    WHEN 8 THEN 'CURTO CIRCUITO · ' || UPPER(TRIM(col9))
-                    ELSE 'CURTO CIRCUITO · ' || UPPER(TRIM(col9))
-                END
-                WHERE UPPER(TRIM(COALESCE(col9, ''))) IN ('COM PREJUÍZO', 'SEM PREJUÍZO', 'COM PREJUIZO', 'SEM PREJUIZO');
-            """)
-        except Exception as e_fs_fix:
-            print("Warning repairing fault_searcher_records col9:", e_fs_fix)
             conn.rollback()
 
         # Hot Performance Indexes & work_schedules table
