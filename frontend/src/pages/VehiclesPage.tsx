@@ -1548,14 +1548,14 @@ export default function VehiclesPage() {
           onClick={() => setActiveTab('veiculos')}
           className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/5 hover:border-white/20 text-left transition cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-dim)] text-[var(--color-primary)] flex items-center justify-center font-bold shrink-0">
-            <Truck className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.08] text-neutral-300 flex items-center justify-center shrink-0">
+            <Truck className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-faint)] truncate">
+            <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 truncate">
               Frota Total
             </p>
-            <p className="text-lg font-black text-white">{stats.total} veículos</p>
+            <p className="text-base font-extrabold text-white mono">{stats.total}</p>
           </div>
         </button>
 
@@ -1565,80 +1565,86 @@ export default function VehiclesPage() {
             setActiveTab('checklists');
             setInspStatusFilter('pendente');
           }}
-          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/5 hover:border-emerald-500/30 text-left transition cursor-pointer"
+          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/[0.07] hover:border-white/[0.16] text-left transition cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold shrink-0">
-            <ClipboardCheck className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.08] text-neutral-300 flex items-center justify-center shrink-0">
+            <ClipboardCheck className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-faint)] truncate">
+            <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 truncate">
               Repasses Pendentes
             </p>
-            <p className="text-lg font-black text-white">{stats.pendingInsp}</p>
+            <p className="text-base font-extrabold text-white mono flex items-center gap-1.5">
+              <span>{stats.pendingInsp}</span>
+              {stats.pendingInsp > 0 && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+            </p>
           </div>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('ocorrencias')}
-          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/5 hover:border-red-500/30 text-left transition cursor-pointer"
+          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/[0.07] hover:border-white/[0.16] text-left transition cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center font-bold shrink-0">
-            <AlertTriangle className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.08] text-neutral-300 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-faint)] truncate">
+            <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 truncate">
               Avarias em Aberto
             </p>
-            <p className="text-lg font-black text-white">{stats.openDamages}</p>
+            <p className="text-base font-extrabold text-white mono flex items-center gap-1.5">
+              <span>{stats.openDamages}</span>
+              {stats.openDamages > 0 && <span className="w-1.5 h-1.5 rounded-full bg-red-400" />}
+            </p>
           </div>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('pneus')}
-          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/5 hover:border-amber-500/30 text-left transition cursor-pointer"
+          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/[0.07] hover:border-white/[0.16] text-left transition cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center font-bold shrink-0">
-            <Disc className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.08] text-neutral-300 flex items-center justify-center shrink-0">
+            <Disc className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-faint)] truncate">
+            <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 truncate">
               Pneus por KM
             </p>
-            <p className="text-sm font-black text-white">Monitorado</p>
+            <p className="text-xs font-bold text-neutral-200 mt-0.5">Monitorado</p>
           </div>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('manutencoes')}
-          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/5 hover:border-sky-500/30 text-left transition cursor-pointer"
+          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/[0.07] hover:border-white/[0.16] text-left transition cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center font-bold shrink-0">
-            <Wrench className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.08] text-neutral-300 flex items-center justify-center shrink-0">
+            <Wrench className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-faint)] truncate">
-              Manutenções Ativas
+            <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 truncate">
+              Manutenções
             </p>
-            <p className="text-lg font-black text-white">{stats.activeMaint}</p>
+            <p className="text-base font-extrabold text-white mono">{stats.activeMaint}</p>
           </div>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('multas')}
-          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/5 hover:border-purple-500/30 text-left transition cursor-pointer"
+          className="p-3.5 rounded-2xl glass flex items-center gap-3 border border-white/[0.07] hover:border-white/[0.16] text-left transition cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center font-bold shrink-0">
-            <BellRing className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.08] text-neutral-300 flex items-center justify-center shrink-0">
+            <BellRing className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-faint)] truncate">
+            <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 truncate">
               Alertas & Multas
             </p>
-            <p className="text-lg font-black text-white">{stats.totalAlerts}</p>
+            <p className="text-base font-extrabold text-white mono">{stats.totalAlerts}</p>
           </div>
         </button>
       </div>
@@ -1751,32 +1757,22 @@ export default function VehiclesPage() {
 
                 return (
                   <section key={group.model} className="space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-white/10">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-white/[0.08]">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-[var(--color-primary)] font-bold">
+                        <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-neutral-300 font-bold">
                           <Car className="w-4 h-4" />
                         </div>
                         <div>
-                          <h2 className="text-lg font-black text-white tracking-tight">{group.model}</h2>
-                          <p className="text-xs text-[var(--color-text-faint)]">
-                            {group.total} veículo{group.total > 1 ? 's' : ''} nesta categoria
+                          <h2 className="text-base font-extrabold text-white tracking-[-0.02em]">{group.model}</h2>
+                          <p className="text-xs text-neutral-500">
+                            {group.total} veículo{group.total > 1 ? 's' : ''} · {withTechCount} com condutor
+                            {withRackCount > 0 ? ` · ${withRackCount} com rack` : ''}
                           </p>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">
-                          {withTechCount} com condutor
-                        </span>
-                        {withRackCount > 0 && (
-                          <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 font-medium">
-                            {withRackCount} com Rack
-                          </span>
-                        )}
-                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {group.vehicles.map((v) => {
                         const hasTech = Boolean(v.responsible_name || v.condutor_dia);
                         const openDmgCount = Number(v.open_damages_count || 0);
@@ -1785,39 +1781,52 @@ export default function VehiclesPage() {
                         return (
                           <Card
                             key={v.id}
-                            className="p-4 flex flex-col gap-3 animate-in hover:border-white/20 transition-all duration-300 rounded-3xl bg-gradient-to-b from-[#141923]/90 via-[#0e121a]/95 to-[#090c12] border border-white/10 shadow-2xl group"
+                            className="p-4 flex flex-col gap-3 rounded-2xl bg-[#090C13]/92 border border-white/[0.08] hover:border-white/[0.16] transition-all duration-200 group"
                           >
-                            {/* PLACA MERCOSUL & BADGES DE ESTADO */}
+                            {/* PLACA MERCOSUL & STATUS MINIMALISTA */}
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center rounded-lg overflow-hidden border border-white/30 bg-slate-100 text-black font-bold shadow-md">
-                                <div className="bg-[#003399] text-white text-[9px] px-2 py-1 flex items-center font-black tracking-wider">
-                                  BRASIL
+                              <div className="flex items-center rounded-md overflow-hidden border border-white/20 bg-white text-black font-bold shrink-0">
+                                <div className="bg-[#003399] text-white text-[8px] px-1.5 py-1 flex items-center font-black tracking-wider">
+                                  BR
                                 </div>
-                                <div className="px-2.5 py-1 text-xs font-mono font-black tracking-widest text-slate-900 bg-white">
+                                <div className="px-2 py-0.5 text-xs font-mono font-black tracking-widest text-slate-900 bg-white">
                                   {v.plate}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                                {openDmgCount > 0 ? (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/35 text-red-300 flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" /> {openDmgCount} Avaria{openDmgCount > 1 ? 's' : ''}
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3" /> {v.operational_status || 'Operacional'}
-                                  </span>
-                                )}
-                                {pendingInspCount > 0 && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300">
-                                    Repasse Pendente
-                                  </span>
-                                )}
+                              <div className="flex items-center gap-2 min-w-0">
                                 {v.subclus && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-300">
+                                  <span className="text-[10px] font-mono text-neutral-400 truncate max-w-[110px]">
                                     {v.subclus}
                                   </span>
                                 )}
+                                <span
+                                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-neutral-300 shrink-0"
+                                  title={
+                                    openDmgCount > 0
+                                      ? `${openDmgCount} avaria(s) em aberto`
+                                      : pendingInspCount > 0
+                                      ? 'Repasse pendente de aprovação'
+                                      : v.operational_status || 'Operacional'
+                                  }
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                      openDmgCount > 0
+                                        ? 'bg-red-400'
+                                        : pendingInspCount > 0
+                                        ? 'bg-amber-400'
+                                        : 'bg-emerald-400'
+                                    }`}
+                                  />
+                                  <span>
+                                    {openDmgCount > 0
+                                      ? `${openDmgCount} avaria${openDmgCount > 1 ? 's' : ''}`
+                                      : pendingInspCount > 0
+                                      ? 'Pendente'
+                                      : v.operational_status || 'Operacional'}
+                                  </span>
+                                </span>
                               </div>
                             </div>
 
@@ -1831,108 +1840,91 @@ export default function VehiclesPage() {
                               plate={v.plate}
                             />
 
-                            {/* CONDUTOR TITULAR + ÚLTIMA APROVAÇÃO DE REPASSE */}
-                            <div className="p-2.5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1.5">
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${
-                                    hasTech
-                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                      : 'bg-white/5 text-[var(--color-text-faint)] border border-white/5'
-                                  }`}
-                                >
-                                  <UserCheck className="w-4 h-4" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="text-[9px] uppercase font-extrabold text-[var(--color-text-faint)] tracking-wider">
-                                      Condutor Titular
-                                    </span>
-                                    <span className="text-[10px] font-mono font-bold text-slate-300">
-                                      {(v.current_km || 0).toLocaleString('pt-BR')} km
-                                    </span>
+                            {/* CONDUTOR & ESPECIFICAÇÕES EM BLOCO UNIFICADO */}
+                            <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-7 h-7 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-neutral-300 shrink-0">
+                                    <UserCheck className="w-3.5 h-3.5" />
                                   </div>
-                                  <p className="text-xs font-bold text-white truncate">
-                                    {v.responsible_name || v.condutor_dia || 'Sem condutor fixado'}
-                                  </p>
+                                  <div className="min-w-0">
+                                    <span className="text-[9px] uppercase font-bold text-neutral-500 tracking-wider block">
+                                      Condutor
+                                    </span>
+                                    <p className={`text-xs font-bold truncate ${hasTech ? 'text-white' : 'text-neutral-500'}`}>
+                                      {v.responsible_name || v.condutor_dia || 'Sem condutor'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] font-mono font-semibold text-neutral-400 shrink-0">
+                                  {(v.current_km || 0).toLocaleString('pt-BR')} km
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-2 pt-2 border-t border-white/[0.05] text-[11px]">
+                                <div className="min-w-0">
+                                  <span className="text-[9px] uppercase font-bold text-neutral-500 block">Base / Área</span>
+                                  <span className="font-medium text-neutral-200 truncate block">
+                                    {[v.base, v.area_rede].filter(Boolean).join(' · ') || '-'}
+                                  </span>
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-[9px] uppercase font-bold text-neutral-500 block">Ticket Car</span>
+                                  <span className="font-mono font-medium text-neutral-200 truncate block">{v.ticket_car || '-'}</span>
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-[9px] uppercase font-bold text-neutral-500 block">Frota</span>
+                                  <span className="font-medium text-neutral-300 truncate block">
+                                    {v.rental_company || v.insurance_company || 'Frota Claro'}
+                                  </span>
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-[9px] uppercase font-bold text-neutral-500 block">CRLV</span>
+                                  <span className="font-mono font-medium text-neutral-300 truncate block">
+                                    {v.crlv_expiration || 'Em dia'}
+                                  </span>
                                 </div>
                               </div>
+
                               {v.last_approved_by_name && (
-                                <div className="pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px] text-emerald-300/90">
+                                <div className="pt-2 border-t border-white/[0.05] flex items-center justify-between text-[10px] text-neutral-400">
                                   <span className="truncate">
-                                    ✓ Repasse aprovado por <strong>{v.last_approved_by_name}</strong>
+                                    Aprovado por <strong className="text-neutral-200">{v.last_approved_by_name}</strong>
                                   </span>
                                   <span className="font-mono shrink-0 ml-1">{v.last_approved_at}</span>
                                 </div>
                               )}
                             </div>
 
-                            {/* ESPECIFICAÇÕES & DOCUMENTOS */}
-                            <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-black/30 border border-white/5 text-[11px]">
-                              <div className="min-w-0">
-                                <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Base / Área</span>
-                                <span className="font-semibold text-white/90 truncate block">
-                                  {[v.base, v.area_rede].filter(Boolean).join(' · ') || '-'}
-                                </span>
-                              </div>
-                              <div className="min-w-0">
-                                <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Ticket Car</span>
-                                <span className="font-mono font-bold text-sky-300 truncate block">{v.ticket_car || '-'}</span>
-                              </div>
-                              <div className="min-w-0">
-                                <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Locadora / Seguro</span>
-                                <span className="font-semibold text-white/90 truncate block">
-                                  {v.rental_company || v.insurance_company || 'Frota Claro'}
-                                </span>
-                              </div>
-                              <div className="min-w-0">
-                                <span className="text-[9px] uppercase font-bold text-[var(--color-text-faint)] block">Venc. CRLV</span>
-                                <span className="font-mono font-semibold text-white/90 truncate block">
-                                  {v.crlv_expiration || 'Em dia'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* AÇÕES OPERACIONAIS DE FROTA (VISTORIA 4 LADOS, AVARIA, HISTÓRICO, PNEUS) */}
-                            <div className="grid grid-cols-3 gap-1.5 pt-1">
+                            {/* BARRA DE AÇÕES MINIMALISTA (2 BOTÕES LIMPOS + ATALHOS DISCRETOS) */}
+                            <div className="mt-auto flex items-center gap-1.5 pt-1">
                               <button
                                 type="button"
                                 onClick={() => openInspectionModal(v)}
-                                className="py-2 px-2 rounded-xl bg-emerald-500/12 hover:bg-emerald-500/22 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
+                                className="flex-1 h-9 px-3 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                                 title="Passar ou receber veículo com 4 fotos obrigatórias"
                               >
                                 <Camera className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">Repasse</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openDamageModal(v)}
-                                className="py-2 px-2 rounded-xl bg-amber-500/12 hover:bg-amber-500/22 border border-amber-500/30 text-amber-300 text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
-                                title="Reportar avaria ou quebrado neste veículo"
-                              >
-                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">Avaria</span>
+                                <span>Repasse</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => openVehicleHistory(v)}
-                                className="py-2 px-2 rounded-xl bg-sky-500/12 hover:bg-sky-500/22 border border-sky-500/30 text-sky-300 text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
-                                title="Consultar histórico completo do veículo no banco de dados"
+                                className="flex-1 h-9 px-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] text-neutral-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                                title="Consultar histórico completo do veículo"
                               >
                                 <History className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">Histórico</span>
+                                <span>Histórico</span>
                               </button>
-                            </div>
 
-                            {/* RODAPÉ DE AÇÕES ADMINISTRATIVAS */}
-                            <div className="mt-auto flex items-center gap-2 pt-2 border-t border-white/5">
                               <button
                                 type="button"
-                                onClick={() => sendWhatsapp(v)}
-                                className="h-8 px-3 rounded-full bg-[#25d366]/10 border border-[#25d366]/20 flex items-center justify-center gap-1.5 text-[#25d366] hover:bg-[#25d366]/20 transition-all text-xs font-bold cursor-pointer"
+                                onClick={() => openDamageModal(v)}
+                                className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.03] hover:bg-white/[0.09] border border-white/[0.08] flex items-center justify-center text-neutral-400 hover:text-amber-300 transition cursor-pointer"
+                                title="Reportar avaria ou quebrado"
+                                aria-label="Reportar avaria"
                               >
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                <span>WhatsApp</span>
+                                <AlertTriangle className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
@@ -1940,19 +1932,30 @@ export default function VehiclesPage() {
                                   setSelectedTireVehicleId(v.id);
                                   setActiveTab('pneus');
                                 }}
-                                className="h-8 px-3 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1 text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/[0.09] transition cursor-pointer"
+                                className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.03] hover:bg-white/[0.09] border border-white/[0.08] flex items-center justify-center text-neutral-400 hover:text-white transition cursor-pointer"
+                                title="Pneus por KM"
+                                aria-label="Pneus por KM"
                               >
-                                <Disc className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Pneus</span>
+                                <Disc className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => sendWhatsapp(v)}
+                                className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.03] hover:bg-white/[0.09] border border-white/[0.08] flex items-center justify-center text-neutral-400 hover:text-emerald-400 transition cursor-pointer"
+                                title="Enviar resumo no WhatsApp"
+                                aria-label="WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
                               </button>
                               {canEdit && (
                                 <button
                                   type="button"
                                   onClick={() => openEdit(v)}
-                                  className="flex-1 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1.5 text-xs font-bold text-white hover:bg-white/[0.09] transition-all cursor-pointer"
+                                  className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.03] hover:bg-white/[0.09] border border-white/[0.08] flex items-center justify-center text-neutral-400 hover:text-white transition cursor-pointer"
+                                  title="Editar veículo"
+                                  aria-label="Editar veículo"
                                 >
-                                  <Pencil className="w-3 h-3 text-[var(--color-primary)]" />
-                                  <span>Editar</span>
+                                  <Pencil className="w-3.5 h-3.5" />
                                 </button>
                               )}
                               {canDelete && (
@@ -1960,7 +1963,8 @@ export default function VehiclesPage() {
                                   type="button"
                                   onClick={() => handleDelete(v)}
                                   aria-label="Excluir veículo"
-                                  className="w-8 h-8 shrink-0 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
+                                  title="Excluir veículo"
+                                  className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.03] hover:bg-red-500/15 border border-white/[0.08] flex items-center justify-center text-neutral-400 hover:text-red-400 transition cursor-pointer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>

@@ -124,69 +124,46 @@ export default function VehiclePreview({
   className = '',
 }: VehiclePreviewProps) {
   const vehicle = getVehicleImage(model, type);
+  const specs = [
+    hasRack && 'Rack Escada',
+    hasGiroflex && 'Giroflex',
+    hasBasket && 'Cesto Aéreo',
+    hasInverter && 'Inversor',
+  ].filter(Boolean) as string[];
 
   return (
     <div
-      className={`relative w-full h-44 rounded-2xl overflow-hidden bg-gradient-to-b from-[#101522] via-[#0B0E17] to-[#070A10] border border-white/10 flex flex-col justify-between p-3.5 group/preview transition-all duration-300 hover:border-red-500/30 shadow-xl ${className}`}
+      className={`relative w-full h-36 rounded-2xl overflow-hidden bg-[#06080d]/90 border border-white/[0.07] flex flex-col justify-between p-3 group/preview transition-colors duration-300 hover:border-white/[0.14] ${className}`}
     >
-      {/* High-End Studio Ambient Lighting Spotlight */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_40%,rgba(255,255,255,0.06),transparent_80%)] pointer-events-none" />
+      {/* Subtle Studio Overhead Keylight */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_38%,rgba(255,255,255,0.05),transparent_78%)] pointer-events-none" />
 
-      {/* Soft Ground Reflection Shadow */}
-      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-4/5 h-6 bg-black/80 blur-lg rounded-full pointer-events-none" />
-
-      {/* Top Floating Badges */}
-      <div className="relative z-10 flex items-center justify-between gap-1.5">
-        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-900/80 text-white/90 border border-white/10 backdrop-blur-md shadow-sm">
+      {/* Top Minimalist Eyebrow */}
+      <div className="relative z-10 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.14em] text-neutral-400 truncate">
           {model || type}
         </span>
-
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-          {hasRack && (
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-[9px] font-bold text-amber-300 flex items-center gap-1 shadow-sm backdrop-blur-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              Rack Escada
-            </span>
-          )}
-          {hasGiroflex && (
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-[9px] font-bold text-amber-300 animate-pulse flex items-center gap-1 backdrop-blur-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-300 shadow-[0_0_6px_#f59e0b]" />
-              Giroflex
-            </span>
-          )}
-          {hasBasket && (
-            <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[9px] font-bold text-emerald-300 flex items-center gap-1 backdrop-blur-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              Cesto Aéreo
-            </span>
-          )}
-          {hasInverter && (
-            <span className="px-2 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-[9px] font-bold text-cyan-300 flex items-center gap-1 backdrop-blur-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-              Inversor
-            </span>
-          )}
-        </div>
+        <span className="text-[10px] font-medium text-neutral-500 shrink-0">
+          {type || 'Operacional'}
+        </span>
       </div>
 
-      {/* Center Photorealistic Showcase with smooth radial edge mask */}
-      <div className="relative z-10 flex-1 flex items-center justify-center my-0.5 overflow-hidden [mask-image:radial-gradient(ellipse_94%_90%_at_50%_50%,black_65%,transparent_100%)]">
+      {/* Center Photorealistic Showcase */}
+      <div className="relative z-10 flex-1 flex items-center justify-center overflow-hidden [mask-image:radial-gradient(ellipse_94%_90%_at_50%_50%,black_65%,transparent_100%)]">
         <img
           src={vehicle.src}
           alt={vehicle.alt}
-          className="w-full h-full object-contain max-h-32 filter drop-shadow-[0_10px_16px_rgba(0,0,0,0.85)] transform group-hover/preview:scale-[1.04] transition-transform duration-300 ease-out"
+          className="w-full h-full object-contain max-h-24 filter drop-shadow-[0_10px_16px_rgba(0,0,0,0.85)] transform group-hover/preview:scale-[1.03] transition-transform duration-300 ease-out"
           loading="lazy"
         />
       </div>
 
-      {/* Bottom Status Bar */}
-      <div className="relative z-10 flex items-center justify-between text-[10px] text-slate-400 border-t border-white/5 pt-1.5">
-        <span className="font-semibold text-slate-300">{type || 'Frota Operacional'}</span>
-        <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-          Ativo na Operação
-        </span>
-      </div>
+      {/* Subtle Monochrome Equipment Line */}
+      {specs.length > 0 && (
+        <div className="relative z-10 flex items-center justify-center text-[10px] font-medium text-neutral-400 border-t border-white/[0.05] pt-1.5 truncate">
+          {specs.join(' · ')}
+        </div>
+      )}
     </div>
   );
 }
