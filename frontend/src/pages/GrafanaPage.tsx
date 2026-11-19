@@ -1283,23 +1283,68 @@ export default function GrafanaPage() {
               ) : (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                   {visibleNewFeed.ral.map((item) => (
-                    <button
+                    <div
                       key={item.id}
                       onClick={() =>
                         handleSelectQueue(item.cf, item.is_qualidade ? 'QUALIDADE' : 'RAL')
                       }
-                      className="w-full text-left p-2 rounded-xl bg-white/[0.03] hover:bg-white/10 border border-white/10 transition"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          handleSelectQueue(item.cf, item.is_qualidade ? 'QUALIDADE' : 'RAL');
+                        }
+                      }}
+                      className="w-full text-left p-2 rounded-xl bg-white/[0.03] hover:bg-white/10 border border-white/10 transition cursor-pointer"
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#e20613]/20 text-red-300">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-xs font-bold text-white select-text" data-allow-copy="true">
+                            {item.ticket_number}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyQuickText(`feed-ral-num-${item.id}`, item.ticket_number);
+                            }}
+                            title={`Copiar RAL ${item.ticket_number}`}
+                            className="p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-sky-300 transition cursor-pointer"
+                          >
+                            {copiedId === `feed-ral-num-${item.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#e20613]/20 text-red-300 shrink-0">
                           {item.cf}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-400 truncate mt-0.5">
-                        {item.designation}
+                      <div className="flex items-center justify-between gap-1 mt-0.5">
+                        <div className="text-[11px] text-slate-400 truncate select-text" data-allow-copy="true">
+                          {item.designation}
+                        </div>
+                        {item.designation && item.designation !== '-' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyQuickText(`feed-ral-desig-${item.id}`, item.designation);
+                            }}
+                            title="Copiar trecho"
+                            className="p-0.5 rounded hover:bg-white/10 text-slate-500 hover:text-white transition shrink-0 cursor-pointer"
+                          >
+                            {copiedId === `feed-ral-desig-${item.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        )}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -1319,21 +1364,66 @@ export default function GrafanaPage() {
               ) : (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                   {visibleNewFeed.rec.map((item) => (
-                    <button
+                    <div
                       key={item.id}
                       onClick={() => handleSelectQueue(item.cf, 'REC')}
-                      className="w-full text-left p-2 rounded-xl bg-white/[0.03] hover:bg-white/10 border border-white/10 transition"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          handleSelectQueue(item.cf, 'REC');
+                        }
+                      }}
+                      className="w-full text-left p-2 rounded-xl bg-white/[0.03] hover:bg-white/10 border border-white/10 transition cursor-pointer"
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-xs font-bold text-white select-text" data-allow-copy="true">
+                            {item.ticket_number}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyQuickText(`feed-rec-num-${item.id}`, item.ticket_number);
+                            }}
+                            title={`Copiar REC ${item.ticket_number}`}
+                            className="p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-sky-300 transition cursor-pointer"
+                          >
+                            {copiedId === `feed-rec-num-${item.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 shrink-0">
                           {item.cf}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-400 truncate mt-0.5">
-                        {item.cliente || item.designation}
+                      <div className="flex items-center justify-between gap-1 mt-0.5">
+                        <div className="text-[11px] text-slate-400 truncate select-text" data-allow-copy="true">
+                          {item.cliente || item.designation}
+                        </div>
+                        {(item.designation || item.cliente) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyQuickText(`feed-rec-desig-${item.id}`, item.designation || item.cliente);
+                            }}
+                            title="Copiar trecho"
+                            className="p-0.5 rounded hover:bg-white/10 text-slate-500 hover:text-white transition shrink-0 cursor-pointer"
+                          >
+                            {copiedId === `feed-rec-desig-${item.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        )}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -2296,25 +2386,70 @@ export default function GrafanaPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
                   {activeBucket.items.map((item) => (
-                    <button
+                    <div
                       key={item.ticket_number}
                       onClick={() => handleSelectQueue(item.cf, timelineTypeFilter)}
-                      className="text-left p-2 rounded-lg bg-white/[0.03] hover:bg-white/10 border border-white/10 transition"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          handleSelectQueue(item.cf, timelineTypeFilter);
+                        }
+                      }}
+                      className="text-left p-2 rounded-lg bg-white/[0.03] hover:bg-white/10 border border-white/10 transition cursor-pointer"
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-white">{item.ticket_number}</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-xs font-bold text-white select-text" data-allow-copy="true">
+                            {item.ticket_number}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyQuickText(`tl-num-${item.ticket_number}`, item.ticket_number);
+                            }}
+                            title={`Copiar ${timelineTypeFilter} ${item.ticket_number}`}
+                            className="p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-sky-300 transition cursor-pointer"
+                          >
+                            {copiedId === `tl-num-${item.ticket_number}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 shrink-0">
                           {item.cf}
                         </span>
                       </div>
-                      <div className="text-[11px] font-mono text-slate-300 truncate mt-0.5">
-                        {item.designation}
+                      <div className="flex items-center justify-between gap-1 mt-0.5">
+                        <div className="text-[11px] font-mono text-slate-300 truncate select-text" data-allow-copy="true">
+                          {item.designation}
+                        </div>
+                        {item.designation && item.designation !== '-' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyQuickText(`tl-desig-${item.ticket_number}`, item.designation);
+                            }}
+                            title="Copiar trecho"
+                            className="p-0.5 rounded hover:bg-white/10 text-slate-500 hover:text-white transition shrink-0 cursor-pointer"
+                          >
+                            {copiedId === `tl-desig-${item.ticket_number}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        )}
                       </div>
                       <div className="text-[10px] text-slate-500 mt-0.5 flex items-center justify-between gap-2">
                         <span>{item.abertura_raw}</span>
                         {item.cliente && <span className="truncate text-amber-300/90">{item.cliente}</span>}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}

@@ -94,25 +94,36 @@ export default function AntiPrintGuard() {
       }
     }
 
-    function isEditableElement(target: EventTarget | null): boolean {
-      if (!(target instanceof HTMLElement)) return false;
-      const tag = target.tagName.toLowerCase();
-      return (
-        tag === 'input' ||
-        tag === 'textarea' ||
-        tag === 'select' ||
-        target.isContentEditable
-      );
+    function isEditableOrCopyable(target: EventTarget | null): boolean {
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (
+          tag === 'input' ||
+          tag === 'textarea' ||
+          tag === 'select' ||
+          target.isContentEditable ||
+          Boolean(target.closest('.select-text, [data-allow-copy="true"]'))
+        ) {
+          return true;
+        }
+      }
+      const sel = window.getSelection();
+      const anchor = sel?.anchorNode;
+      const anchorEl = anchor instanceof HTMLElement ? anchor : anchor?.parentElement;
+      if (anchorEl && anchorEl.closest('.select-text, [data-allow-copy="true"]')) {
+        return true;
+      }
+      return false;
     }
 
     function onContextMenu(e: MouseEvent) {
-      if (!isEditableElement(e.target)) {
+      if (!isEditableOrCopyable(e.target)) {
         e.preventDefault();
       }
     }
 
     function onCopy(e: ClipboardEvent) {
-      if (!isEditableElement(e.target)) {
+      if (!isEditableOrCopyable(e.target)) {
         e.preventDefault();
       }
     }
