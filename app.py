@@ -2957,6 +2957,7 @@ def init_db():
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS responsible_tech_id INT REFERENCES technicians(id) ON DELETE SET NULL;")
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
         except Exception:
             conn.rollback()
         cur.execute("""
@@ -2978,6 +2979,7 @@ def init_db():
                 responsible_name VARCHAR(150),
                 distancia VARCHAR(120) DEFAULT '',
                 referencia VARCHAR(255) DEFAULT '',
+                endereco VARCHAR(255) DEFAULT '',
                 notes_snapshot JSONB DEFAULT '[]'::jsonb,
                 first_seen_at TIMESTAMP,
                 cleared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -2986,6 +2988,7 @@ def init_db():
         try:
             cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
             cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
         except Exception:
             conn.rollback()
         cur.execute("""
@@ -16888,6 +16891,7 @@ def _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt):
             try:
                 cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
                 cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+                cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
             except Exception:
                 pass
             from psycopg2.extras import execute_values
@@ -16896,7 +16900,7 @@ def _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt):
                     t["ticket_key"], t["ticket_type"], t["ticket_number"], t["cf"], t["regional"], t["cf_exec_raw"],
                     t["designation"], t["tipo_ral"], t["is_qualidade"], t["cliente"], t["abertura_raw"], t["abertura_dt"],
                     t["status_andamento"], t["responsible_name"],
-                    t.get("distancia") or "", t.get("referencia") or "",
+                    t.get("distancia") or "", t.get("referencia") or "", t.get("endereco") or "",
                     json.dumps(notes_by_key.get(t["ticket_key"], []), ensure_ascii=False),
                     t["first_seen_at"], now_brt
                 )
@@ -16906,10 +16910,10 @@ def _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt):
                 INSERT INTO grafana_cleared_tickets (
                     ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
                     designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
-                    status_andamento, responsible_name, distancia, referencia,
+                    status_andamento, responsible_name, distancia, referencia, endereco,
                     notes_snapshot, first_seen_at, cleared_at
                 ) VALUES %s;
-            """, archive_rows, template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)", page_size=500)
+            """, archive_rows, template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)", page_size=500)
             cleared_now = len(archive_rows)
         cur.execute("DELETE FROM grafana_ticket_notes WHERE ticket_key = ANY(%s);", (removed_keys,))
         cur.execute("DELETE FROM grafana_tickets WHERE ticket_key = ANY(%s);", (removed_keys,))
@@ -17556,8 +17560,8 @@ def api_grafana_tickets():
             params.append(status_filter)
         if search:
             like = f"%{search}%"
-            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(tipo_ral) LIKE %s OR LOWER(COALESCE(responsible_name, '')) LIKE %s OR LOWER(COALESCE(distancia, '')) LIKE %s OR LOWER(COALESCE(referencia, '')) LIKE %s)")
-            params.extend([like, like, like, like, like, like, like])
+            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(tipo_ral) LIKE %s OR LOWER(COALESCE(responsible_name, '')) LIKE %s OR LOWER(COALESCE(distancia, '')) LIKE %s OR LOWER(COALESCE(referencia, '')) LIKE %s OR LOWER(COALESCE(endereco, '')) LIKE %s)")
+            params.extend([like, like, like, like, like, like, like, like])
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
@@ -17566,6 +17570,7 @@ def api_grafana_tickets():
         try:
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
         except Exception:
             conn.rollback()
         cur.execute(f"""
@@ -17574,6 +17579,7 @@ def api_grafana_tickets():
                    duracao_raw, resp_code, tecnico_csv, anatel, prejuizo,
                    status_andamento, responsible_user_id, responsible_name,
                    COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia,
+                   COALESCE(endereco, '') AS endereco,
                    is_new, first_seen_at
             FROM grafana_tickets
             {where_sql}
@@ -17631,6 +17637,7 @@ def api_grafana_tickets():
                 "responsible_name": r["responsible_name"] or "",
                 "distancia": r.get("distancia") or "",
                 "referencia": r.get("referencia") or "",
+                "endereco": r.get("endereco") or "",
                 "is_new": bool(r.get("is_new")),
                 "notes": notes_by_key.get(r["ticket_key"], []),
                 **sla,
@@ -17670,8 +17677,8 @@ def api_grafana_cleared():
             where_clauses.append("(is_qualidade = TRUE OR UPPER(COALESCE(tipo_ral, '')) = 'QUALIDADE')")
         if search:
             like = f"%{search}%"
-            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(COALESCE(distancia, '')) LIKE %s OR LOWER(COALESCE(referencia, '')) LIKE %s)")
-            params.extend([like, like, like, like, like])
+            where_clauses.append("(LOWER(ticket_number) LIKE %s OR LOWER(designation) LIKE %s OR LOWER(cliente) LIKE %s OR LOWER(COALESCE(distancia, '')) LIKE %s OR LOWER(COALESCE(referencia, '')) LIKE %s OR LOWER(COALESCE(endereco, '')) LIKE %s)")
+            params.extend([like, like, like, like, like, like])
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
         conn = get_db()
@@ -17679,12 +17686,14 @@ def api_grafana_cleared():
         try:
             cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
             cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
         except Exception:
             conn.rollback()
         cur.execute(f"""
             SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, designation,
                    tipo_ral, is_qualidade, cliente, abertura_raw, status_andamento,
                    responsible_name, COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia,
+                   COALESCE(endereco, '') AS endereco,
                    notes_snapshot, first_seen_at, cleared_at
             FROM grafana_cleared_tickets
             {where_sql}
@@ -17711,6 +17720,7 @@ def api_grafana_cleared():
                 "responsible_name": r["responsible_name"] or "",
                 "distancia": r.get("distancia") or "",
                 "referencia": r.get("referencia") or "",
+                "endereco": r.get("endereco") or "",
                 "notes": r.get("notes_snapshot") or [],
                 "cleared_at": r["cleared_at"].strftime("%d/%m/%Y %H:%M") if r.get("cleared_at") else "",
             })
@@ -17754,35 +17764,38 @@ def api_grafana_update_dist_ref(ticket_id):
     data = request.get_json(silent=True) or {}
     distancia = (data.get("distancia") or "").strip()[:120]
     referencia = (data.get("referencia") or "").strip()[:255]
+    endereco = (data.get("endereco") or "").strip()[:255]
     try:
         conn = get_db()
         cur = conn.cursor()
         try:
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
             cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
         except Exception:
             conn.rollback()
         cur.execute("""
             UPDATE grafana_tickets
-            SET distancia = %s, referencia = %s, updated_at = CURRENT_TIMESTAMP
+            SET distancia = %s, referencia = %s, endereco = %s, updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
-            RETURNING id, ticket_number, distancia, referencia;
-        """, (distancia, referencia, ticket_id))
+            RETURNING id, ticket_number, distancia, referencia, endereco;
+        """, (distancia, referencia, endereco, ticket_id))
         updated = cur.fetchone()
         if not updated:
             cur.close()
             return jsonify({"error": "Atividade não encontrada."}), 404
         conn.commit()
         cur.close()
-        log_action(session['user_id'], session.get('username'), f"Grafana DIST/REF {updated['ticket_number']} -> DIST={distancia} REF={referencia}")
+        log_action(session['user_id'], session.get('username'), f"Grafana DIST/REF/END {updated['ticket_number']} -> DIST={distancia} REF={referencia} END={endereco}")
         return jsonify({
             "success": True,
             "distancia": updated["distancia"] or "",
             "referencia": updated["referencia"] or "",
+            "endereco": updated["endereco"] or "",
         })
     except Exception as e:
         print("[GRAFANA DIST-REF ERROR]", e)
-        return jsonify({"error": "Falha ao salvar DIST / REF."}), 500
+        return jsonify({"error": "Falha ao salvar DIST / REF / Endereço."}), 500
 
 
 @app.route('/api/grafana/cleared/<int:cleared_id>/dist-ref', methods=['PUT'])
@@ -17791,35 +17804,38 @@ def api_grafana_update_cleared_dist_ref(cleared_id):
     data = request.get_json(silent=True) or {}
     distancia = (data.get("distancia") or "").strip()[:120]
     referencia = (data.get("referencia") or "").strip()[:255]
+    endereco = (data.get("endereco") or "").strip()[:255]
     try:
         conn = get_db()
         cur = conn.cursor()
         try:
             cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
             cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
+            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
         except Exception:
             conn.rollback()
         cur.execute("""
             UPDATE grafana_cleared_tickets
-            SET distancia = %s, referencia = %s
+            SET distancia = %s, referencia = %s, endereco = %s
             WHERE id = %s
-            RETURNING id, ticket_number, distancia, referencia;
-        """, (distancia, referencia, cleared_id))
+            RETURNING id, ticket_number, distancia, referencia, endereco;
+        """, (distancia, referencia, endereco, cleared_id))
         updated = cur.fetchone()
         if not updated:
             cur.close()
             return jsonify({"error": "Registro histórico não encontrado."}), 404
         conn.commit()
         cur.close()
-        log_action(session['user_id'], session.get('username'), f"Grafana Histórico DIST/REF {updated['ticket_number']} -> DIST={distancia} REF={referencia}")
+        log_action(session['user_id'], session.get('username'), f"Grafana Histórico DIST/REF/END {updated['ticket_number']} -> DIST={distancia} REF={referencia} END={endereco}")
         return jsonify({
             "success": True,
             "distancia": updated["distancia"] or "",
             "referencia": updated["referencia"] or "",
+            "endereco": updated["endereco"] or "",
         })
     except Exception as e:
         print("[GRAFANA CLEARED DIST-REF ERROR]", e)
-        return jsonify({"error": "Falha ao salvar DIST / REF no histórico."}), 500
+        return jsonify({"error": "Falha ao salvar DIST / REF / Endereço no histórico."}), 500
 
 @app.route('/api/grafana/tickets/<int:ticket_id>/responsible', methods=['PUT'])
 @login_required
@@ -18114,7 +18130,7 @@ def api_grafana_export():
         writer.writerow([
             "Base", "Tipo", "Numero", "Regional", "CF", "CF Exec.", "Designacao",
             "Tipo RAL", "Qualidade", "Cliente", "Abertura", "SLA",
-            "Status Andamento", "Responsavel", "DIST (Distancia)", "REF (Referencia)", "Notas", "Sanada Em"
+            "Status Andamento", "Responsavel", "DIST (Distancia)", "REF (Referencia)", "Endereco da Falha", "Notas", "Sanada Em"
         ])
 
         now_brt = _grafana_now_brt()
@@ -18147,7 +18163,8 @@ def api_grafana_export():
                 SELECT ticket_key, ticket_type, ticket_number, regional, cf, cf_exec_raw,
                        designation, tipo_ral, is_qualidade, cliente, abertura_raw, abertura_dt,
                        status_andamento, responsible_name,
-                       COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia
+                       COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia,
+                       COALESCE(endereco, '') AS endereco
                 FROM grafana_tickets
                 {where_sql}
                 ORDER BY regional, cf, abertura_dt ASC NULLS LAST;
@@ -18178,6 +18195,7 @@ def api_grafana_export():
                     r["responsible_name"] or "",
                     r.get("distancia") or "",
                     r.get("referencia") or "",
+                    r.get("endereco") or "",
                     " | ".join(notes_map.get(r["ticket_key"], [])),
                     "",
                 ])
@@ -18188,6 +18206,7 @@ def api_grafana_export():
                        designation, tipo_ral, is_qualidade, cliente, abertura_raw,
                        status_andamento, responsible_name,
                        COALESCE(distancia, '') AS distancia, COALESCE(referencia, '') AS referencia,
+                       COALESCE(endereco, '') AS endereco,
                        notes_snapshot, cleared_at
                 FROM grafana_cleared_tickets
                 {where_sql}
@@ -18213,6 +18232,7 @@ def api_grafana_export():
                     r["responsible_name"] or "",
                     r.get("distancia") or "",
                     r.get("referencia") or "",
+                    r.get("endereco") or "",
                     notes_txt,
                     r["cleared_at"].strftime("%d/%m/%Y %H:%M") if r.get("cleared_at") else "",
                 ])

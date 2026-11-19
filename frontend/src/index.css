@@ -152,7 +152,8 @@ select option {
 
 .anti-print-protected input,
 .anti-print-protected textarea,
-.anti-print-protected select {
+.anti-print-protected select,
+.anti-print-protected .select-text {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;

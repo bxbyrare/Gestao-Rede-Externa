@@ -102,6 +102,7 @@ interface GrafanaTicket {
   responsible_name: string;
   distancia?: string;
   referencia?: string;
+  endereco?: string;
   is_new: boolean;
   notes: TicketNote[];
   sla_hours: number;
@@ -126,6 +127,7 @@ interface ClearedTicket {
   responsible_name: string;
   distancia?: string;
   referencia?: string;
+  endereco?: string;
   notes: TicketNote[];
   cleared_at: string;
 }
@@ -320,9 +322,9 @@ export default function GrafanaPage() {
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [distRefDrafts, setDistRefDrafts] = useState<Record<number, { distancia: string; referencia: string }>>({});
+  const [distRefDrafts, setDistRefDrafts] = useState<Record<number, { distancia: string; referencia: string; endereco: string }>>({});
   const [savedDistRefId, setSavedDistRefId] = useState<number | null>(null);
-  const [clearedDistRefDrafts, setClearedDistRefDrafts] = useState<Record<number, { distancia: string; referencia: string }>>({});
+  const [clearedDistRefDrafts, setClearedDistRefDrafts] = useState<Record<number, { distancia: string; referencia: string; endereco: string }>>({});
   const [savedClearedDistRefId, setSavedClearedDistRefId] = useState<number | null>(null);
 
   // People autocomplete
@@ -587,29 +589,62 @@ export default function GrafanaPage() {
     }
   }
 
+  async function copyQuickText(key: string, value: string) {
+    const clean = (value || '').trim();
+    if (!clean || clean === '-') return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(clean);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = clean;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopiedId(key);
+      setTimeout(() => setCopiedId((curr) => (curr === key ? null : curr)), 1800);
+    } catch {
+      // ignore clipboard errors
+    }
+  }
+
   async function handleSaveDistRef(ticket: GrafanaTicket) {
     const draft = distRefDrafts[ticket.id];
     const distancia = (draft ? draft.distancia : ticket.distancia || '').trim();
     const referencia = (draft ? draft.referencia : ticket.referencia || '').trim();
-    if (distancia === (ticket.distancia || '') && referencia === (ticket.referencia || '')) {
+    const endereco = (draft ? draft.endereco : ticket.endereco || '').trim();
+    if (
+      distancia === (ticket.distancia || '') &&
+      referencia === (ticket.referencia || '') &&
+      endereco === (ticket.endereco || '')
+    ) {
       return;
     }
     try {
-      const res = await api.put<{ success: boolean; distancia: string; referencia: string }>(
+      const res = await api.put<{ success: boolean; distancia: string; referencia: string; endereco: string }>(
         `/api/grafana/tickets/${ticket.id}/dist-ref`,
-        { distancia, referencia }
+        { distancia, referencia, endereco }
       );
       setTickets((prev) =>
         prev.map((t) =>
           t.id === ticket.id
-            ? { ...t, distancia: res.distancia ?? distancia, referencia: res.referencia ?? referencia }
+            ? {
+                ...t,
+                distancia: res.distancia ?? distancia,
+                referencia: res.referencia ?? referencia,
+                endereco: res.endereco ?? endereco,
+              }
             : t
         )
       );
       setSavedDistRefId(ticket.id);
       setTimeout(() => setSavedDistRefId((curr) => (curr === ticket.id ? null : curr)), 2000);
     } catch (err) {
-      console.error('Erro ao salvar DIST/REF:', err);
+      console.error('Erro ao salvar DIST/REF/Endereço:', err);
     }
   }
 
@@ -617,25 +652,35 @@ export default function GrafanaPage() {
     const draft = clearedDistRefDrafts[item.id];
     const distancia = (draft ? draft.distancia : item.distancia || '').trim();
     const referencia = (draft ? draft.referencia : item.referencia || '').trim();
-    if (distancia === (item.distancia || '') && referencia === (item.referencia || '')) {
+    const endereco = (draft ? draft.endereco : item.endereco || '').trim();
+    if (
+      distancia === (item.distancia || '') &&
+      referencia === (item.referencia || '') &&
+      endereco === (item.endereco || '')
+    ) {
       return;
     }
     try {
-      const res = await api.put<{ success: boolean; distancia: string; referencia: string }>(
+      const res = await api.put<{ success: boolean; distancia: string; referencia: string; endereco: string }>(
         `/api/grafana/cleared/${item.id}/dist-ref`,
-        { distancia, referencia }
+        { distancia, referencia, endereco }
       );
       setClearedList((prev) =>
         prev.map((c) =>
           c.id === item.id
-            ? { ...c, distancia: res.distancia ?? distancia, referencia: res.referencia ?? referencia }
+            ? {
+                ...c,
+                distancia: res.distancia ?? distancia,
+                referencia: res.referencia ?? referencia,
+                endereco: res.endereco ?? endereco,
+              }
             : c
         )
       );
       setSavedClearedDistRefId(item.id);
       setTimeout(() => setSavedClearedDistRefId((curr) => (curr === item.id ? null : curr)), 2000);
     } catch (err) {
-      console.error('Erro ao salvar DIST/REF no histórico:', err);
+      console.error('Erro ao salvar DIST/REF/Endereço no histórico:', err);
     }
   }
 
@@ -668,6 +713,9 @@ export default function GrafanaPage() {
     }
     if (t.referencia) {
       lines.push(`📍 REF (Referência): ${t.referencia}`);
+    }
+    if (t.endereco) {
+      lines.push(`🗺 Endereço da Falha: ${t.endereco}`);
     }
     if (t.notes && t.notes.length > 0) {
       if (t.notes.length === 1) {
@@ -729,7 +777,8 @@ export default function GrafanaPage() {
         (t.tipo_ral || '').toLowerCase().includes(q) ||
         (t.responsible_name || '').toLowerCase().includes(q) ||
         (t.distancia || '').toLowerCase().includes(q) ||
-        (t.referencia || '').toLowerCase().includes(q)
+        (t.referencia || '').toLowerCase().includes(q) ||
+        (t.endereco || '').toLowerCase().includes(q)
       );
     });
 
@@ -1422,14 +1471,26 @@ export default function GrafanaPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className={`w-3 h-3 rounded-full shrink-0 ${stStyle.dot}`} />
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
                             {t.cf}
                           </span>
-                          <span className="text-sm font-bold text-white truncate">
-                            {t.ticket_number}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => copyQuickText(`num-${t.id}`, t.ticket_number)}
+                            title={`Copiar número ${t.ticket_type}: ${t.ticket_number}`}
+                            className="group/copy inline-flex items-center gap-1.5 text-sm font-bold text-white hover:text-sky-300 transition truncate select-text cursor-pointer"
+                          >
+                            <span className="truncate">{t.ticket_number}</span>
+                            {copiedId === `num-${t.id}` ? (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-400 shrink-0">
+                                <Check className="w-3 h-3" /> Copiado
+                              </span>
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-400 group-hover/copy:text-sky-300 shrink-0 transition" />
+                            )}
+                          </button>
                           {t.is_new && (
-                            <span className="px-1.5 py-0.5 rounded bg-[#e20613] text-white text-[9px] font-bold uppercase">
+                            <span className="px-1.5 py-0.5 rounded bg-[#e20613] text-white text-[9px] font-bold uppercase shrink-0">
                               Novo
                             </span>
                           )}
@@ -1448,8 +1509,30 @@ export default function GrafanaPage() {
 
                       {/* Designation & Metadata */}
                       <div>
-                        <div className="text-sm font-mono font-semibold text-slate-100 break-all">
-                          {t.designation || '-'}
+                        <div className="flex items-start justify-between gap-2 group/desig">
+                          <div className="text-sm font-mono font-semibold text-slate-100 break-all select-text">
+                            {t.designation || '-'}
+                          </div>
+                          {t.designation && t.designation !== '-' && (
+                            <button
+                              type="button"
+                              onClick={() => copyQuickText(`desig-${t.id}`, t.designation)}
+                              title="Copiar trecho / designação"
+                              className="shrink-0 mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.1] border border-white/10 text-[10px] font-semibold text-slate-300 hover:text-white transition cursor-pointer"
+                            >
+                              {copiedId === `desig-${t.id}` ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                  <span className="text-emerald-400">Copiado</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>Trecho</span>
+                                </>
+                              )}
+                            </button>
+                          )}
                         </div>
                         <div className="flex items-center justify-between text-xs text-slate-400 mt-1 gap-2">
                           <span>{t.abertura_raw || '-'}</span>
@@ -1537,11 +1620,11 @@ export default function GrafanaPage() {
                         )}
                       </div>
 
-                      {/* DIST (Distância) & REF (Referência) Boxes */}
+                      {/* DIST (Distância), REF (Referência) & Endereço da Falha Boxes */}
                       <div className="rounded-xl bg-white/[0.02] border border-white/10 p-2.5 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Histórico · Distância & Referência
+                            Histórico · Distância, Referência & Endereço
                           </span>
                           {savedDistRefId === t.id ? (
                             <span className="text-[10px] font-semibold text-emerald-400 inline-flex items-center gap-1">
@@ -1552,14 +1635,15 @@ export default function GrafanaPage() {
                             const dirty =
                               d &&
                               (d.distancia.trim() !== (t.distancia || '') ||
-                                d.referencia.trim() !== (t.referencia || ''));
+                                d.referencia.trim() !== (t.referencia || '') ||
+                                d.endereco.trim() !== (t.endereco || ''));
                             return dirty ? (
                               <button
                                 type="button"
                                 onClick={() => handleSaveDistRef(t)}
                                 className="px-2 py-0.5 rounded bg-[#3b82f6] hover:bg-blue-500 text-white text-[10px] font-bold transition"
                               >
-                                Salvar DIST/REF
+                                Salvar
                               </button>
                             ) : null;
                           })()}
@@ -1586,6 +1670,10 @@ export default function GrafanaPage() {
                                       prev[t.id] !== undefined
                                         ? prev[t.id].referencia
                                         : t.referencia || '',
+                                    endereco:
+                                      prev[t.id] !== undefined
+                                        ? prev[t.id].endereco
+                                        : t.endereco || '',
                                   },
                                 }));
                               }}
@@ -1621,6 +1709,10 @@ export default function GrafanaPage() {
                                         ? prev[t.id].distancia
                                         : t.distancia || '',
                                     referencia: val,
+                                    endereco:
+                                      prev[t.id] !== undefined
+                                        ? prev[t.id].endereco
+                                        : t.endereco || '',
                                   },
                                 }));
                               }}
@@ -1635,6 +1727,47 @@ export default function GrafanaPage() {
                               className="w-full px-2.5 py-1.5 rounded-lg bg-[#090C13] border border-white/10 focus:border-sky-400/60 text-xs text-white placeholder-slate-500 focus:outline-none"
                             />
                           </div>
+                        </div>
+
+                        {/* Endereço da Falha (abaixo da Distância) */}
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-300/90 mb-1">
+                            Endereço da Falha
+                          </label>
+                          <input
+                            type="text"
+                            value={
+                              distRefDrafts[t.id] !== undefined
+                                ? distRefDrafts[t.id].endereco
+                                : t.endereco || ''
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDistRefDrafts((prev) => ({
+                                ...prev,
+                                [t.id]: {
+                                  distancia:
+                                    prev[t.id] !== undefined
+                                      ? prev[t.id].distancia
+                                      : t.distancia || '',
+                                  referencia:
+                                    prev[t.id] !== undefined
+                                      ? prev[t.id].referencia
+                                      : t.referencia || '',
+                                  endereco: val,
+                                },
+                              }));
+                            }}
+                            onBlur={() => handleSaveDistRef(t)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveDistRef(t);
+                              }
+                            }}
+                            placeholder="Inserir endereço completo da falha (Rua, Nº, Bairro)..."
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-[#090C13] border border-white/10 focus:border-emerald-400/60 text-xs text-white placeholder-slate-500 focus:outline-none"
+                          />
                         </div>
                       </div>
 
@@ -2260,13 +2393,41 @@ export default function GrafanaPage() {
                           <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-[10px] font-bold text-indigo-300">
                             {item.cf}
                           </span>
-                          <span className="text-xs font-bold text-white">{item.ticket_number}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyQuickText(`clr-num-${item.id}`, item.ticket_number)}
+                            title={`Copiar número ${item.ticket_type}: ${item.ticket_number}`}
+                            className="inline-flex items-center gap-1 text-xs font-bold text-white hover:text-sky-300 transition select-text cursor-pointer"
+                          >
+                            <span>{item.ticket_number}</span>
+                            {copiedId === `clr-num-${item.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-400" />
+                            )}
+                          </button>
                           <span className="text-[11px] text-slate-400">
                             {item.cliente || item.tipo_ral}
                           </span>
                         </div>
-                        <div className="text-xs font-mono text-slate-300 truncate mt-1">
-                          {item.designation}
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="text-xs font-mono text-slate-300 truncate select-text">
+                            {item.designation}
+                          </div>
+                          {item.designation && item.designation !== '-' && (
+                            <button
+                              type="button"
+                              onClick={() => copyQuickText(`clr-desig-${item.id}`, item.designation)}
+                              title="Copiar trecho"
+                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/[0.04] hover:bg-white/10 border border-white/10 text-[10px] text-slate-300 hover:text-white transition cursor-pointer"
+                            >
+                              {copiedId === `clr-desig-${item.id}` ? (
+                                <Check className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
                         </div>
                         {item.responsible_name && (
                           <div className="text-[11px] text-slate-400 mt-0.5">
@@ -2284,52 +2445,97 @@ export default function GrafanaPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-white/5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 shrink-0 w-12">
-                          DIST:
-                        </span>
-                        <input
-                          type="text"
-                          value={
-                            clearedDistRefDrafts[item.id] !== undefined
-                              ? clearedDistRefDrafts[item.id].distancia
-                              : item.distancia || ''
-                          }
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setClearedDistRefDrafts((prev) => ({
-                              ...prev,
-                              [item.id]: {
-                                distancia: val,
-                                referencia:
-                                  prev[item.id] !== undefined
-                                    ? prev[item.id].referencia
-                                    : item.referencia || '',
-                              },
-                            }));
-                          }}
-                          onBlur={() => handleSaveClearedDistRef(item)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleSaveClearedDistRef(item);
+                    <div className="space-y-2 pt-2 border-t border-white/5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 shrink-0 w-14">
+                            DIST:
+                          </span>
+                          <input
+                            type="text"
+                            value={
+                              clearedDistRefDrafts[item.id] !== undefined
+                                ? clearedDistRefDrafts[item.id].distancia
+                                : item.distancia || ''
                             }
-                          }}
-                          placeholder="Distância (ex: 1.450m)"
-                          className="flex-1 px-2.5 py-1 rounded-lg bg-[#0d111a] border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-amber-400/60"
-                        />
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setClearedDistRefDrafts((prev) => ({
+                                ...prev,
+                                [item.id]: {
+                                  distancia: val,
+                                  referencia:
+                                    prev[item.id] !== undefined
+                                      ? prev[item.id].referencia
+                                      : item.referencia || '',
+                                  endereco:
+                                    prev[item.id] !== undefined
+                                      ? prev[item.id].endereco
+                                      : item.endereco || '',
+                                },
+                              }));
+                            }}
+                            onBlur={() => handleSaveClearedDistRef(item)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveClearedDistRef(item);
+                              }
+                            }}
+                            placeholder="Distância (ex: 1.450m)"
+                            className="flex-1 px-2.5 py-1 rounded-lg bg-[#0d111a] border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-amber-400/60"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300 shrink-0 w-14">
+                            REF:
+                          </span>
+                          <input
+                            type="text"
+                            value={
+                              clearedDistRefDrafts[item.id] !== undefined
+                                ? clearedDistRefDrafts[item.id].referencia
+                                : item.referencia || ''
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setClearedDistRefDrafts((prev) => ({
+                                ...prev,
+                                [item.id]: {
+                                  distancia:
+                                    prev[item.id] !== undefined
+                                      ? prev[item.id].distancia
+                                      : item.distancia || '',
+                                  referencia: val,
+                                  endereco:
+                                    prev[item.id] !== undefined
+                                      ? prev[item.id].endereco
+                                      : item.endereco || '',
+                                },
+                              }));
+                            }}
+                            onBlur={() => handleSaveClearedDistRef(item)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveClearedDistRef(item);
+                              }
+                            }}
+                            placeholder="Referência (ex: CEO-12)"
+                            className="flex-1 px-2.5 py-1 rounded-lg bg-[#0d111a] border border-white/10 text-xs text-white focus:outline-none focus:border-sky-400/60"
+                          />
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300 shrink-0 w-12">
-                          REF:
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 shrink-0 w-14">
+                          END.:
                         </span>
                         <input
                           type="text"
                           value={
                             clearedDistRefDrafts[item.id] !== undefined
-                              ? clearedDistRefDrafts[item.id].referencia
-                              : item.referencia || ''
+                              ? clearedDistRefDrafts[item.id].endereco
+                              : item.endereco || ''
                           }
                           onChange={(e) => {
                             const val = e.target.value;
@@ -2340,7 +2546,11 @@ export default function GrafanaPage() {
                                   prev[item.id] !== undefined
                                     ? prev[item.id].distancia
                                     : item.distancia || '',
-                                referencia: val,
+                                referencia:
+                                  prev[item.id] !== undefined
+                                    ? prev[item.id].referencia
+                                    : item.referencia || '',
+                                endereco: val,
                               },
                             }));
                           }}
@@ -2351,8 +2561,8 @@ export default function GrafanaPage() {
                               handleSaveClearedDistRef(item);
                             }
                           }}
-                          placeholder="Referência (ex: CEO-12)"
-                          className="flex-1 px-2.5 py-1 rounded-lg bg-[#0d111a] border border-white/10 text-xs text-white focus:outline-none focus:border-sky-400/60"
+                          placeholder="Endereço da falha (Rua, Nº, Bairro)..."
+                          className="flex-1 px-2.5 py-1 rounded-lg bg-[#0d111a] border border-white/10 text-xs text-white focus:outline-none focus:border-emerald-400/60"
                         />
                         {savedClearedDistRefId === item.id && (
                           <span className="text-[10px] font-semibold text-emerald-400 shrink-0">
