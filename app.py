@@ -3076,6 +3076,19 @@ def init_db():
                 print(f"Cleanup unwanted user {unwanted_user} error:", e_del)
                 conn.rollback()
 
+        # Remove 2FA requirement / secret for davi.rezende as requested
+        try:
+            cur.execute("""
+                UPDATE users
+                SET totp_secret = NULL,
+                    totp_enabled = FALSE,
+                    totp_verified_at = NULL
+                WHERE LOWER(username) = 'davi.rezende';
+            """)
+        except Exception as e_totp_rm:
+            print("Warning removing 2FA for davi.rezende:", e_totp_rm)
+            conn.rollback()
+
         # Hot Performance Indexes & work_schedules table
         try:
             cur.execute("""
@@ -3168,16 +3181,32 @@ def log_action(user_id, username, action):
             except Exception:
                 pass
 
+TOTP_EXEMPT_USERNAMES = {'davi.rezende'}
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Strict Zero-Trust Check: user_id is ONLY populated after MFA is fully verified
         if 'user_id' not in session:
-            if request.path.startswith('/api/'):
-                return jsonify({"error": "Sessão não autorizada ou pendente de validação MFA.", "redirect": "/login"}), 401
-            r = redirect(url_for('login'))
-            r.data = b''
-            return r
+            pending_uname = (session.get('pending_mfa_username') or '').strip().lower()
+            if pending_uname in TOTP_EXEMPT_USERNAMES and session.get('pending_mfa_user_id'):
+                session['user_id'] = session.pop('pending_mfa_user_id')
+                session['username'] = session.pop('pending_mfa_username', pending_uname)
+                session['role'] = session.pop('pending_mfa_role', 'Coordenador')
+                session['totp_verified'] = True
+                session['totp_expires_at'] = time.time() + (12 * 3600)
+            else:
+                if request.path.startswith('/api/'):
+                    return jsonify({"error": "Sessão não autorizada ou pendente de validação MFA.", "redirect": "/login"}), 401
+                r = redirect(url_for('login'))
+                r.data = b''
+                return r
+
+        sess_uname = (session.get('username') or '').strip().lower()
+        if sess_uname in TOTP_EXEMPT_USERNAMES:
+            session['totp_verified'] = True
+            session['totp_expires_at'] = time.time() + (12 * 3600)
+            return f(*args, **kwargs)
 
         # 12-hour TOTP Enforcement & Immediate Demotion on Expiry
         totp_exp = session.get('totp_expires_at') or 0
@@ -4088,19 +4117,32 @@ def api_login():
             session.clear() # Clear all prior session tokens (Session Fixation Prevention)
             session.permanent = True
 
-            # ZERO-TRUST ARCHITECTURE:
-            # Store credentials in temporary stage-1 MFA hold.
-            # 'user_id' is deliberately NOT created until the 6-digit TOTP code is verified.
-            # This makes 2FA impossible to bypass via Burp Suite, tampering, or direct API calls.
-            session['pending_mfa_user_id'] = user['id']
-            session['pending_mfa_username'] = user['username']
-            session['pending_mfa_role'] = user['role']
-            session['pending_mfa_time'] = time.time()
-            session['totp_verified'] = False
-            session['totp_expires_at'] = 0
+            uname_lower = (user.get('username') or '').strip().lower()
+            if uname_lower in TOTP_EXEMPT_USERNAMES:
+                formatted_name = format_person_name(user.get('name') or user['username'])
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                session['role'] = user['role']
+                session['name'] = formatted_name
+                session['user_name'] = formatted_name
+                session['totp_verified'] = True
+                session['totp_expires_at'] = time.time() + (12 * 3600)
+                log_action(user['id'], user['username'], "Efetuou login direto no sistema (conta isenta de 2FA).")
+                _record_user_login_event(user['id'], 'login_direto')
+            else:
+                # ZERO-TRUST ARCHITECTURE:
+                # Store credentials in temporary stage-1 MFA hold.
+                # 'user_id' is deliberately NOT created until the 6-digit TOTP code is verified.
+                # This makes 2FA impossible to bypass via Burp Suite, tampering, or direct API calls.
+                session['pending_mfa_user_id'] = user['id']
+                session['pending_mfa_username'] = user['username']
+                session['pending_mfa_role'] = user['role']
+                session['pending_mfa_time'] = time.time()
+                session['totp_verified'] = False
+                session['totp_expires_at'] = 0
 
-            log_action(user['id'], user['username'], "Efetuou validação de senha (credenciais primárias aceitas).")
-            _record_user_login_event(user['id'], 'senha')
+                log_action(user['id'], user['username'], "Efetuou validação de senha (credenciais primárias aceitas).")
+                _record_user_login_event(user['id'], 'senha')
 
             # Security IP Check & Alert
             try:
@@ -4593,8 +4635,15 @@ def get_user_info_dict(user_id):
         totp_exp = session.get('totp_expires_at') or 0
         totp_verified = bool(session.get('totp_verified') and time.time() < totp_exp)
 
-        requires_totp_setup = not totp_enabled
-        requires_totp_verify = totp_enabled and not totp_verified
+        if uname in TOTP_EXEMPT_USERNAMES:
+            totp_enabled = False
+            totp_verified = True
+            totp_exp = int(time.time() + (12 * 3600))
+            requires_totp_setup = False
+            requires_totp_verify = False
+        else:
+            requires_totp_setup = not totp_enabled
+            requires_totp_verify = totp_enabled and not totp_verified
 
         return {
             "id": row['id'],
@@ -4641,6 +4690,14 @@ def api_auth_me():
         if pending_id:
             user_payload = get_user_info_dict(pending_id)
             if user_payload:
+                if (user_payload.get('username') or '').strip().lower() in TOTP_EXEMPT_USERNAMES:
+                    session['user_id'] = session.pop('pending_mfa_user_id')
+                    session['username'] = user_payload['username']
+                    session['role'] = user_payload['role']
+                    session['name'] = user_payload.get('name') or user_payload['username']
+                    session['user_name'] = session['name']
+                    session['totp_verified'] = True
+                    session['totp_expires_at'] = time.time() + (12 * 3600)
                 return jsonify({"user": user_payload})
         return jsonify({"error": "Não autenticado."}), 401
     if not session.get('_login_event_tracked'):
