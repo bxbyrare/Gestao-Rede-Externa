@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Star, Briefcase, Users, Truck, Search, MapPinned, Wallet, CalendarDays,
   ClipboardCheck, FolderKanban, FileText, Route as RouteIcon, BarChart3,
   Settings, Menu, X, LogOut, BellRing, ShieldCheck, CheckSquare,
   UserCheck, AlertTriangle, ArrowRight, CalendarCheck, Activity,
 } from 'lucide-react';
+import gsap from 'gsap';
 import { useAuth } from '../state/AuthContext';
 import GsapSecurityBackground from './GsapSecurityBackground';
 import GlassIcon from './GlassIcon';
@@ -59,20 +60,57 @@ const NAV_ITEMS = [
   { to: '/gerenciamento', label: 'Gerenciamento', icon: Settings },
 ];
 
+type ThemePref = 'dark' | 'dim' | 'light' | 'system';
+
+const THEME_LABELS: Record<ThemePref, string> = {
+  dark: 'Obsidian',
+  dim: 'Grafite',
+  light: 'Claro Suave',
+  system: 'Auto',
+};
+
+export function resolveVisualTheme(pref: ThemePref): 'dark' | 'dim' | 'light' {
+  if (pref === 'system') {
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light';
+    }
+    return 'dark';
+  }
+  return pref;
+}
+
+export function applyDocumentTheme(pref: ThemePref) {
+  const resolved = resolveVisualTheme(pref);
+  document.documentElement.dataset.theme = resolved;
+  const metaScheme = document.querySelector('meta[name="color-scheme"]');
+  if (metaScheme) {
+    metaScheme.setAttribute('content', resolved === 'light' ? 'light' : 'dark');
+  }
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) {
+    const color = resolved === 'light' ? '#e3e6eb' : resolved === 'dim' ? '#131519' : '#030305';
+    metaThemeColor.setAttribute('content', color);
+  }
+}
+
 export default function DashboardLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dismissBanner, setDismissBanner] = useState(false);
 
-  const userTheme = useAuth().user?.theme_preference || (user?.id ? (localStorage.getItem(`claro_theme_user_${user.id}`) as 'dark' | 'light' | null) : null) || 'dark';
-  const isLightTheme = userTheme === 'light';
+  const navRef = useRef<HTMLElement | null>(null);
+  const indicatorRef = useRef<HTMLDivElement | null>(null);
+  const pageStageRef = useRef<HTMLDivElement | null>(null);
+
+  const storedTheme = user?.id ? (localStorage.getItem(`claro_theme_user_${user.id}`) as ThemePref | null) : null;
+  const rawTheme = user?.theme_preference || storedTheme || 'dark';
+  const userTheme: ThemePref =
+    rawTheme === 'light' || rawTheme === 'dim' || rawTheme === 'system' ? rawTheme : 'dark';
 
   useEffect(() => {
-    const resolvedTheme = isLightTheme ? 'light' : 'dark';
-    document.documentElement.dataset.theme = resolvedTheme;
-    const metaScheme = document.querySelector('meta[name="color-scheme"]');
-    if (metaScheme) metaScheme.setAttribute('content', resolvedTheme);
+    applyDocumentTheme(userTheme);
     if (user?.id && user?.theme_preference) {
       try {
         localStorage.setItem(`claro_theme_user_${user.id}`, user.theme_preference);
@@ -80,12 +118,22 @@ export default function DashboardLayout() {
         // ignore storage errors
       }
     }
+
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onSystemChange = () => {
+      if (userTheme === 'system') {
+        applyDocumentTheme('system');
+      }
+    };
+    mq.addEventListener('change', onSystemChange);
+
     return () => {
+      mq.removeEventListener('change', onSystemChange);
       document.documentElement.dataset.theme = 'dark';
       const m = document.querySelector('meta[name="color-scheme"]');
       if (m) m.setAttribute('content', 'dark');
     };
-  }, [isLightTheme, user?.id, user?.theme_preference]);
+  }, [userTheme, user?.id, user?.theme_preference]);
 
   useEffect(() => {
     if (mobileNavOpen) {
@@ -98,7 +146,57 @@ export default function DashboardLayout() {
     };
   }, [mobileNavOpen]);
 
-  const items = NAV_ITEMS;
+  // GSAP Sliding Active Sidebar Indicator
+  useEffect(() => {
+    const navEl = navRef.current;
+    const indEl = indicatorRef.current;
+    if (!navEl || !indEl) return;
+
+    const activeLink = navEl.querySelector('a[data-active="true"]') as HTMLElement | null;
+    if (!activeLink) {
+      gsap.to(indEl, { opacity: 0, duration: 0.2 });
+      return;
+    }
+
+    const targetY = activeLink.offsetTop;
+    const targetH = activeLink.offsetHeight;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      gsap.set(indEl, { y: targetY, height: targetH, opacity: 1 });
+    } else {
+      gsap.to(indEl, {
+        y: targetY,
+        height: targetH,
+        opacity: 1,
+        duration: 0.45,
+        ease: 'power3.out',
+        overwrite: 'auto',
+      });
+    }
+  }, [location.pathname]);
+
+  // GSAP Route Transition Reveal
+  useEffect(() => {
+    const stage = pageStageRef.current;
+    if (!stage) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        stage,
+        { opacity: 0, y: 10 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.42,
+          ease: 'power3.out',
+          clearProps: 'transform,opacity',
+        },
+      );
+    }, stage);
+
+    return () => ctx.revert();
+  }, [location.pathname]);
 
   async function handleLogout() {
     await logout();
@@ -120,8 +218,8 @@ export default function DashboardLayout() {
 
   return (
     <div className="dashboard-theme-scope anti-print-protected min-h-dvh flex relative bg-[#030305] text-white overflow-x-clip">
-      {/* Precision Lagos Digital Architecture Blueprint Background */}
-      {!isLightTheme && <GsapSecurityBackground />}
+      {/* Precision Lagos Digital Architecture Blueprint Background (adapts to dark, dim & light) */}
+      <GsapSecurityBackground />
       <AntiPrintGuard />
 
       {/* Mandatory Blocking Modal if user has no email registered */}
@@ -143,12 +241,18 @@ export default function DashboardLayout() {
       >
         <div className="flex items-center justify-between px-5 h-20 border-b border-white/[0.06]">
           <div className="flex items-center gap-3 min-w-0">
-            <img src="/claro-icon.png" alt="Claro" className="w-9 h-9 object-contain shrink-0 drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)]" />
+            <img
+              src="/claro-icon.png"
+              alt="Claro"
+              className="w-9 h-9 object-contain shrink-0 drop-shadow-[0_2px_12px_rgba(238,44,36,0.45)]"
+            />
             <div className="min-w-0">
-              <div className="font-extrabold text-sm truncate text-white">
-                Gestão <span className="bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent font-extrabold">REDE EXTERNA</span>
+              <div className="font-extrabold text-sm tracking-[-0.02em] truncate text-white">
+                Gestão <span className="ds-brand-gradient font-extrabold">REDE EXTERNA</span>
               </div>
-              <div className="text-[10px] text-neutral-500 font-mono tracking-wider uppercase">Claro Brasil</div>
+              <div className="text-[10px] text-neutral-500 font-mono tracking-[0.14em] uppercase">
+                Claro Brasil
+              </div>
             </div>
           </div>
           <button
@@ -160,8 +264,15 @@ export default function DashboardLayout() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1" aria-label="Navegação principal">
-          {items.map((item) => {
+        <nav
+          ref={navRef}
+          className="relative flex-1 overflow-y-auto px-3 py-4 space-y-1"
+          aria-label="Navegação principal"
+        >
+          {/* GSAP Animated Active Sliding Pill */}
+          <div ref={indicatorRef} className="ds-nav-indicator mx-3" aria-hidden="true" />
+
+          {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isInDev = !!item.inDev;
             const isProfileItem = item.to === '/perfil';
@@ -175,21 +286,24 @@ export default function DashboardLayout() {
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) => {
                   if (isInDev) {
-                    return `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                    return `relative z-10 group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                       isActive
-                        ? 'bg-sky-500/20 text-sky-300 shadow-[0_0_20px_rgba(14,165,233,0.3)] border border-sky-400/40'
+                        ? 'bg-sky-500/20 text-sky-300 shadow-[0_0_20px_rgba(14,165,233,0.25)] border border-sky-400/40'
                         : 'text-sky-400 bg-sky-500/[0.06] hover:bg-sky-500/[0.14] hover:text-sky-200 border border-sky-500/20'
                     }`;
                   }
-                  return `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  return `relative z-10 group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors duration-200 ${
                     isActive
-                      ? 'bg-white/[0.08] text-white shadow-[0_0_20px_rgba(255,255,255,0.06)] border border-white/15'
+                      ? 'text-white'
                       : 'text-neutral-400 hover:bg-white/[0.04] hover:text-white border border-transparent'
                   }`;
                 }}
               >
                 {({ isActive }) => (
-                  <>
+                  <div
+                    data-active={isActive && !isInDev ? 'true' : 'false'}
+                    className="flex items-center gap-3 w-full min-w-0"
+                  >
                     <GlassIcon icon={Icon} active={isActive} size={16} />
                     <span className="truncate">{item.label}</span>
                     {isInDev && (
@@ -203,7 +317,7 @@ export default function DashboardLayout() {
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                       </span>
                     )}
-                  </>
+                  </div>
                 )}
               </NavLink>
             );
@@ -216,11 +330,13 @@ export default function DashboardLayout() {
             to="/perfil"
             onClick={() => setMobileNavOpen(false)}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] transition-all group border border-white/[0.06] hover:border-white/15"
-            title="Acessar Meu Perfil"
+            title="Acessar Meu Perfil & Aparência"
           >
             {companyLogoUrl(user?.company) ? (
               companyLogoNeedsWhiteBg(user?.company) ? (
-                <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1 shrink-0"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
+                <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1 shrink-0">
+                  <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" />
+                </div>
               ) : (
                 <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover shrink-0" />
               )
@@ -233,10 +349,12 @@ export default function DashboardLayout() {
               <div className="text-sm font-semibold truncate text-white group-hover:text-white transition-colors">
                 {formatPersonName(user?.name || user?.username) || 'Usuário'}
               </div>
-              <div className="text-[11px] text-neutral-400 font-mono uppercase tracking-wide flex items-center gap-1.5">
-                <span>{user?.role}</span>
+              <div className="text-[10px] text-neutral-400 font-mono uppercase tracking-wide flex items-center gap-1.5">
+                <span className="truncate">{user?.role}</span>
+                <span className="text-neutral-600">•</span>
+                <span className="text-neutral-400">{THEME_LABELS[userTheme]}</span>
                 {user?.profile_complete === false && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Perfil com dados pendentes" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Perfil com dados pendentes" />
                 )}
               </div>
             </div>
@@ -257,11 +375,13 @@ export default function DashboardLayout() {
             <Menu className="w-6 h-6" />
           </button>
           <div className="font-extrabold text-sm text-white">
-            Gestão <span className="bg-gradient-to-r from-[#FF382E] via-[#EE2C24] to-[#C72322] bg-clip-text text-transparent font-extrabold">REDE EXTERNA</span>
+            Gestão <span className="ds-brand-gradient font-extrabold">REDE EXTERNA</span>
           </div>
           {companyLogoUrl(user?.company) ? (
             companyLogoNeedsWhiteBg(user?.company) ? (
-              <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1"><img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" /></div>
+              <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1">
+                <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-full h-full object-contain" />
+              </div>
             ) : (
               <img src={companyLogoUrl(user?.company)!} alt={user?.company || ''} className="w-9 h-9 rounded-full object-cover" />
             )
@@ -275,7 +395,7 @@ export default function DashboardLayout() {
         <main className="flex-1 min-w-0 w-full max-w-[1920px] mx-auto p-3 sm:p-5 lg:p-7 xl:p-8">
           {/* Missing Profile Notification Banner */}
           {hasMissingProfile && (
-            <div className="mb-6 p-4 rounded-2xl bg-[#090C13]/90 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm animate-fade-in shadow-xl backdrop-blur-xl">
+            <div className="mb-6 p-4 rounded-2xl bg-[#090C13]/90 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm animate-in shadow-xl backdrop-blur-xl">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
                   <AlertTriangle className="w-4 h-4" />
@@ -307,7 +427,9 @@ export default function DashboardLayout() {
             </div>
           )}
 
-          <Outlet />
+          <div ref={pageStageRef}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

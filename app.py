@@ -4620,7 +4620,7 @@ def get_user_info_dict(user_id):
             "totp_expires_at": totp_exp,
             "requires_totp_setup": requires_totp_setup,
             "requires_totp_verify": requires_totp_verify,
-            "theme_preference": "light" if (row.get('theme_preference') or '').strip().lower() == 'light' else "dark"
+            "theme_preference": (row.get('theme_preference') or '').strip().lower() if (row.get('theme_preference') or '').strip().lower() in ('dark', 'dim', 'light', 'system') else "dark"
         }
     except Exception as e:
         print("get_user_info_dict error:", e)
@@ -4673,7 +4673,7 @@ def api_update_my_profile():
     current_password = data.get('current_password') or ''
     new_password = data.get('new_password') or ''
     raw_theme = (data.get('theme_preference') or '').strip().lower()
-    theme_pref = 'light' if raw_theme == 'light' else ('dark' if raw_theme == 'dark' else None)
+    theme_pref = raw_theme if raw_theme in ('dark', 'dim', 'light', 'system') else None
 
     if email:
         if '@' not in email or '.' not in email or len(email) < 5:

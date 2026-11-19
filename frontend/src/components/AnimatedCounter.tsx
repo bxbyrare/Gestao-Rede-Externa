@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import gsap from 'gsap';
 
 interface AnimatedCounterProps {
   value: number;
@@ -10,40 +11,40 @@ interface AnimatedCounterProps {
 
 export default function AnimatedCounter({
   value,
-  duration = 1000,
+  duration = 900,
   className = '',
   prefix = '',
   suffix = '',
 }: AnimatedCounterProps) {
   const [count, setCount] = useState(0);
+  const proxyRef = useRef({ val: 0 });
 
   useEffect(() => {
-    let startTime: number | null = null;
-    let frameId: number;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setCount(value);
+      proxyRef.current.val = value;
+      return;
+    }
 
-    const animate = (currentTime: number) => {
-      if (!startTime) startTime = currentTime;
-      const progress = Math.min((currentTime - startTime) / duration, 1);
-      
-      // Easing out quadratic
-      const easeOut = 1 - (1 - progress) * (1 - progress);
-      setCount(Math.floor(easeOut * value));
+    const tween = gsap.to(proxyRef.current, {
+      val: value,
+      duration: Math.max(0.35, duration / 1000),
+      ease: 'power3.out',
+      onUpdate: () => {
+        setCount(Math.round(proxyRef.current.val));
+      },
+    });
 
-      if (progress < 1) {
-        frameId = requestAnimationFrame(animate);
-      } else {
-        setCount(value);
-      }
+    return () => {
+      tween.kill();
     };
-
-    frameId = requestAnimationFrame(animate);
-
-    return () => cancelAnimationFrame(frameId);
   }, [value, duration]);
 
   return (
-    <span className={className}>
-      {prefix}{count.toLocaleString('pt-BR')}{suffix}
+    <span className={`mono tabular-nums ${className}`}>
+      {prefix}
+      {count.toLocaleString('pt-BR')}
+      {suffix}
     </span>
   );
 }
