@@ -37,7 +37,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await login(username, password);
-      navigate('/');
+      navigate('/grafana', { replace: true });
     } catch (err) {
       triggerErrorShake();
       setError(err instanceof ApiError ? err.message : 'Usuário ou senha incorretos.');
