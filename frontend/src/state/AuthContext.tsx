@@ -262,6 +262,7 @@ export function isCoordenadorClaro(user: User | null): boolean {
 export function hasPermission(user: User | null, perm: string): boolean {
   if (!user) return false;
   if (isMasterCoordenador(user)) return true;
+  if (perm.startsWith('grafana.')) return true;
   if (Array.isArray(user.permissions)) {
     if (!isCoordenador(user) && perm.startsWith('gerenciamento.')) {
       return false;

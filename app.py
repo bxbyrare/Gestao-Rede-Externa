@@ -3344,26 +3344,34 @@ def is_coordenador_role(username, role):
     r = (role or '').strip().lower()
     return r in ['coordenador', 'administrador', 'admin']
 
+DEFAULT_AUTHENTICATED_PERMISSIONS = ('grafana.create', 'grafana.edit', 'grafana.delete')
+
 def resolve_user_permissions(username, role, raw_permissions):
     uname = (username or '').strip().lower()
     if uname == MASTER_COORDINATOR_USERNAME:
         return list(ALL_PERMISSIONS)
     is_coord = is_coordenador_role(username, role)
     if raw_permissions is None:
-        return list(ALL_PERMISSIONS) if is_coord else []
-    parsed = raw_permissions
-    if isinstance(parsed, str):
-        try:
-            parsed = json.loads(parsed)
-        except Exception:
-            parsed = []
-    if not isinstance(parsed, list):
-        return list(ALL_PERMISSIONS) if is_coord else []
-    valid_set = set(ALL_PERMISSIONS)
-    if is_coord:
-        return [p for p in parsed if isinstance(p, str) and p in valid_set]
+        base_perms = list(ALL_PERMISSIONS) if is_coord else []
     else:
-        return [p for p in parsed if isinstance(p, str) and p in valid_set and not p.startswith('gerenciamento.')]
+        parsed = raw_permissions
+        if isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except Exception:
+                parsed = []
+        if not isinstance(parsed, list):
+            base_perms = list(ALL_PERMISSIONS) if is_coord else []
+        else:
+            valid_set = set(ALL_PERMISSIONS)
+            if is_coord:
+                base_perms = [p for p in parsed if isinstance(p, str) and p in valid_set]
+            else:
+                base_perms = [p for p in parsed if isinstance(p, str) and p in valid_set and not p.startswith('gerenciamento.')]
+    for gp in DEFAULT_AUTHENTICATED_PERMISSIONS:
+        if gp not in base_perms:
+            base_perms.append(gp)
+    return base_perms
 
 def get_current_user_auth():
     if 'user_id' not in session:
@@ -3403,8 +3411,8 @@ def user_has_permission(perm_key):
         return False
     if auth['is_master']:
         return True
-    # Operações de campo: criação de vistoria pós-evento e RAL de qualidade liberadas para operadores autenticados
-    if perm_key in ('pos_eventos.create', 'ral_qualidade.create'):
+    # Operações de campo: pós-evento, RAL de qualidade e edição do Grafana liberadas para todos os usuários autenticados do portal
+    if perm_key in ('pos_eventos.create', 'ral_qualidade.create', 'grafana.create', 'grafana.edit', 'grafana.delete'):
         return True
     return perm_key in auth['permissions']
 
