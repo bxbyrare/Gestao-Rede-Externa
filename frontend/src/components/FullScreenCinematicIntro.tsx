@@ -19,6 +19,7 @@ export default function FullScreenCinematicIntro({
   const completedRef = useRef(alreadySeen);
   const playTimerRef = useRef<number | null>(null);
   const stallTimerRef = useRef<number | null>(null);
+  const dissolveTimerRef = useRef<number | null>(null);
 
   function clearTimers() {
     if (playTimerRef.current !== null) {
@@ -28,6 +29,10 @@ export default function FullScreenCinematicIntro({
     if (stallTimerRef.current !== null) {
       window.clearTimeout(stallTimerRef.current);
       stallTimerRef.current = null;
+    }
+    if (dissolveTimerRef.current !== null) {
+      window.clearTimeout(dissolveTimerRef.current);
+      dissolveTimerRef.current = null;
     }
   }
 
@@ -41,7 +46,8 @@ export default function FullScreenCinematicIntro({
       // ignore
     }
     setPhase('dissolve');
-    setTimeout(() => {
+    dissolveTimerRef.current = window.setTimeout(() => {
+      dissolveTimerRef.current = null;
       setPhase('hidden');
       if (onComplete) onComplete();
     }, 450);

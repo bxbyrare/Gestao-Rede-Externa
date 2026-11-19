@@ -949,6 +949,29 @@ export default function VehiclesPage() {
     }
   }
 
+  function escapeHtml(val: unknown): string {
+    return String(val ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function safeMediaUrl(url?: string | null): string {
+    const trimmed = (url ?? '').trim();
+    if (!trimmed) return '';
+    if (
+      trimmed.startsWith('/uploads/') ||
+      trimmed.startsWith('https://') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('data:image/')
+    ) {
+      return escapeHtml(trimmed);
+    }
+    return '';
+  }
+
   function printInspectionReceipt(insp: FleetInspection) {
     const win = window.open('', '_blank', 'width=920,height=800');
     if (!win) return;
@@ -961,17 +984,19 @@ export default function VehiclesPage() {
 
     const checklistHtml = CHECKLIST_ITEMS.map(
       (item) =>
-        `<tr><td style="padding:6px 10px;border:1px solid #cbd5e1;">${item.label}</td><td style="padding:6px 10px;border:1px solid #cbd5e1;font-weight:bold;">${
+        `<tr><td style="padding:6px 10px;border:1px solid #cbd5e1;">${escapeHtml(item.label)}</td><td style="padding:6px 10px;border:1px solid #cbd5e1;font-weight:bold;">${escapeHtml(
           insp.checklist_json?.[item.key] || 'Conforme'
-        }</td></tr>`
+        )}</td></tr>`
     ).join('');
+
+    const safeSignatureUrl = safeMediaUrl(insp.signature_data);
 
     win.document.write(`
       <!doctype html>
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8" />
-        <title>Comprovante de Vistoria Veicular #${insp.id} - ${insp.plate}</title>
+        <title>Comprovante de Vistoria Veicular #${escapeHtml(insp.id)} - ${escapeHtml(insp.plate)}</title>
         <style>
           body { font-family: Arial, sans-serif; color: #0f172a; padding: 24px; max-width: 860px; margin: 0 auto; }
           .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e20613; padding-bottom: 12px; margin-bottom: 16px; }
@@ -992,36 +1017,36 @@ export default function VehiclesPage() {
         <div class="header">
           <div>
             <h2 style="margin:0;">CLARO BRASIL · GESTÃO DE FROTA REDE EXTERNA</h2>
-            <p style="margin:4px 0 0;font-size:12px;color:#475569;">Comprovante Oficial de Vistoria & Repasse Veicular (#${insp.id})</p>
+            <p style="margin:4px 0 0;font-size:12px;color:#475569;">Comprovante Oficial de Vistoria & Repasse Veicular (#${escapeHtml(insp.id)})</p>
           </div>
           <div style="text-align:right;font-size:12px;">
-            <strong>Placa: ${insp.plate}</strong><br/>
-            Registrado em: ${insp.created_at_fmt}
+            <strong>Placa: ${escapeHtml(insp.plate)}</strong><br/>
+            Registrado em: ${escapeHtml(insp.created_at_fmt)}
           </div>
         </div>
-        <div class="badge">${statusLabel}</div>
+        <div class="badge">${escapeHtml(statusLabel)}</div>
         <div class="grid">
-          <div class="box"><strong>De (Entregando):</strong><br/>${insp.from_person_name}</div>
-          <div class="box"><strong>Para (Recebendo):</strong><br/>${insp.to_person_name}</div>
-          <div class="box"><strong>Quilometragem (KM):</strong> ${insp.km.toLocaleString('pt-BR')} km | <strong>Combustível:</strong> ${insp.fuel_level}</div>
-          <div class="box"><strong>Operação:</strong> ${insp.inspection_type.toUpperCase()} | <strong>Hash SHA-256:</strong> <span style="font-family:monospace;font-size:10px;">${(insp.photos_sha256 || '').slice(0, 20)}...</span></div>
+          <div class="box"><strong>De (Entregando):</strong><br/>${escapeHtml(insp.from_person_name)}</div>
+          <div class="box"><strong>Para (Recebendo):</strong><br/>${escapeHtml(insp.to_person_name)}</div>
+          <div class="box"><strong>Quilometragem (KM):</strong> ${escapeHtml(insp.km.toLocaleString('pt-BR'))} km | <strong>Combustível:</strong> ${escapeHtml(insp.fuel_level)}</div>
+          <div class="box"><strong>Operação:</strong> ${escapeHtml(insp.inspection_type.toUpperCase())} | <strong>Hash SHA-256:</strong> <span style="font-family:monospace;font-size:10px;">${escapeHtml((insp.photos_sha256 || '').slice(0, 20))}...</span></div>
         </div>
-        ${insp.damage_notes ? `<div class="box" style="margin-bottom:14px;border-color:#f87171;"><strong>Relato de Avaria:</strong> ${insp.damage_notes}</div>` : ''}
-        ${insp.review_notes ? `<div class="box" style="margin-bottom:14px;"><strong>Parecer do Supervisor:</strong> ${insp.review_notes}</div>` : ''}
+        ${insp.damage_notes ? `<div class="box" style="margin-bottom:14px;border-color:#f87171;"><strong>Relato de Avaria:</strong> ${escapeHtml(insp.damage_notes)}</div>` : ''}
+        ${insp.review_notes ? `<div class="box" style="margin-bottom:14px;"><strong>Parecer do Supervisor:</strong> ${escapeHtml(insp.review_notes)}</div>` : ''}
         <table>
           <thead><tr><th style="text-align:left;padding:6px 10px;border:1px solid #cbd5e1;background:#f1f5f9;">Item Verificado</th><th style="text-align:left;padding:6px 10px;border:1px solid #cbd5e1;background:#f1f5f9;">Estado</th></tr></thead>
           <tbody>${checklistHtml}</tbody>
         </table>
         <h3 style="font-size:14px;margin-bottom:6px;">Registro Fotográfico Obrigatório dos 4 Lados</h3>
         <div class="photos">
-          <div class="photo-card"><strong>1. Frente (Dianteira)</strong><br/><img src="${insp.photo_front || ''}" /></div>
-          <div class="photo-card"><strong>2. Traseira</strong><br/><img src="${insp.photo_back || ''}" /></div>
-          <div class="photo-card"><strong>3. Lateral Esquerda</strong><br/><img src="${insp.photo_left || ''}" /></div>
-          <div class="photo-card"><strong>4. Lateral Direita</strong><br/><img src="${insp.photo_right || ''}" /></div>
+          <div class="photo-card"><strong>1. Frente (Dianteira)</strong><br/><img src="${safeMediaUrl(insp.photo_front)}" /></div>
+          <div class="photo-card"><strong>2. Traseira</strong><br/><img src="${safeMediaUrl(insp.photo_back)}" /></div>
+          <div class="photo-card"><strong>3. Lateral Esquerda</strong><br/><img src="${safeMediaUrl(insp.photo_left)}" /></div>
+          <div class="photo-card"><strong>4. Lateral Direita</strong><br/><img src="${safeMediaUrl(insp.photo_right)}" /></div>
         </div>
         ${
-          insp.signature_data
-            ? `<div class="sig"><div>Assinatura Digital do Condutor (${insp.to_person_name})</div><img src="${insp.signature_data}" /></div>`
+          safeSignatureUrl
+            ? `<div class="sig"><div>Assinatura Digital do Condutor (${escapeHtml(insp.to_person_name)})</div><img src="${safeSignatureUrl}" /></div>`
             : ''
         }
         <script>window.onload = () => { window.print(); };</script>

@@ -127,7 +127,7 @@ export default function AccordionGallery({
               <a
                 href={item.url}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-white/25 transition-colors"
                 title="Abrir original"
@@ -203,7 +203,7 @@ export default function AccordionGallery({
                     <a
                       href={item.url}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-all shadow"
                       title="Abrir em nova guia"
@@ -283,7 +283,7 @@ export default function AccordionGallery({
               href={current.url}
               download
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white transition-colors"
               title="Baixar Foto"
             >

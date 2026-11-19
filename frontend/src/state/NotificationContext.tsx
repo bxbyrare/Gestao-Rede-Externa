@@ -29,14 +29,27 @@ interface NotificationContextValue {
 
 const NotificationContext = createContext<NotificationContextValue | undefined>(undefined);
 
+// Shared AudioContext instance to avoid leaking a new AudioContext on every alert
+let sharedAudioCtx: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+    sharedAudioCtx = new AudioContextClass();
+  }
+  return sharedAudioCtx;
+}
+
 // Web Audio API notification chime generator (Bip duplo agradável / social media style)
 function playNotificationChime() {
   try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
     if (ctx.state === 'suspended') {
-      ctx.resume();
+      ctx.resume().catch(() => {});
     }
 
     const now = ctx.currentTime;
@@ -82,7 +95,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const latestIdRef = useRef<number>(0);
   const isFirstFetchRef = useRef<boolean>(true);
   const soundEnabledRef = useRef<boolean>(soundEnabled);
-  soundEnabledRef.current = soundEnabled;
+
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
   const playBip = useCallback(() => {
     if (soundEnabledRef.current) {

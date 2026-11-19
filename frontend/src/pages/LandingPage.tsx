@@ -226,7 +226,7 @@ export default function LandingPage() {
   return (
     <div ref={rootRef} className="min-h-screen bg-[#030305] text-white selection:bg-[#EE2C24]/30 overflow-x-clip flex flex-col relative">
       {/* Preload Login Cinematic Intro in background while visitor browses Landing Page */}
-      <video src="/claro-orb-intro.mp4?v=20261117a" preload="auto" muted playsInline className="hidden" aria-hidden="true" />
+      <video src="/claro-orb-intro.mp4?v=20261117a" preload="none" muted playsInline className="hidden" aria-hidden="true" />
       {/* Studio Black Reactive GSAP Background */}
       <GsapSecurityBackground />
 

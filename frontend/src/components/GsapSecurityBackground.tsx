@@ -15,6 +15,9 @@ export default function GsapSecurityBackground() {
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let currentTheme = document.documentElement.dataset.theme || 'dark';
+
     const mouse = {
       x: width * 0.5,
       y: height * 0.5,
@@ -25,56 +28,36 @@ export default function GsapSecurityBackground() {
       velocity: 0,
     };
 
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      mouse.targetX = e.clientX;
-      mouse.targetY = e.clientY;
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches[0]) {
-        mouse.targetX = e.touches[0].clientX;
-        mouse.targetY = e.touches[0].clientY;
-      }
-    };
-
-    window.addEventListener('resize', handleResize, { passive: true });
-    window.addEventListener('mousemove', handleMouseMove, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: true });
-
     const centerRadii = [130, 240, 370, 520, 690, 880, 1100, 1360, 1680];
     const offsetRadii = [420, 640, 900, 1200, 1550];
 
     let rotAngle = 0;
 
     const render = () => {
-      rotAngle += 0.00035;
+      if (!prefersReducedMotion) {
+        rotAngle += 0.00035;
 
-      mouse.x += (mouse.targetX - mouse.x) * 0.04;
-      mouse.y += (mouse.targetY - mouse.y) * 0.04;
+        mouse.x += (mouse.targetX - mouse.x) * 0.04;
+        mouse.y += (mouse.targetY - mouse.y) * 0.04;
 
-      const dx = mouse.x - mouse.prevX;
-      const dy = mouse.y - mouse.prevY;
-      mouse.prevX = mouse.x;
-      mouse.prevY = mouse.y;
-      const instVel = Math.min(Math.hypot(dx, dy), 45);
-      mouse.velocity += (instVel - mouse.velocity) * 0.08;
-      const breathScale = 1 + mouse.velocity * 0.0008;
+        const dx = mouse.x - mouse.prevX;
+        const dy = mouse.y - mouse.prevY;
+        mouse.prevX = mouse.x;
+        mouse.prevY = mouse.y;
+        const instVel = Math.min(Math.hypot(dx, dy), 45);
+        mouse.velocity += (instVel - mouse.velocity) * 0.08;
+      }
 
-      const parallaxX = (mouse.x - width * 0.5) * 0.032;
-      const parallaxY = (mouse.y - height * 0.5) * 0.032;
+      const breathScale = prefersReducedMotion ? 1 : 1 + mouse.velocity * 0.0008;
+
+      const parallaxX = prefersReducedMotion ? 0 : (mouse.x - width * 0.5) * 0.032;
+      const parallaxY = prefersReducedMotion ? 0 : (mouse.y - height * 0.5) * 0.032;
 
       const cx = width * 0.5 + parallaxX;
       const cy = height * 0.5 + parallaxY;
 
-      const theme = document.documentElement.dataset.theme || 'dark';
-      const isLight = theme === 'light';
-      const isDim = theme === 'dim';
+      const isLight = currentTheme === 'light';
+      const isDim = currentTheme === 'dim';
 
       // 1. Base Canvas Surface (Obsidian #030305, Grafite #131519, or Pearl Slate #e3e6eb)
       const baseColor = isLight ? '#e3e6eb' : isDim ? '#131519' : '#030305';
@@ -171,13 +154,78 @@ export default function GsapSecurityBackground() {
       ctx.restore();
     };
 
-    gsap.ticker.add(render);
+    const handleResize = () => {
+      if (!canvas) return;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      if (prefersReducedMotion || document.hidden) {
+        render();
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      mouse.targetX = e.clientX;
+      mouse.targetY = e.clientY;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches[0]) {
+        mouse.targetX = e.touches[0].clientX;
+        mouse.targetY = e.touches[0].clientY;
+      }
+    };
+
+    const themeObserver = new MutationObserver(() => {
+      const nextTheme = document.documentElement.dataset.theme || 'dark';
+      if (nextTheme !== currentTheme) {
+        currentTheme = nextTheme;
+        if (prefersReducedMotion) {
+          render();
+        }
+      }
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+
+    window.addEventListener('resize', handleResize, { passive: true });
+
+    let tickerActive = false;
+    const syncTicker = () => {
+      if (prefersReducedMotion) return;
+      if (document.hidden) {
+        if (tickerActive) {
+          gsap.ticker.remove(render);
+          tickerActive = false;
+        }
+      } else if (!tickerActive) {
+        gsap.ticker.add(render);
+        tickerActive = true;
+      }
+    };
+
+    if (prefersReducedMotion) {
+      render();
+    } else {
+      window.addEventListener('mousemove', handleMouseMove, { passive: true });
+      window.addEventListener('touchmove', handleTouchMove, { passive: true });
+      document.addEventListener('visibilitychange', syncTicker);
+      syncTicker();
+    }
 
     return () => {
-      gsap.ticker.remove(render);
+      if (tickerActive) {
+        gsap.ticker.remove(render);
+        tickerActive = false;
+      }
+      themeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('touchmove', handleTouchMove);
+      if (!prefersReducedMotion) {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('visibilitychange', syncTicker);
+      }
     };
   }, []);
 

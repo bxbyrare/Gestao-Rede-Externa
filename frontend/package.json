@@ -6,17 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint src",
     "preview": "vite preview"
   },
   "dependencies": {
-    "chart.js": "^4.5.1",
     "gsap": "^3.15.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.34.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
-    "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.8",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.18.2"
@@ -28,9 +26,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
-    "autoprefixer": "^10.5.4",
     "oxlint": "^1.79.0",
-    "postcss": "^8.5.26",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"

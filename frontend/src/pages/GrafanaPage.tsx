@@ -202,7 +202,10 @@ function GrafanaCountdownBadge({
 }) {
   const [sec, setSec] = useState(syncSeconds);
   const onRefreshRef = useRef(onRefresh);
-  onRefreshRef.current = onRefresh;
+
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
 
   useEffect(() => {
     setSec(syncSeconds);
@@ -210,16 +213,17 @@ function GrafanaCountdownBadge({
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setSec((prev) => {
-        if (prev <= 1) {
-          window.setTimeout(() => onRefreshRef.current(), 0);
-          return 300;
-        }
-        return prev - 1;
-      });
+      setSec((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (sec === 0) {
+      onRefreshRef.current();
+      setSec(300);
+    }
+  }, [sec]);
 
   return (
     <span>

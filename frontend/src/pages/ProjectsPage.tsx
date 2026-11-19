@@ -80,7 +80,7 @@ function shareProjectWhatsapp(p: Project) {
   const publicUrl = `${window.location.origin}/p/project/${p.id}`;
   const text = `*PROJETO DE REDE:* ${p.name}${p.area ? `\n*Área:* ${p.area}` : ''}${p.description ? `\n*Descrição:* ${p.description}` : ''}\n\n*Acesse o projeto e baixe os arquivos aqui:* ${publicUrl}`;
   const zapUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-  window.open(zapUrl, '_blank');
+  window.open(zapUrl, '_blank', 'noopener,noreferrer');
 }
 
 const emptyProjectForm = { name: '', description: '', area: '' };
@@ -419,7 +419,7 @@ export default function ProjectsPage() {
                       return;
                     }
                     if (files.length === 1) {
-                      window.open(files[0].url, '_blank');
+                      window.open(files[0].url, '_blank', 'noopener,noreferrer');
                       return;
                     }
                     setDownloadProjectModal(p);

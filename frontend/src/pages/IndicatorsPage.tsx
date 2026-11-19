@@ -277,6 +277,15 @@ export default function IndicatorsPage() {
     });
   }, [dbMonthKey, region]);
 
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+    };
+  }, []);
+
   const scheduleSave = useCallback((next: IndicatorData) => {
     setStatus('Salvando...');
     if (saveTimer.current) clearTimeout(saveTimer.current);

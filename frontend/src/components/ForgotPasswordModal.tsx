@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import gsap from 'gsap';
 import { api, ApiError } from '../api/client';
-import GsapSecurityBackground from './GsapSecurityBackground';
 
 interface ForgotPasswordModalProps {
   isOpen: boolean;
@@ -47,23 +46,27 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
   const digits = code.split('');
 
   useEffect(() => {
-    if (!isOpen) return;
-    if (cardRef.current) {
+    if (!isOpen || !cardRef.current) return;
+    const ctx = gsap.context(() => {
       gsap.fromTo(
         cardRef.current,
         { opacity: 0, y: 18, scale: 0.98 },
         { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: 'power3.out' }
       );
-    }
+    }, cardRef);
+    return () => ctx.revert();
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !contentRef.current) return;
-    gsap.fromTo(
-      contentRef.current,
-      { opacity: 0, y: 10 },
-      { opacity: 1, y: 0, duration: 0.32, ease: 'power3.out' }
-    );
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        contentRef.current,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.32, ease: 'power3.out' }
+      );
+    }, contentRef);
+    return () => ctx.revert();
   }, [step, isOpen]);
 
   if (!isOpen) return null;
@@ -220,9 +223,6 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSuccess }: Forg
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center px-4 py-20 sm:p-6 overflow-y-auto select-none bg-[#030305] text-white">
-      {/* Precision Lagos Digital Blueprint Background */}
-      <GsapSecurityBackground />
-
       {/* Atmospheric Ambient Lighting Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(650px,95vw)] h-[min(650px,95vw)] rounded-full bg-red-600/[0.07] blur-[150px] pointer-events-none" />
 

@@ -15,37 +15,46 @@ interface ModalProps {
 export default function Modal({ open, onClose, title, children, footer, maxWidth = 'max-w-lg' }: ModalProps) {
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     }
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
 
+    let ctx: gsap.Context | null = null;
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      if (backdropRef.current) {
-        gsap.fromTo(
-          backdropRef.current,
-          { opacity: 0 },
-          { opacity: 1, duration: 0.28, ease: 'power2.out' },
-        );
-      }
-      if (dialogRef.current) {
-        gsap.fromTo(
-          dialogRef.current,
-          { opacity: 0, scale: 0.95, y: 18 },
-          { opacity: 1, scale: 1, y: 0, duration: 0.42, ease: 'power4.out' },
-        );
-      }
+      ctx = gsap.context(() => {
+        if (backdropRef.current) {
+          gsap.fromTo(
+            backdropRef.current,
+            { opacity: 0 },
+            { opacity: 1, duration: 0.28, ease: 'power2.out' },
+          );
+        }
+        if (dialogRef.current) {
+          gsap.fromTo(
+            dialogRef.current,
+            { opacity: 0, scale: 0.95, y: 18 },
+            { opacity: 1, scale: 1, y: 0, duration: 0.42, ease: 'power4.out' },
+          );
+        }
+      });
     }
 
     return () => {
+      ctx?.revert();
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

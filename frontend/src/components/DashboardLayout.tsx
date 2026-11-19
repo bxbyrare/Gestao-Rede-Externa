@@ -134,7 +134,8 @@ export default function DashboardLayout() {
     const indEl = indicatorRef.current;
     if (!navEl || !indEl) return;
 
-    const activeLink = navEl.querySelector('a[data-active="true"]') as HTMLElement | null;
+    const activeLink = (navEl.querySelector('[data-active="true"]')?.closest('a') ??
+      navEl.querySelector('a[aria-current="page"]')) as HTMLElement | null;
     if (!activeLink) {
       gsap.to(indEl, { opacity: 0, duration: 0.2 });
       return;

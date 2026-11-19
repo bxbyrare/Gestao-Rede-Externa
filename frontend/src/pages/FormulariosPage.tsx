@@ -697,7 +697,7 @@ export default function FormulariosPage() {
                 <a
                   href={quickAlert.link}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[11px] font-semibold flex items-center gap-1"
                 >
                   <ExternalLink className="w-3 h-3" /> Abrir Form
@@ -790,7 +790,7 @@ export default function FormulariosPage() {
                   <a
                     href={`/f/${f.slug}`}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="h-9 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] hover:text-white hover:bg-white/[0.08] transition-colors"
                     title="Abrir e responder formulário no Gestão"
                   >
@@ -1717,7 +1717,7 @@ export default function FormulariosPage() {
               <a
                 href={previewPhotoUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="text-xs text-[var(--color-primary)] hover:underline inline-flex items-center gap-1 font-semibold"
               >
                 Abrir imagem em alta resolução <ExternalLink className="w-3 h-3" />

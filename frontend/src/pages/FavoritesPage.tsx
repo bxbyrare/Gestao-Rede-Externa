@@ -85,8 +85,17 @@ export default function FavoritesPage() {
   }
 
   async function handleAccess(fav: Favorite) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(fav.link);
+    } catch {
+      return;
+    }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return;
+    }
     api.post(`/api/favorites/${fav.id}/click`).catch(() => {});
-    window.open(fav.link, '_blank', 'noopener,noreferrer');
+    window.open(parsedUrl.toString(), '_blank', 'noopener,noreferrer');
   }
 
   return (

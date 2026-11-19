@@ -134,7 +134,7 @@ from werkzeug.utils import secure_filename
 from flask import (
     Flask, render_template, request, 
     redirect, url_for, session, jsonify, send_from_directory,
-    make_response, Response, send_file, g, has_request_context
+    make_response, Response, g, has_request_context
 )
 
 from collections import defaultdict
@@ -154,6 +154,10 @@ if not _env_secret:
         try:
             with open(_secret_path, 'w', encoding='utf-8') as _sf:
                 _sf.write(_env_secret)
+            try:
+                os.chmod(_secret_path, 0o600)
+            except Exception:
+                pass
         except Exception:
             pass
 app.secret_key = _env_secret
@@ -296,7 +300,7 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title}</title>
+<title>{safe_title}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #0B0E17; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #E2E8F0;">
 <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0B0E17; padding: 36px 15px;">
@@ -324,7 +328,7 @@ def render_executive_email_template(category_badge, title, message_html, cta_tex
                 <tr>
                     <td style="padding: 32px 32px 24px 32px;">{badge_block}
                         <h1 style="color: #F8FAFC; font-size: 21px; font-weight: 700; margin: 0 0 18px 0; line-height: 1.35;">
-                            {title}
+                            {safe_title}
                         </h1>
                         <div style="color: #94A3B8; font-size: 14px; line-height: 1.65;">
                             {message_html}
@@ -1211,6 +1215,8 @@ def _prune_security_stores(now_ts):
         (AUTH_RATE_LIMIT_STORE, 60),
         (_PROBE_TRACKER, 300),
         (_TOTP_FAILURES, 900),
+        (_ACCOUNT_LOGIN_FAILURES, 900),
+        (_EMAIL_VERIFY_FAILURES, 900),
     ):
         dead_keys = [k for k, ts_list in store.items() if not ts_list or (now_ts - ts_list[-1] >= ttl)]
         for k in dead_keys:
@@ -1241,6 +1247,8 @@ _SECURITY_BAN_LIST = {} # ip -> ban_expiry_timestamp
 _PROBE_TRACKER = defaultdict(list) # ip -> [probe_timestamps] (NAT-friendly progressive strike system)
 _USED_TOTP_BUCKETS = defaultdict(dict) # user_id -> {bucket_idx: expiry_ts}
 _TOTP_FAILURES = defaultdict(list)     # user_id -> [failure_timestamps]
+_ACCOUNT_LOGIN_FAILURES = defaultdict(list) # ip:username -> [failure_timestamps]
+_EMAIL_VERIFY_FAILURES = defaultdict(list)  # user_id -> [failure_timestamps]
 
 PROBED_EXPLOIT_PATHS = (
     '/.env', '/.git', '/wp-admin', '/wp-login', '/phpmyadmin', '/pma',
@@ -1362,12 +1370,14 @@ def enforce_security_policies():
             host = request.host.split(':')[0].lower()
             allowed_hosts = {'localhost', '127.0.0.1', 'gestaoredeexterna.shardweb.app', 'gestaoredeexterna.shardatabases.app', 'gestaoredeexterna.com.br', 'www.gestaoredeexterna.com.br'}
             if origin:
-                origin_clean = origin.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0].lower()
-                if origin_clean != host and origin_clean not in allowed_hosts:
+                parsed_origin = urllib.parse.urlparse(origin)
+                origin_host = (parsed_origin.hostname or '').lower()
+                if parsed_origin.scheme not in ('http', 'https') or not origin_host or (origin_host != host and origin_host not in allowed_hosts):
                     return jsonify({"error": "Origem de requisição não autorizada (Cross-Origin bloqueado).", "status": 403}), 403
             elif referer:
-                ref_clean = referer.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0].lower()
-                if ref_clean != host and ref_clean not in allowed_hosts:
+                parsed_ref = urllib.parse.urlparse(referer)
+                ref_host = (parsed_ref.hostname or '').lower()
+                if parsed_ref.scheme not in ('http', 'https') or not ref_host or (ref_host != host and ref_host not in allowed_hosts):
                     return jsonify({"error": "Referer de requisição não autorizado.", "status": 403}), 403
 
     # 2. Global Sliding Window Rate Limiting (All Requests)
@@ -1388,7 +1398,7 @@ def enforce_security_policies():
                     "error": "Muitas tentativas de autenticação. Por favor, aguarde 1 minuto para tentar novamente.",
                     "status": 429
                 }), 429
-            return render_template('login.html', error="Muitas tentativas de login. Por favor, aguarde 1 minuto."), 429
+            return _serve_custom_error_html(429)
         if request.method == 'POST':
             AUTH_RATE_LIMIT_STORE[client_ip].append(now)
 
@@ -1399,7 +1409,7 @@ def set_security_headers(response):
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(self "*"), microphone=(), payment=()'
+    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(self), microphone=(), payment=()'
     response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
     response.headers['Server'] = 'Secure-Gateway'
     response.headers['X-Robots-Tag'] = 'noindex, nofollow, noarchive, nosnippet'
@@ -1412,22 +1422,23 @@ def set_security_headers(response):
     elif request.path.startswith('/assets/') or request.path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.svg', '.woff2', '.webp', '.ico', '.mp4', '.webm')):
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
 
-    # Hardened Content-Security-Policy (Removes unsafe-inline from script-src)
-    csp_directives = [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
-        "font-src 'self' https://fonts.gstatic.com data:",
-        "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://server.arcgisonline.com https://*.arcgisonline.com",
-        "media-src 'self' data: blob:",
-        "connect-src 'self' https://cloudflareinsights.com https://api.resend.com",
-        "object-src 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-        "frame-ancestors 'self'",
-        "upgrade-insecure-requests"
-    ]
-    response.headers['Content-Security-Policy'] = "; ".join(csp_directives) + ";"
+    # Hardened Content-Security-Policy (Preserves route-specific CSP if already set)
+    if 'Content-Security-Policy' not in response.headers:
+        csp_directives = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
+            "font-src 'self' https://fonts.gstatic.com data:",
+            "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://server.arcgisonline.com https://*.arcgisonline.com",
+            "media-src 'self' data: blob:",
+            "connect-src 'self' https://cloudflareinsights.com https://api.resend.com",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'self'",
+            "upgrade-insecure-requests"
+        ]
+        response.headers['Content-Security-Policy'] = "; ".join(csp_directives) + ";"
 
     # Dynamic Gzip Compression for JSON, JS, CSS and text payloads (> 500 bytes)
     accept_encoding = request.headers.get('Accept-Encoding', '')
@@ -1491,7 +1502,6 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'documentos_pessoas'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'workspace_anexos'), exist_ok=True)
 
 # Leak-proof PostgreSQL connection manager with connection reuse & ultra-fast failover
-_KNOWN_DB_IPS = ['38.18.229.30', '38.92.41.2', '38.92.41.65', '154.30.4.133']
 _CACHED_DB_IP = '38.18.229.30'
 _DB_POOL = None
 _DB_POOL_LOCK = threading.Lock()
@@ -1618,6 +1628,15 @@ def get_db():
     if in_ctx:
         current_conn = getattr(g, '_current_db_conn', None)
         if current_conn and not current_conn.closed:
+            try:
+                raw = getattr(current_conn, '_conn', current_conn)
+                if getattr(raw, 'info', None) and raw.info.transaction_status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+                    current_conn.rollback()
+            except Exception:
+                try:
+                    current_conn.rollback()
+                except Exception:
+                    pass
             return current_conn
 
     pool = _DB_POOL
@@ -1686,11 +1705,6 @@ def emit_live_alert(category, title, message, target_user_id=None, target_userna
         if cur:
             try:
                 cur.close()
-            except Exception:
-                pass
-        if conn and not has_request_context():
-            try:
-                conn.close()
             except Exception:
                 pass
         if conn and not in_req:
@@ -3184,7 +3198,6 @@ def init_db():
 
         conn.commit()
         print("Database tables initialized and seeded successfully.")
-        normalize_all_database_names()
     except Exception as e:
         import traceback
         print("Database initialization failed with traceback:")
@@ -3245,11 +3258,6 @@ def log_action(user_id, username, action):
         if cur:
             try:
                 cur.close()
-            except Exception:
-                pass
-        if conn and not has_request_context():
-            try:
-                conn.close()
             except Exception:
                 pass
         if conn and not in_req:
@@ -3365,13 +3373,7 @@ def get_current_user_auth():
     try:
         conn = get_db()
         cur = conn.cursor()
-        try:
-            cur.execute("SELECT id, username, role, tech_id, permissions FROM users WHERE id = %s;", (session['user_id'],))
-        except Exception:
-            conn.rollback()
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT NULL;")
-            conn.commit()
-            cur.execute("SELECT id, username, role, tech_id, permissions FROM users WHERE id = %s;", (session['user_id'],))
+        cur.execute("SELECT id, username, role, tech_id, permissions FROM users WHERE id = %s;", (session['user_id'],))
         row = cur.fetchone()
         cur.close()
         if not row:
@@ -3480,7 +3482,7 @@ def _resolve_required_permission(path, method):
         return 'formularios.edit'
 
     # Monthly Indicators
-    if p in ('/api/indicators', '/api/indicators/import') and method == 'POST':
+    if p in ('/api/indicators', '/api/indicators/import', '/api/indicators/justificativa') and method == 'POST':
         return 'indicadores.edit'
 
     # Schedules / Escala
@@ -3670,43 +3672,109 @@ import urllib.error
 import re
 import json
 
-def parse_microsoft_form(url):
-    url = (url or '').strip()
-    if not url:
-        return None, "Link do formulário Microsoft não foi informado."
-
-    if not url.startswith('http://') and not url.startswith('https://'):
-        url = 'https://' + url
-
+def _validate_external_form_url(url, allowed_hostnames, domain_error_msg):
+    """Validates external form URL against SSRF: enforces HTTPS, exact hostname allowlist, and non-private DNS IPs."""
+    import ipaddress
     try:
         parsed_u = urllib.parse.urlparse(url)
     except Exception:
         return None, "URL inválida fornecida."
 
-    hostname = (parsed_u.hostname or '').lower()
-    if 'forms.office.com' not in hostname and 'forms.microsoft.com' not in hostname:
-        return None, "Domínio inválido para Microsoft Forms. Use forms.office.com."
+    if parsed_u.scheme != 'https':
+        return None, "Protocolo inválido. Use apenas links https://."
 
-    req = urllib.request.Request(
-        url,
-        headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
-        }
-    )
+    hostname = (parsed_u.hostname or '').lower()
+    if not hostname or hostname not in allowed_hostnames:
+        return None, domain_error_msg
 
     try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            final_url = resp.geturl()
-            if 'login.microsoftonline.com' in final_url or 'login.live.com' in final_url:
-                return None, "Formulário privado ou requer login corporativo Microsoft 365. Altere as permissões para público ('Qualquer pessoa pode responder') para importar automaticamente."
-            html = resp.read().decode('utf-8', errors='ignore')
-    except urllib.error.HTTPError as e:
-        if e.code in [401, 403]:
+        port = parsed_u.port or 443
+    except ValueError:
+        return None, "URL inválida fornecida."
+
+    try:
+        addrinfos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except Exception:
+        return None, "Não foi possível resolver o endereço do formulário."
+
+    if not addrinfos:
+        return None, "Não foi possível resolver o endereço do formulário."
+
+    for info in addrinfos:
+        ip_str = info[4][0]
+        try:
+            ip_obj = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return None, "Endereço IP inválido detectado."
+        if (
+            ip_obj.is_private
+            or ip_obj.is_loopback
+            or ip_obj.is_link_local
+            or ip_obj.is_reserved
+            or ip_obj.is_multicast
+            or ip_obj.is_unspecified
+        ):
+            return None, "Endereço de destino não permitido por política de segurança."
+
+    return parsed_u, None
+
+
+def _fetch_external_form_safely(url, allowed_hostnames, domain_error_msg, headers, login_hosts, login_error_msg, timeout=15, max_redirects=5):
+    """Fetches an external form URL while validating every redirect hop against SSRF."""
+    current_url = url
+    sess = requests.Session()
+    for _ in range(max_redirects + 1):
+        parsed_u, err = _validate_external_form_url(current_url, allowed_hostnames, domain_error_msg)
+        if err:
+            return None, None, err
+        resp = sess.get(current_url, headers=headers, timeout=timeout, allow_redirects=False)
+        if resp.status_code in (301, 302, 303, 307, 308):
+            loc = resp.headers.get('Location') or ''
+            if not loc:
+                return None, None, "Redirecionamento inválido retornado pelo servidor do formulário."
+            next_url = urllib.parse.urljoin(current_url, loc)
+            next_parsed = urllib.parse.urlparse(next_url)
+            next_host = (next_parsed.hostname or '').lower()
+            if next_host in login_hosts or 'ServiceLogin' in next_url:
+                return None, None, login_error_msg
+            current_url = next_url
+            continue
+        return resp, current_url, None
+    return None, None, "Limite de redirecionamentos excedido ao acessar o formulário."
+
+
+def parse_microsoft_form(url):
+    url = (url or '').strip()
+    if not url:
+        return None, "Link do formulário Microsoft não foi informado."
+
+    if '://' not in url:
+        url = 'https://' + url
+
+    ms_allowed = {'forms.office.com', 'forms.microsoft.com'}
+    ms_login_hosts = {'login.microsoftonline.com', 'login.live.com'}
+    ms_domain_err = "Domínio inválido para Microsoft Forms. Use forms.office.com ou forms.microsoft.com."
+    ms_login_err = "Formulário privado ou requer login corporativo Microsoft 365. Altere as permissões para público ('Qualquer pessoa pode responder') para importar automaticamente."
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+    }
+
+    try:
+        resp, final_url, fetch_err = _fetch_external_form_safely(
+            url, ms_allowed, ms_domain_err, headers, ms_login_hosts, ms_login_err, timeout=12
+        )
+        if fetch_err:
+            return None, fetch_err
+        if resp.status_code in (401, 403):
             return None, "Formulário privado ou protegido por login Microsoft 365."
-        return None, f"Erro de conexão com o Microsoft Forms (HTTP {e.code})."
+        if resp.status_code >= 400:
+            return None, f"Erro de conexão com o Microsoft Forms (HTTP {resp.status_code})."
+        html = resp.text
     except Exception as e:
-        return None, f"Falha ao acessar Microsoft Forms: {e}"
+        print("[MS FORMS FETCH ERROR]", type(e).__name__, e)
+        return None, "Não foi possível acessar o Microsoft Forms no momento. Verifique o link e tente novamente."
 
     if 'login.microsoftonline.com' in html or 'login.live.com' in html:
         return None, "Formulário privado ou requer login Microsoft 365."
@@ -3814,30 +3882,28 @@ def parse_google_form(url):
     if not url:
         return None, "Link do formulário não foi informado."
 
-    if not url.startswith('http://') and not url.startswith('https://'):
+    if '://' not in url:
         url = 'https://' + url
 
-    try:
-        parsed_u = urllib.parse.urlparse(url)
-    except Exception:
-        return None, "URL inválida fornecida."
+    google_allowed = {'forms.gle', 'docs.google.com', 'forms.google.com'}
+    google_login_hosts = {'accounts.google.com'}
+    google_domain_err = "Domínio inválido. Apenas links oficiais forms.gle, docs.google.com ou forms.google.com são aceitos."
+    google_login_err = "Formulário privado ou requer login. Altere a privacidade do formulário Google para PÚBLICO (qualquer pessoa com o link pode responder)."
 
-    if parsed_u.scheme not in ('http', 'https'):
-        return None, "Protocolo inválido. Use https://."
+    parsed_u, err = _validate_external_form_url(url, google_allowed, google_domain_err)
+    if err:
+        return None, err
 
     hostname = (parsed_u.hostname or '').lower()
-    if 'forms.gle' not in hostname and 'docs.google.com' not in hostname and 'forms.google.com' not in hostname:
-        return None, "Domínio inválido. Apenas links oficiais forms.gle ou docs.google.com são aceitos."
 
     # Se for docs.google.com e estiver em modo /edit, converter para /viewform
-    if 'docs.google.com' in hostname:
+    if hostname == 'docs.google.com':
         if '/edit' in url:
             url = url.split('/edit')[0] + '/viewform'
         elif not url.endswith('/viewform') and '/viewform' not in url and not url.endswith('/') and '?usp=' not in url:
             url = url + '/viewform'
     # Atenção: links forms.gle NUNCA devem receber /viewform antes do redirecionamento!
 
-    session = requests.Session()
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -3849,13 +3915,19 @@ def parse_google_form(url):
     }
 
     try:
-        resp = session.get(url, headers=headers, timeout=15, allow_redirects=True)
-        final_url = resp.url
-        if 'accounts.google.com' in final_url or 'ServiceLogin' in final_url:
-            return None, "Formulário privado ou requer login. Altere a privacidade do formulário Google para PÚBLICO (qualquer pessoa com o link pode responder)."
+        resp, final_url, fetch_err = _fetch_external_form_safely(
+            url, google_allowed, google_domain_err, headers, google_login_hosts, google_login_err, timeout=15
+        )
+        if fetch_err:
+            return None, fetch_err
+        if resp.status_code in (401, 403):
+            return None, google_login_err
+        if resp.status_code >= 400:
+            return None, f"Erro de conexão com o Google Forms (HTTP {resp.status_code})."
         html = resp.text
     except Exception as e:
-        return None, f"Falha ao conectar ao Google Forms: {e}"
+        print("[GOOGLE FORMS FETCH ERROR]", type(e).__name__, e)
+        return None, "Não foi possível conectar ao Google Forms no momento. Verifique o link e tente novamente."
 
     if 'accounts.google.com' in html and 'FB_PUBLIC_LOAD_DATA_' not in html:
         return None, "Formulário privado ou requer login no Google. Por favor, torne o formulário público nas opções de compartilhamento do Google Forms."
@@ -4002,7 +4074,8 @@ def parse_google_form(url):
         }, None
 
     except Exception as e:
-        return None, f"Não foi possível copiar a estrutura do formulário: {e}"
+        print("[GOOGLE FORMS PARSE ERROR]", type(e).__name__, e)
+        return None, "Não foi possível copiar a estrutura do formulário. Verifique se o link é válido e público."
 
 # --------------------------------------------------------------------------
 # PUBLIC SERVING OF UPLOADED ASSETS & PUBLIC PROJECT VIEWER
@@ -4156,9 +4229,6 @@ def spa_catch_all(path):
 # JSON instead of a redirect/rendered template. Added for the React frontend;
 # the legacy form-based /login route above is left intact.
 # --------------------------------------------------------------------------
-_ACCOUNT_LOGIN_FAILURES = defaultdict(list)
-_PASSWORD_RESET_FAILURES = defaultdict(int)
-
 @app.route('/api/auth/login', methods=['POST'])
 def api_login():
     # Limpa qualquer sessão residual para garantir login imediato sem bloqueios indevidos
@@ -4176,8 +4246,10 @@ def api_login():
     lockout_key = f"{client_ip}:{username}"
 
     now_ts = time.time()
-    _ACCOUNT_LOGIN_FAILURES[lockout_key] = [t for t in _ACCOUNT_LOGIN_FAILURES[lockout_key] if now_ts - t < 900]
-    if len(_ACCOUNT_LOGIN_FAILURES[lockout_key]) >= 8:
+    with _SECURITY_STORE_LOCK:
+        _ACCOUNT_LOGIN_FAILURES[lockout_key] = [t for t in _ACCOUNT_LOGIN_FAILURES[lockout_key] if now_ts - t < 900]
+        is_locked = len(_ACCOUNT_LOGIN_FAILURES[lockout_key]) >= 8
+    if is_locked:
         return jsonify({"error": "Muitas tentativas incorretas a partir deste endereço. Aguarde 15 minutos."}), 429
 
     try:
@@ -4189,8 +4261,9 @@ def api_login():
         conn.close()
 
         if user and check_password_hash(user['password_hash'], password):
-            _ACCOUNT_LOGIN_FAILURES.pop(lockout_key, None)
-            _SECURITY_BAN_LIST.pop(client_ip, None) # Clear any scanner bans upon valid primary authentication
+            with _SECURITY_STORE_LOCK:
+                _ACCOUNT_LOGIN_FAILURES.pop(lockout_key, None)
+                _SECURITY_BAN_LIST.pop(client_ip, None) # Clear any scanner bans upon valid primary authentication
             session.clear() # Clear all prior session tokens (Session Fixation Prevention)
             session.permanent = True
 
@@ -4323,7 +4396,8 @@ def api_login():
             }
             return jsonify({"user": user_payload})
 
-        _ACCOUNT_LOGIN_FAILURES[lockout_key].append(time.time())
+        with _SECURITY_STORE_LOCK:
+            _ACCOUNT_LOGIN_FAILURES[lockout_key].append(time.time())
         time.sleep(1.5)
         return jsonify({"error": "Usuário ou senha incorretos."}), 401
     except Exception as e:
@@ -4353,12 +4427,14 @@ def api_totp_setup():
         conn.close()
         return jsonify({'error': 'Usuário não encontrado.'}), 404
 
-    secret = u.get('totp_secret')
-    # If not present or not yet enabled, generate fresh secret
-    if not secret or not u.get('totp_enabled'):
-        secret = generate_totp_secret()
-        cur.execute('UPDATE users SET totp_secret = %s, totp_enabled = FALSE WHERE id = %s;', (secret, user_id))
-        conn.commit()
+    if u.get('totp_enabled'):
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Autenticador 2FA já está ativado para esta conta.'}), 403
+
+    secret = generate_totp_secret()
+    cur.execute('UPDATE users SET totp_secret = %s, totp_enabled = FALSE WHERE id = %s;', (secret, user_id))
+    conn.commit()
 
     cur.close()
     conn.close()
@@ -4392,12 +4468,16 @@ def api_totp_enable():
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT u.id, u.username, u.name, u.role, u.totp_secret, t.name AS tech_name
+        SELECT u.id, u.username, u.name, u.role, u.totp_secret, u.totp_enabled, t.name AS tech_name
         FROM users u
         LEFT JOIN technicians t ON u.tech_id = t.id
         WHERE u.id = %s;
     """, (user_id,))
     u = cur.fetchone()
+    if u and u.get('totp_enabled'):
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Autenticador 2FA já está ativado para esta conta.'}), 403
     if not u or not u.get('totp_secret'):
         cur.close()
         conn.close()
@@ -4623,20 +4703,33 @@ def api_reset_password():
     user_id = user['id']
     secret = user['totp_secret']
 
+    now_ts = time.time()
+    with _SECURITY_STORE_LOCK:
+        _TOTP_FAILURES[user_id] = [t for t in _TOTP_FAILURES[user_id] if now_ts - t < 900]
+        totp_locked = len(_TOTP_FAILURES[user_id]) >= 5
+    if totp_locked:
+        cur.close()
+        conn.close()
+        return jsonify({'error': 'Muitas tentativas incorretas. Conta bloqueada temporariamente para validação 2FA por 15 minutos.'}), 429
+
     is_valid, bucket_idx = verify_totp_token(secret, code, window=1)
     if not is_valid:
+        with _SECURITY_STORE_LOCK:
+            _TOTP_FAILURES[user_id].append(now_ts)
         cur.close()
         conn.close()
         time.sleep(1)
         return jsonify({'error': 'Código do aplicativo autenticador incorreto ou expirado. Tente novamente.'}), 400
 
-    now_ts = time.time()
-    _USED_TOTP_BUCKETS[user_id] = {b: exp for b, exp in _USED_TOTP_BUCKETS[user_id].items() if exp > now_ts}
-    if bucket_idx in _USED_TOTP_BUCKETS[user_id]:
+    with _SECURITY_STORE_LOCK:
+        _USED_TOTP_BUCKETS[user_id] = {b: exp for b, exp in _USED_TOTP_BUCKETS[user_id].items() if exp > now_ts}
+        already_used = bucket_idx in _USED_TOTP_BUCKETS[user_id]
+        if not already_used:
+            _USED_TOTP_BUCKETS[user_id][bucket_idx] = now_ts + 180
+    if already_used:
         cur.close()
         conn.close()
         return jsonify({'error': 'Código de autenticação já utilizado. Aguarde o próximo código no seu aplicativo.'}), 400
-    _USED_TOTP_BUCKETS[user_id][bucket_idx] = now_ts + 180
 
     # Password update
     hashed_pw = generate_password_hash(new_password)
@@ -4644,6 +4737,10 @@ def api_reset_password():
     conn.commit()
     cur.close()
     conn.close()
+
+    with _SECURITY_STORE_LOCK:
+        _TOTP_FAILURES.pop(user_id, None)
+    session.clear()
 
     log_action(user_id, user['username'], 'Redefiniu sua senha com sucesso utilizando o aplicativo autenticador (TOTP).')
 
@@ -4658,43 +4755,17 @@ def get_user_info_dict(user_id):
     try:
         conn = get_db()
         cur = conn.cursor()
-        try:
-            cur.execute("""
-                SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
-                       u.email as u_email, u.phone as u_phone, u.name as u_name,
-                       u.totp_secret, u.totp_enabled, u.totp_verified_at,
-                       u.email_bounced, u.email_bounce_reason, u.theme_preference,
-                       t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
-                       t.registration_claro, t.toa_login
-                FROM users u
-                LEFT JOIN technicians t ON u.tech_id = t.id
-                WHERE u.id = %s;
-            """, (user_id,))
-        except Exception as q_err:
-            conn.rollback()
-            try:
-                cur.execute("""
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT NULL;
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64) DEFAULT NULL;
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_verified_at TIMESTAMP DEFAULT NULL;
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(10) DEFAULT 'dark';
-                """)
-                _ensure_email_bounce_schema(cur)
-                conn.commit()
-            except Exception:
-                conn.rollback()
-            cur.execute("""
-                SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
-                       u.email as u_email, u.phone as u_phone, u.name as u_name,
-                       u.totp_secret, u.totp_enabled, u.totp_verified_at,
-                       u.email_bounced, u.email_bounce_reason, u.theme_preference,
-                       t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
-                       t.registration_claro, t.toa_login
-                FROM users u
-                LEFT JOIN technicians t ON u.tech_id = t.id
-                WHERE u.id = %s;
-            """, (user_id,))
+        cur.execute("""
+            SELECT u.id, u.username, u.role, u.tech_id, u.permissions,
+                   u.email as u_email, u.phone as u_phone, u.name as u_name,
+                   u.totp_secret, u.totp_enabled, u.totp_verified_at,
+                   u.email_bounced, u.email_bounce_reason, u.theme_preference,
+                   t.name as tech_name, t.phone as tech_phone, t.email as tech_email, t.company,
+                   t.registration_claro, t.toa_login
+            FROM users u
+            LEFT JOIN technicians t ON u.tech_id = t.id
+            WHERE u.id = %s;
+        """, (user_id,))
         row = cur.fetchone()
         if not row:
             cur.close()
@@ -5033,6 +5104,13 @@ def api_verify_my_email_verification():
     if not code or len(code) != 6 or not code.isdigit():
         return jsonify({"error": "Informe o código numérico de 6 dígitos enviado para o e-mail."}), 400
 
+    now_ts = time.time()
+    with _SECURITY_STORE_LOCK:
+        _EMAIL_VERIFY_FAILURES[user_id] = [t for t in _EMAIL_VERIFY_FAILURES[user_id] if now_ts - t < 900]
+        email_verify_locked = len(_EMAIL_VERIFY_FAILURES[user_id]) >= 5
+    if email_verify_locked:
+        return jsonify({"error": "Muitas tentativas incorretas. Aguarde 15 minutos e solicite um novo código de validação."}), 429
+
     conn = get_db()
     cur = conn.cursor()
     _ensure_email_bounce_schema(cur)
@@ -5056,9 +5134,27 @@ def api_verify_my_email_verification():
         conn.close()
         return jsonify({"error": "O código expirou. Clique em 'Reenviar código' para receber um novo."}), 400
     if not hmac.compare_digest(saved_code, code):
+        with _SECURITY_STORE_LOCK:
+            _EMAIL_VERIFY_FAILURES[user_id].append(now_ts)
+            fail_count = len(_EMAIL_VERIFY_FAILURES[user_id])
+        if fail_count >= 5:
+            cur.execute("""
+                UPDATE users
+                SET email_verify_code = NULL,
+                    email_verify_target = NULL,
+                    email_verify_expires_at = NULL
+                WHERE id = %s;
+            """, (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Muitas tentativas incorretas. O código foi invalidado; aguarde e solicite um novo código."}), 429
         cur.close()
         conn.close()
         return jsonify({"error": "Código incorreto. Verifique sua caixa de entrada ou spam e tente novamente."}), 400
+
+    with _SECURITY_STORE_LOCK:
+        _EMAIL_VERIFY_FAILURES.pop(user_id, None)
 
     old_email = (user.get('email') or '').strip().lower()
     cur.execute("""
@@ -5157,8 +5253,6 @@ def _save_technician_doc(file_obj, prefix):
 @app.route('/api/technicians', methods=['GET'])
 @login_required
 def api_get_technicians():
-    if not _NAMES_DB_NORMALIZED:
-        normalize_all_database_names()
     search = request.args.get('search', '').strip().lower()
     try:
         conn = get_db()
@@ -6567,6 +6661,8 @@ def api_fleet_update_damage(dmg_id):
 @app.route('/api/fleet/vehicles/<int:v_id>/tires', methods=['PUT'])
 @login_required
 def api_fleet_update_tires(v_id):
+    if not (_is_fleet_supervisor_or_coord() or user_has_permission('veiculos.edit')):
+        return jsonify({"error": "Acesso negado: permissão insuficiente para atualizar pneus."}), 403
     data = request.get_json(silent=True) or {}
     tires = data.get("tires") if isinstance(data.get("tires"), dict) else {}
     try:
@@ -6605,6 +6701,8 @@ def api_fleet_update_tires(v_id):
 @app.route('/api/fleet/maintenances', methods=['POST'])
 @login_required
 def api_fleet_create_maintenance():
+    if not (_is_fleet_supervisor_or_coord() or user_has_permission('veiculos.edit')):
+        return jsonify({"error": "Acesso negado: permissão insuficiente para registrar manutenções."}), 403
     data = request.get_json(silent=True) or {}
     try:
         vehicle_id = int(data.get("vehicle_id") or 0)
@@ -6676,6 +6774,8 @@ def api_fleet_create_maintenance():
 @app.route('/api/fleet/maintenances/<int:maint_id>', methods=['PUT'])
 @login_required
 def api_fleet_update_maintenance(maint_id):
+    if not (_is_fleet_supervisor_or_coord() or user_has_permission('veiculos.edit')):
+        return jsonify({"error": "Acesso negado: permissão insuficiente para atualizar manutenções."}), 403
     data = request.get_json(silent=True) or {}
     status = (data.get("status") or "Concluída").strip()[:30]
     completion_notes = (data.get("completion_notes") or "").strip()
@@ -6813,6 +6913,34 @@ def api_fleet_respond_fine(fine_id):
         _ensure_fleet_schema(cur)
         op = _current_operator_Identity(cur)
         now_brt = _grafana_now_brt()
+
+        cur.execute("""
+            SELECT vf.id, vf.driver_name, v.responsible_tech_id
+            FROM vehicle_fines vf
+            LEFT JOIN vehicles v ON vf.vehicle_id = v.id
+            WHERE vf.id = %s;
+        """, (fine_id,))
+        fine_row = cur.fetchone()
+        if not fine_row:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Multa não encontrada."}), 404
+
+        if not (_is_fleet_supervisor_or_coord() or user_has_permission('veiculos.edit')):
+            auth = get_current_user_auth()
+            user_tech_id = auth.get('tech_id') if auth else None
+            fine_driver_norm = (fine_row.get('driver_name') or '').strip().lower()
+            op_name_norm = (op.get('name') or '').strip().lower()
+            owns_fine = bool(
+                user_tech_id is not None and (
+                    fine_row.get('responsible_tech_id') == user_tech_id
+                    or (fine_driver_norm and fine_driver_norm == op_name_norm)
+                )
+            )
+            if not owns_fine:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Acesso negado: você só pode responder a multas vinculadas ao seu cadastro."}), 403
 
         cur.execute("""
             UPDATE vehicle_fines
@@ -10222,8 +10350,42 @@ def api_get_logs():
 @login_required
 def api_get_users():
     try:
+        auth = get_current_user_auth()
+        user_perms = (auth.get('permissions') or []) if auth else []
+        is_privileged = bool(
+            auth and (
+                auth.get('is_master')
+                or auth.get('is_coordenador')
+                or any(p.startswith('gerenciamento.') for p in user_perms)
+            )
+        )
+
         conn = get_db()
         cur = conn.cursor()
+        if not is_privileged:
+            cur.execute("""
+                SELECT u.id, u.username, u.role, u.tech_id,
+                       COALESCE(u.name, t.name) AS name
+                FROM users u
+                LEFT JOIN technicians t ON u.tech_id = t.id
+                ORDER BY u.username ASC;
+            """)
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            safe_users = []
+            for u in rows:
+                formatted_name = format_person_name(u['name']) if u.get('name') else ''
+                safe_users.append({
+                    'id': u['id'],
+                    'username': u['username'],
+                    'name': formatted_name,
+                    'tech_name': formatted_name,
+                    'role': u['role'],
+                    'tech_id': u['tech_id'],
+                })
+            return jsonify(safe_users)
+
         _ensure_login_tracking_schema(cur)
         conn.commit()
         cur.execute("""
@@ -10715,6 +10877,14 @@ def _collect_user_all_activities(cur, target_id, uname, display_name, tech_id):
 @app.route('/api/users/<int:target_id>/profile-detail', methods=['GET'])
 @login_required
 def api_get_user_profile_detail(target_id):
+    current_uid = session.get('user_id')
+    if target_id != current_uid:
+        auth = get_current_user_auth()
+        is_allowed = bool(
+            auth and (auth.get('is_master') or auth.get('is_coordenador'))
+        ) or is_user_coordenador_claro(current_uid)
+        if not is_allowed:
+            return jsonify({"error": "Acesso negado: você não possui permissão para visualizar detalhes deste perfil."}), 403
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -11662,7 +11832,7 @@ def api_upload_buscador_base():
         if os.path.exists(temp_path):
             os.remove(temp_path)
         print("Backend exception (buscador upload):", type(e).__name__, e)
-        return jsonify({"error": f"Erro ao processar base ({type(e).__name__}): {str(e)[:180]}"}), 500
+        return jsonify({"error": "Erro ao processar a base enviada. Verifique o formato do arquivo e tente novamente."}), 500
 
 
 @app.route('/api/buscador/export', methods=['GET'])
@@ -11760,24 +11930,6 @@ def api_get_schedules():
     try:
         conn = get_db()
         cur = conn.cursor()
-
-        # Ensure work_schedules table exists
-        try:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS work_schedules (
-                    id SERIAL PRIMARY KEY,
-                    tech_id INT NOT NULL,
-                    date DATE NOT NULL,
-                    status VARCHAR(50) DEFAULT 'Trabalho',
-                    work_hours VARCHAR(50) DEFAULT '08 às 17:48hs',
-                    on_call VARCHAR(50) DEFAULT '0',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(tech_id, date)
-                );
-            """)
-            conn.commit()
-        except Exception as e_tbl:
-            conn.rollback()
 
         # Fetch distinct areas for filter dropdown (splitting comma-separated values like "Norte 1, Norte 2, Norte 3")
         cur.execute("SELECT DISTINCT area FROM technicians WHERE area IS NOT NULL AND area != '';")
@@ -12988,30 +13140,36 @@ def api_create_user_task():
             cur.execute("SELECT name, email FROM technicians WHERE id = %s;", (assigned_tech_id,))
             tech_row = cur.fetchone()
             if tech_row and tech_row.get('email') and '@' in tech_row['email']:
-                desc_html = f"<hr style='border: 0; border-top: 1px solid #28354D; margin: 10px 0;'><p style='margin: 0 0 4px 0; color: #94A3B8; font-size: 13px;'>Descrição:</p><p style='margin: 0; color: #CBD5E1; font-size: 13px;'>{description}</p>" if description else ""
+                safe_tech_name = html.escape(str(tech_row['name'] or ''))
+                safe_task_title = html.escape(str(title or ''))
+                safe_priority = html.escape(str(priority or ''))
+                safe_due = html.escape(str(due_date or 'A definir'))
+                safe_region = html.escape(str(region or 'Geral'))
+                safe_desc = html.escape(str(description)) if description else ""
+                desc_html = f"<hr style='border: 0; border-top: 1px solid #28354D; margin: 10px 0;'><p style='margin: 0 0 4px 0; color: #94A3B8; font-size: 13px;'>Descrição:</p><p style='margin: 0; color: #CBD5E1; font-size: 13px;'>{safe_desc}</p>" if safe_desc else ""
                 send_resend_email(
                     to_email=tech_row['email'].strip(),
                     subject=f"[Nova Tarefa] {title}",
                     category_badge="TAREFA ATRIBUÍDA",
                     title="Nova Atividade Atribuída na Fila Operacional",
                     message_html=f'''
-                        <p>Olá, <strong>{tech_row['name']}</strong>.</p>
+                        <p>Olá, <strong>{safe_tech_name}</strong>.</p>
                         <p>Uma nova atividade operacional foi atribuída a você na plataforma <strong>Claro Gestão Rede Externa</strong>.</p>
                         <div style="background: #172033; border: 1px solid #1E293B; border-radius: 8px; padding: 14px 18px; margin: 18px 0;">
                             <p style="margin: 0 0 6px 0; color: #94A3B8; font-size: 13px;">Título da Atividade:</p>
-                            <p style="margin: 0 0 12px 0; color: #F8FAFC; font-weight: 700; font-size: 16px;">{title}</p>
+                            <p style="margin: 0 0 12px 0; color: #F8FAFC; font-weight: 700; font-size: 16px;">{safe_task_title}</p>
                             <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                                 <tr>
                                     <td style="color: #94A3B8; padding: 4px 0;">Prioridade:</td>
-                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{priority}</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{safe_priority}</td>
                                 </tr>
                                 <tr>
                                     <td style="color: #94A3B8; padding: 4px 0;">Prazo Estimado:</td>
-                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{due_date or 'A definir'}</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{safe_due}</td>
                                 </tr>
                                 <tr>
                                     <td style="color: #94A3B8; padding: 4px 0;">Região / Área:</td>
-                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{region or 'Geral'}</td>
+                                    <td style="color: #F8FAFC; font-weight: 600; text-align: right;">{safe_region}</td>
                                 </tr>
                             </table>
                             {desc_html}
@@ -13244,6 +13402,20 @@ def api_export_user_tasks():
 @app.route('/api/evaluations', methods=['GET'])
 @login_required
 def api_get_evaluations():
+    auth = get_current_user_auth()
+    role_lower = ((auth.get('role') if auth else '') or '').strip().lower()
+    is_eval_manager = bool(
+        auth and (
+            auth.get('is_master')
+            or auth.get('is_coordenador')
+            or role_lower in ('coordenador', 'supervisor', 'administrador', 'admin')
+        )
+    )
+    if not is_eval_manager:
+        own_tech_id = auth.get('tech_id') if auth else None
+        if not own_tech_id:
+            return jsonify([])
+
     company_filter = request.args.get('company', '').strip()
     tech_id_filter = request.args.get('tech_id', '').strip()
     search = request.args.get('search', '').strip()
@@ -13261,17 +13433,21 @@ def api_get_evaluations():
         WHERE 1=1
     """
     params = []
-    
-    if company_filter and company_filter != 'Todas':
-        query += " AND e.company = %s"
-        params.append(company_filter)
-        
-    if tech_id_filter:
-        try:
-            query += " AND e.technician_id = %s"
-            params.append(int(tech_id_filter))
-        except (ValueError, TypeError):
-            pass
+
+    if not is_eval_manager:
+        query += " AND e.technician_id = %s"
+        params.append(auth['tech_id'])
+    else:
+        if company_filter and company_filter != 'Todas':
+            query += " AND e.company = %s"
+            params.append(company_filter)
+            
+        if tech_id_filter:
+            try:
+                query += " AND e.technician_id = %s"
+                params.append(int(tech_id_filter))
+            except (ValueError, TypeError):
+                pass
         
     if search:
         query += " AND (e.technician_name ILIKE %s OR e.company ILIKE %s OR e.comments ILIKE %s)"
@@ -13383,6 +13559,17 @@ def api_delete_evaluation(eval_id):
 @app.route('/api/evaluations/export', methods=['GET'])
 @login_required
 def api_export_evaluations():
+    auth = get_current_user_auth()
+    role_lower = ((auth.get('role') if auth else '') or '').strip().lower()
+    is_eval_manager = bool(
+        auth and (
+            auth.get('is_master')
+            or auth.get('is_coordenador')
+            or role_lower in ('coordenador', 'supervisor', 'administrador', 'admin')
+        )
+    )
+    if not is_eval_manager:
+        return jsonify({"error": "Acesso negado: apenas Coordenadores ou Supervisores podem exportar avaliações."}), 403
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -16487,7 +16674,44 @@ def api_admin_resend_status():
 
 @app.route('/api/webhooks/resend', methods=['POST'])
 def api_resend_webhook():
-    """Recebe eventos do Resend (email.bounced, email.complained, email.failed) e sinaliza o usuário."""
+    """Recebe eventos do Resend (email.bounced, email.complained, email.failed) com validação HMAC Svix."""
+    webhook_secret = (os.environ.get('RESEND_WEBHOOK_SECRET') or '').strip()
+    if not webhook_secret:
+        print("[RESEND WEBHOOK] RESEND_WEBHOOK_SECRET não configurado — rejeitando webhook não assinado.")
+        return jsonify({"error": "Webhook não configurado."}), 503
+
+    svix_id = (request.headers.get('svix-id') or '').strip()
+    svix_ts = (request.headers.get('svix-timestamp') or '').strip()
+    svix_sig = (request.headers.get('svix-signature') or '').strip()
+    if not svix_id or not svix_ts or not svix_sig:
+        return jsonify({"error": "Assinatura de webhook ausente."}), 401
+
+    try:
+        ts_int = int(svix_ts)
+    except ValueError:
+        return jsonify({"error": "Timestamp de webhook inválido."}), 401
+    if abs(time.time() - ts_int) > 300:
+        return jsonify({"error": "Timestamp de webhook expirado."}), 401
+
+    raw_body = request.get_data(cache=True, as_text=True) or ''
+    secret_raw = webhook_secret[6:] if webhook_secret.startswith('whsec_') else webhook_secret
+    try:
+        secret_bytes = base64.b64decode(secret_raw)
+    except Exception:
+        secret_bytes = webhook_secret.encode('utf-8')
+    signed_content = f"{svix_id}.{svix_ts}.{raw_body}".encode('utf-8')
+    expected_sig = base64.b64encode(hmac.new(secret_bytes, signed_content, hashlib.sha256).digest()).decode('utf-8')
+
+    sig_valid = False
+    for part in svix_sig.split(' '):
+        if ',' in part:
+            ver, sig_val = part.split(',', 1)
+            if ver == 'v1' and hmac.compare_digest(sig_val.strip(), expected_sig):
+                sig_valid = True
+                break
+    if not sig_valid:
+        return jsonify({"error": "Assinatura de webhook inválida."}), 401
+
     payload = request.get_json(silent=True) or {}
     ev_type = str(payload.get('type') or '').strip().lower()
     if ev_type not in ('email.bounced', 'email.complained', 'email.delivery_delayed', 'email.failed'):
@@ -16968,12 +17192,6 @@ def _apply_grafana_ticket_batch(cur, parsed_tickets, target_types, now_brt):
                 "created_at": n["created_at"].strftime("%d/%m %H:%M") if n.get("created_at") else "",
             })
         if to_archive:
-            try:
-                cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
-                cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
-                cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
-            except Exception:
-                pass
             from psycopg2.extras import execute_values
             archive_rows = [
                 (
@@ -17647,12 +17865,6 @@ def api_grafana_tickets():
 
         conn = get_db()
         cur = conn.cursor()
-        try:
-            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
-        except Exception:
-            conn.rollback()
         cur.execute(f"""
             SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, cf_exec_raw,
                    designation, tipo_ral, is_qualidade, cliente, anorm, abertura_raw, abertura_dt,
@@ -17763,12 +17975,6 @@ def api_grafana_cleared():
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
         conn = get_db()
         cur = conn.cursor()
-        try:
-            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
-        except Exception:
-            conn.rollback()
         cur.execute(f"""
             SELECT id, ticket_key, ticket_type, ticket_number, cf, regional, designation,
                    tipo_ral, is_qualidade, cliente, abertura_raw, status_andamento,
@@ -17848,12 +18054,6 @@ def api_grafana_update_dist_ref(ticket_id):
     try:
         conn = get_db()
         cur = conn.cursor()
-        try:
-            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
-        except Exception:
-            conn.rollback()
         cur.execute("""
             UPDATE grafana_tickets
             SET distancia = %s, referencia = %s, endereco = %s, updated_at = CURRENT_TIMESTAMP
@@ -17888,12 +18088,6 @@ def api_grafana_update_cleared_dist_ref(cleared_id):
     try:
         conn = get_db()
         cur = conn.cursor()
-        try:
-            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS distancia VARCHAR(120) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS referencia VARCHAR(255) DEFAULT '';")
-            cur.execute("ALTER TABLE grafana_cleared_tickets ADD COLUMN IF NOT EXISTS endereco VARCHAR(255) DEFAULT '';")
-        except Exception:
-            conn.rollback()
         cur.execute("""
             UPDATE grafana_cleared_tickets
             SET distancia = %s, referencia = %s, endereco = %s
@@ -18343,13 +18537,13 @@ def api_grafana_export():
 def handle_404(e):
     if request.path.startswith('/api/') or request.is_json:
         return jsonify({"error": "Recurso solicitado não encontrado.", "status": 404}), 404
-    return render_template('dashboard.html'), 404
+    return serve_react_app(), 404
 
 @app.errorhandler(403)
 def handle_403(e):
     if request.path.startswith('/api/') or request.is_json:
         return jsonify({"error": "Acesso negado. Permissões insuficientes para esta operação.", "status": 403}), 403
-    return redirect(url_for('login'))
+    return redirect('/login')
 
 @app.errorhandler(413)
 def handle_413(e):
@@ -18357,12 +18551,10 @@ def handle_413(e):
 
 def _serve_custom_error_html(status_code=500):
     err_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist', 'error.html')
-    if not os.path.exists(err_path):
-        err_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'error.html')
     if os.path.exists(err_path):
         with open(err_path, 'r', encoding='utf-8') as f:
             return Response(f.read(), status=status_code, mimetype='text/html; charset=utf-8')
-    return render_template('dashboard.html'), status_code
+    return jsonify({"error": "Instabilidade interna temporária no servidor.", "status": status_code}), status_code
 
 @app.errorhandler(500)
 def handle_500(e):
