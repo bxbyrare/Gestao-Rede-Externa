@@ -8,8 +8,6 @@ import {
   RefreshCw,
   Moon,
   Sun,
-  Monitor,
-  Eclipse,
   ShieldCheck,
   Eye,
   EyeOff,
@@ -25,7 +23,7 @@ import { Button, Card, Field, Input, PageHeader } from '../components/ui';
 import { applyDocumentTheme, resolveVisualTheme } from '../components/DashboardLayout';
 import { formatPersonName } from '../utils/formatName';
 
-type ThemePref = 'dark' | 'dim' | 'light' | 'system';
+type ThemePref = 'dark' | 'light';
 
 interface ThemeOption {
   id: ThemePref;
@@ -62,22 +60,6 @@ const THEME_OPTIONS: ThemeOption[] = [
     previewBorder: 'rgba(255,255,255,0.12)',
   },
   {
-    id: 'dim',
-    title: 'Grafite Conforto',
-    badge: 'Longa Jornada',
-    badgeClass: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-    subtitle: 'Cinza-carvão equilibrado que suaviza o contraste sem perder a estética escura.',
-    recommendation: 'Recomendado para plantões longos (8h+) e leitura contínua de tabelas.',
-    luminance: 'Luminância 11% • Baixa Fadiga',
-    icon: Eclipse,
-    previewBg: '#131519',
-    previewSurface: '#1b1e24',
-    previewRaised: '#23272f',
-    previewText: '#f2f3f5',
-    previewMuted: '#a9adb7',
-    previewBorder: 'rgba(255,255,255,0.14)',
-  },
-  {
     id: 'light',
     title: 'Claro Suave (Pérola)',
     badge: 'Anti-Ofuscamento',
@@ -93,22 +75,6 @@ const THEME_OPTIONS: ThemeOption[] = [
     previewMuted: '#4f5767',
     previewBorder: 'rgba(26,31,41,0.16)',
   },
-  {
-    id: 'system',
-    title: 'Automático do Sistema',
-    badge: 'Sincronizado',
-    badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-    subtitle: 'Alterna automaticamente entre Escuro Obsidian e Claro Suave conforme seu dispositivo.',
-    recommendation: 'Acompanha o horário diurno/noturno configurado no Windows, macOS, iOS ou Android.',
-    luminance: 'Dinâmico • Segue o SO',
-    icon: Monitor,
-    previewBg: 'linear-gradient(135deg, #030305 50%, #e3e6eb 50%)',
-    previewSurface: '#141821',
-    previewRaised: '#eceef2',
-    previewText: '#ffffff',
-    previewMuted: '#94a3b8',
-    previewBorder: 'rgba(255,255,255,0.16)',
-  },
 ];
 
 export default function ProfilePage() {
@@ -120,7 +86,6 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState('');
   const [themePref, setThemePref] = useState<ThemePref>('dark');
   const [isSavingTheme, setIsSavingTheme] = useState(false);
-  const [systemIsLight, setSystemIsLight] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -131,22 +96,13 @@ export default function ProfilePage() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: light)');
-    setSystemIsLight(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setSystemIsLight(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  useEffect(() => {
     if (user) {
       setName(user.name || '');
       setEmail(user.email || '');
       setPhone(user.phone || '');
-      const storedTheme = localStorage.getItem(`claro_theme_user_${user.id}`) as ThemePref | null;
+      const storedTheme = localStorage.getItem(`claro_theme_user_${user.id}`);
       const candidate = user.theme_preference || storedTheme || 'dark';
-      const resolved: ThemePref =
-        candidate === 'light' || candidate === 'dim' || candidate === 'system' ? candidate : 'dark';
+      const resolved: ThemePref = candidate === 'light' ? 'light' : 'dark';
       setThemePref(resolved);
     }
   }, [user]);
@@ -452,7 +408,7 @@ export default function ProfilePage() {
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-neutral-400">
-                Renderizando: <strong className="text-white uppercase">{resolvedNow === 'light' ? 'Claro Suave' : resolvedNow === 'dim' ? 'Grafite' : 'Obsidian'}</strong>
+                Renderizando: <strong className="text-white uppercase">{resolvedNow === 'light' ? 'Claro Suave' : 'Obsidian'}</strong>
               </span>
             )}
           </div>
@@ -561,7 +517,7 @@ export default function ProfilePage() {
                         <span
                           className="h-2.5 w-10 rounded-full"
                           style={{
-                            background: opt.id === 'system' ? '#1a1f29' : opt.previewText,
+                            background: opt.previewText,
                             opacity: 0.9,
                           }}
                         />
@@ -601,11 +557,6 @@ export default function ProfilePage() {
                   </div>
                   <div className="text-[10px] font-mono text-neutral-500 flex items-center justify-between">
                     <span>{opt.luminance}</span>
-                    {opt.id === 'system' && (
-                      <span className="text-emerald-400">
-                        SO agora: {systemIsLight ? 'Claro Suave' : 'Escuro Obsidian'}
-                      </span>
-                    )}
                   </div>
                 </div>
               </button>

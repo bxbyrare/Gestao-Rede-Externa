@@ -60,23 +60,15 @@ const NAV_ITEMS = [
   { to: '/gerenciamento', label: 'Gerenciamento', icon: Settings },
 ];
 
-type ThemePref = 'dark' | 'dim' | 'light' | 'system';
+type ThemePref = 'dark' | 'light';
 
 const THEME_LABELS: Record<ThemePref, string> = {
   dark: 'Obsidian',
-  dim: 'Grafite',
   light: 'Claro Suave',
-  system: 'Auto',
 };
 
-export function resolveVisualTheme(pref: ThemePref): 'dark' | 'dim' | 'light' {
-  if (pref === 'system') {
-    if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      return 'light';
-    }
-    return 'dark';
-  }
-  return pref;
+export function resolveVisualTheme(pref: ThemePref): 'dark' | 'light' {
+  return pref === 'light' ? 'light' : 'dark';
 }
 
 export function applyDocumentTheme(pref: ThemePref) {
@@ -88,7 +80,7 @@ export function applyDocumentTheme(pref: ThemePref) {
   }
   const metaThemeColor = document.querySelector('meta[name="theme-color"]');
   if (metaThemeColor) {
-    const color = resolved === 'light' ? '#e3e6eb' : resolved === 'dim' ? '#131519' : '#030305';
+    const color = resolved === 'light' ? '#e3e6eb' : '#030305';
     metaThemeColor.setAttribute('content', color);
   }
 }
@@ -104,31 +96,21 @@ export default function DashboardLayout() {
   const indicatorRef = useRef<HTMLDivElement | null>(null);
   const pageStageRef = useRef<HTMLDivElement | null>(null);
 
-  const storedTheme = user?.id ? (localStorage.getItem(`claro_theme_user_${user.id}`) as ThemePref | null) : null;
+  const storedTheme = user?.id ? localStorage.getItem(`claro_theme_user_${user.id}`) : null;
   const rawTheme = user?.theme_preference || storedTheme || 'dark';
-  const userTheme: ThemePref =
-    rawTheme === 'light' || rawTheme === 'dim' || rawTheme === 'system' ? rawTheme : 'dark';
+  const userTheme: ThemePref = rawTheme === 'light' ? 'light' : 'dark';
 
   useEffect(() => {
     applyDocumentTheme(userTheme);
     if (user?.id && user?.theme_preference) {
       try {
-        localStorage.setItem(`claro_theme_user_${user.id}`, user.theme_preference);
+        localStorage.setItem(`claro_theme_user_${user.id}`, userTheme);
       } catch {
         // ignore storage errors
       }
     }
 
-    const mq = window.matchMedia('(prefers-color-scheme: light)');
-    const onSystemChange = () => {
-      if (userTheme === 'system') {
-        applyDocumentTheme('system');
-      }
-    };
-    mq.addEventListener('change', onSystemChange);
-
     return () => {
-      mq.removeEventListener('change', onSystemChange);
       document.documentElement.dataset.theme = 'dark';
       const m = document.querySelector('meta[name="color-scheme"]');
       if (m) m.setAttribute('content', 'dark');
