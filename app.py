@@ -496,7 +496,25 @@ def _send_email_registered_notice(to_email, display_name, username=None):
     )
 
 
+_EMAIL_BOUNCE_SCHEMA_READY = False
+
+
 def _ensure_email_bounce_schema(cur):
+    global _EMAIL_BOUNCE_SCHEMA_READY
+    if _EMAIL_BOUNCE_SCHEMA_READY:
+        return
+    try:
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users';
+        """)
+        existing_cols = {
+            (r['column_name'] if isinstance(r, dict) else r[0]).lower()
+            for r in (cur.fetchall() or [])
+        }
+    except Exception:
+        existing_cols = set()
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS bounced_emails (
             email VARCHAR(255) PRIMARY KEY,
@@ -508,15 +526,17 @@ def _ensure_email_bounce_schema(cur):
             resolved_at TIMESTAMP DEFAULT NULL
         );
     """)
-    for col_sql in [
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced BOOLEAN DEFAULT FALSE;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounce_reason TEXT DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced_at TIMESTAMP DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_code VARCHAR(12) DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_target VARCHAR(255) DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_expires_at TIMESTAMP DEFAULT NULL;",
+    for col_name, col_sql in [
+        ("email_bounced", "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced BOOLEAN DEFAULT FALSE;"),
+        ("email_bounce_reason", "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounce_reason TEXT DEFAULT NULL;"),
+        ("email_bounced_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bounced_at TIMESTAMP DEFAULT NULL;"),
+        ("email_verify_code", "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_code VARCHAR(12) DEFAULT NULL;"),
+        ("email_verify_target", "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_target VARCHAR(255) DEFAULT NULL;"),
+        ("email_verify_expires_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_expires_at TIMESTAMP DEFAULT NULL;"),
     ]:
-        cur.execute(col_sql)
+        if col_name not in existing_cols:
+            cur.execute(col_sql)
+    _EMAIL_BOUNCE_SCHEMA_READY = True
 
 
 def _mark_email_bounced(email_addr, reason="", event_type="bounced", resend_message_id=None):
@@ -837,12 +857,32 @@ def _ensure_login_tracking_schema(cur):
     global _LOGIN_TRACKING_SCHEMA_READY
     if _LOGIN_TRACKING_SCHEMA_READY:
         return
+    try:
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users';
+        """)
+        existing_cols = {
+            (r['column_name'] if isinstance(r, dict) else r[0]).lower()
+            for r in (cur.fetchall() or [])
+        }
+    except Exception:
+        existing_cols = set()
+
+    for col_name, sql_stmt in [
+        ("last_login_at", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP DEFAULT NULL;"),
+        ("last_login_device", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_device VARCHAR(180) DEFAULT NULL;"),
+        ("last_login_ua", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ua VARCHAR(255) DEFAULT NULL;"),
+        ("last_login_ip", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(80) DEFAULT NULL;"),
+        ("last_login_location", "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_location VARCHAR(180) DEFAULT NULL;"),
+    ]:
+        if col_name not in existing_cols:
+            try:
+                cur.execute(sql_stmt)
+            except Exception:
+                pass
+
     for sql_stmt in [
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_device VARCHAR(180) DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ua VARCHAR(255) DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(80) DEFAULT NULL;",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_location VARCHAR(180) DEFAULT NULL;",
         """
         CREATE TABLE IF NOT EXISTS user_login_history (
             id SERIAL PRIMARY KEY,
@@ -922,14 +962,22 @@ def _parse_user_agent_device(ua_str):
     return f"{device_type} · {os_name} · {browser}"[:180]
 
 
-def _record_user_login_event(user_id, auth_stage='login'):
+def _record_user_login_event(user_id, auth_stage='login', client_ip=None, client_ua=None, cf_city=None, cf_region=None, cf_country=None):
     try:
-        client_ip = get_client_ip()
-        client_ua = (request.headers.get('User-Agent') or '')[:250]
+        if has_request_context():
+            if client_ip is None:
+                client_ip = get_client_ip()
+            if client_ua is None:
+                client_ua = (request.headers.get('User-Agent') or '')[:250]
+            if cf_city is None:
+                cf_city = request.headers.get('CF-IPCity')
+            if cf_region is None:
+                cf_region = request.headers.get('CF-Region')
+            if cf_country is None:
+                cf_country = request.headers.get('CF-IPCountry')
+        client_ip = client_ip or ''
+        client_ua = (client_ua or '')[:250]
         device_label = _parse_user_agent_device(client_ua)
-        cf_city = request.headers.get('CF-IPCity')
-        cf_region = request.headers.get('CF-Region')
-        cf_country = request.headers.get('CF-IPCountry')
 
         brt_tz = datetime.timezone(datetime.timedelta(hours=-3))
         now_brt = datetime.datetime.now(brt_tz).replace(tzinfo=None)
@@ -1489,6 +1537,8 @@ class _PooledConnProxy:
         try:
             if not should_close:
                 try:
+                    if getattr(raw, 'autocommit', False):
+                        raw.autocommit = False
                     raw.rollback()
                 except Exception:
                     should_close = True
@@ -1931,7 +1981,42 @@ def normalize_all_database_names(cur=None):
 def init_db():
     try:
         conn = get_db()
+        # CRITICAL: Use autocommit + short lock_timeout in init_db() so DDL never holds
+        # multi-table ACCESS EXCLUSIVE locks across requests or blocks login/API traffic.
+        try:
+            conn.autocommit = True
+        except Exception:
+            pass
         cur = conn.cursor()
+        try:
+            cur.execute("SET lock_timeout = '3s';")
+        except Exception:
+            pass
+
+        # Preload existing columns once (read-only, zero locks) to skip redundant ALTER TABLE
+        existing_cols = set()
+        try:
+            cur.execute("""
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public';
+            """)
+            for r in (cur.fetchall() or []):
+                t_name = (r['table_name'] if isinstance(r, dict) else r[0]).lower()
+                c_name = (r['column_name'] if isinstance(r, dict) else r[1]).lower()
+                existing_cols.add((t_name, c_name))
+        except Exception:
+            pass
+
+        def _ensure_col(table_name, col_name, col_def):
+            key = (table_name.lower(), col_name.lower())
+            if key in existing_cols:
+                return
+            try:
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {col_def};")
+                existing_cols.add(key)
+            except Exception:
+                pass
         
         # 1. Users Table
         cur.execute("""
@@ -1957,29 +2042,15 @@ def init_db():
             ('last_login_device', 'VARCHAR(180) DEFAULT NULL'),
             ('last_login_ua', 'VARCHAR(255) DEFAULT NULL'),
             ('last_login_ip', 'VARCHAR(80) DEFAULT NULL'),
-            ('last_login_location', 'VARCHAR(180) DEFAULT NULL')
+            ('last_login_location', 'VARCHAR(180) DEFAULT NULL'),
+            ('email_bounced', 'BOOLEAN DEFAULT FALSE'),
+            ('email_bounce_reason', 'TEXT DEFAULT NULL'),
+            ('email_bounced_at', 'TIMESTAMP DEFAULT NULL'),
+            ('email_verify_code', 'VARCHAR(12) DEFAULT NULL'),
+            ('email_verify_target', 'VARCHAR(255) DEFAULT NULL'),
+            ('email_verify_expires_at', 'TIMESTAMP DEFAULT NULL'),
         ]:
-            try:
-                cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
-                conn.commit()
-            except Exception:
-                conn.rollback()
-        for col, coltype in [
-            ('email', 'VARCHAR(150)'),
-            ('phone', 'VARCHAR(50)'),
-            ('name', 'VARCHAR(150)'),
-            ('email_verified', 'BOOLEAN DEFAULT FALSE'),
-            ('permissions', 'JSONB DEFAULT NULL'),
-            ('totp_secret', 'VARCHAR(64) DEFAULT NULL'),
-            ('totp_enabled', 'BOOLEAN DEFAULT FALSE'),
-            ('totp_verified_at', 'TIMESTAMP DEFAULT NULL'),
-            ('theme_preference', "VARCHAR(10) DEFAULT 'dark'")
-        ]:
-            try:
-                cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype};")
-                conn.commit()
-            except Exception:
-                conn.rollback()
+            _ensure_col('users', col, coltype)
         
         # 1.1 Known IPs Table for Security Alerts
         cur.execute("""
@@ -2225,16 +2296,9 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        try:
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tech_id INT REFERENCES technicians(id) ON DELETE SET NULL;")
-        except Exception:
-            conn.rollback()
-
-        try:
-            cur.execute("ALTER TABLE forms ADD COLUMN IF NOT EXISTS slug VARCHAR(100) UNIQUE;")
-            cur.execute("ALTER TABLE forms ADD COLUMN IF NOT EXISTS questions JSONB;")
-        except Exception:
-            conn.rollback()
+        _ensure_col('users', 'tech_id', 'INT REFERENCES technicians(id) ON DELETE SET NULL')
+        _ensure_col('forms', 'slug', 'VARCHAR(100) UNIQUE')
+        _ensure_col('forms', 'questions', 'JSONB')
 
         # 12. Form Responses Table (Respostas dos Técnicos)
         cur.execute("""
@@ -3128,10 +3192,18 @@ def init_db():
     finally:
         if 'cur' in locals() and cur:
             try:
+                cur.execute("RESET lock_timeout;")
+            except Exception:
+                pass
+            try:
                 cur.close()
             except Exception:
                 pass
         if 'conn' in locals() and conn:
+            try:
+                conn.autocommit = False
+            except Exception:
+                pass
             try:
                 conn.close()
             except Exception:
@@ -4123,7 +4195,8 @@ def api_login():
             session.permanent = True
 
             uname_lower = (user.get('username') or '').strip().lower()
-            if uname_lower in TOTP_EXEMPT_USERNAMES:
+            is_totp_exempt = uname_lower in TOTP_EXEMPT_USERNAMES
+            if is_totp_exempt:
                 formatted_name = format_person_name(user.get('name') or user['username'])
                 session['user_id'] = user['id']
                 session['username'] = user['username']
@@ -4132,8 +4205,8 @@ def api_login():
                 session['user_name'] = formatted_name
                 session['totp_verified'] = True
                 session['totp_expires_at'] = time.time() + (12 * 3600)
-                log_action(user['id'], user['username'], "Efetuou login direto no sistema (conta isenta de 2FA).")
-                _record_user_login_event(user['id'], 'login_direto')
+                audit_msg = "Efetuou login direto no sistema (conta isenta de 2FA)."
+                login_stage = 'login_direto'
             else:
                 # ZERO-TRUST ARCHITECTURE:
                 # Store credentials in temporary stage-1 MFA hold.
@@ -4145,75 +4218,108 @@ def api_login():
                 session['pending_mfa_time'] = time.time()
                 session['totp_verified'] = False
                 session['totp_expires_at'] = 0
+                audit_msg = "Efetuou validação de senha (credenciais primárias aceitas)."
+                login_stage = 'senha'
 
-                log_action(user['id'], user['username'], "Efetuou validação de senha (credenciais primárias aceitas).")
-                _record_user_login_event(user['id'], 'senha')
+            # Capture request metadata synchronously, then run all audit/tracking/IP/email
+            # side effects asynchronously so POST /api/auth/login NEVER blocks or times out.
+            req_ip = client_ip
+            req_ua = (request.headers.get('User-Agent') or '')[:250]
+            req_cf_city = request.headers.get('CF-IPCity')
+            req_cf_region = request.headers.get('CF-Region')
+            req_cf_country = request.headers.get('CF-IPCountry')
+            user_snapshot = {
+                'id': user['id'],
+                'username': user['username'],
+                'name': user.get('name'),
+                'email': user.get('email'),
+                'tech_id': user.get('tech_id'),
+                'totp_enabled': bool(user.get('totp_enabled')) and not is_totp_exempt,
+            }
 
-            # Security IP Check & Alert
-            try:
-                client_ip = get_client_ip()
-                client_ua = (request.headers.get('User-Agent') or '')[:250]
-                conn_ip = get_db()
-                cur_ip = conn_ip.cursor()
-                
-                cur_ip.execute("SELECT COUNT(*) as count FROM user_known_ips WHERE user_id = %s;", (user['id'],))
-                count_row = cur_ip.fetchone()
-                total_ips = count_row['count'] if count_row else 0
-                
-                cur_ip.execute("SELECT id FROM user_known_ips WHERE user_id = %s AND ip_address = %s;", (user['id'], client_ip))
-                ip_exists = cur_ip.fetchone()
-                
-                if True:
-                    # Notifica sempre que houver validação de usuário/senha (inclusive se barrado pelo 2FA)
+            def _bg_post_login_tasks(u_snap, a_msg, l_stage, ip_val, ua_val, c_city, c_reg, c_cnt):
+                try:
+                    log_action(u_snap['id'], u_snap['username'], a_msg)
+                except Exception as e_la:
+                    print("[LOGIN BG AUDIT ERROR]", e_la)
+                try:
+                    _record_user_login_event(
+                        u_snap['id'],
+                        l_stage,
+                        client_ip=ip_val,
+                        client_ua=ua_val,
+                        cf_city=c_city,
+                        cf_region=c_reg,
+                        cf_country=c_cnt,
+                    )
+                except Exception as e_rec:
+                    print("[LOGIN BG RECORD ERROR]", e_rec)
+                try:
+                    conn_ip = get_db()
+                    cur_ip = conn_ip.cursor()
+                    cur_ip.execute("SELECT COUNT(*) as count FROM user_known_ips WHERE user_id = %s;", (u_snap['id'],))
+                    count_row = cur_ip.fetchone()
+                    total_ips = count_row['count'] if count_row else 0
+
+                    cur_ip.execute("SELECT id FROM user_known_ips WHERE user_id = %s AND ip_address = %s;", (u_snap['id'], ip_val))
+                    ip_exists = cur_ip.fetchone()
+
                     is_new_ip = bool(total_ips > 0 and not ip_exists)
-                    sec_email = (user.get('email') or '').strip().lower()
-                    if not sec_email and user.get('tech_id'):
-                        cur_ip.execute("SELECT email FROM technicians WHERE id = %s;", (user['tech_id'],))
+                    sec_email = (u_snap.get('email') or '').strip().lower()
+                    if not sec_email and u_snap.get('tech_id'):
+                        cur_ip.execute("SELECT email FROM technicians WHERE id = %s;", (u_snap['tech_id'],))
                         t_row = cur_ip.fetchone()
                         if t_row and t_row.get('email'):
                             sec_email = t_row['email'].strip().lower()
-                    
+
                     if sec_email and '@' in sec_email:
-                        sec_display = user.get('name') or user['username']
+                        sec_display = u_snap.get('name') or u_snap['username']
                         brt_tz = datetime.timezone(datetime.timedelta(hours=-3))
                         now_brt = datetime.datetime.now(brt_tz)
                         now_str = f"{now_brt.strftime('%H:%M')} ({now_brt.strftime('%d/%m/%Y')} - Horário de Brasília)"
                         send_security_alert_email(
                             to_email=sec_email,
                             user_display=sec_display,
-                            ip_address=client_ip,
-                            user_agent=client_ua,
+                            ip_address=ip_val,
+                            user_agent=ua_val,
                             login_time=now_str,
-                            totp_blocked=bool(user.get('totp_enabled')),
+                            totp_blocked=bool(u_snap.get('totp_enabled')),
                             is_new_ip=is_new_ip,
-                            cf_city=request.headers.get('CF-IPCity'),
-                            cf_region=request.headers.get('CF-Region'),
-                            cf_country=request.headers.get('CF-IPCountry'),
+                            cf_city=c_city,
+                            cf_region=c_reg,
+                            cf_country=c_cnt,
                         )
-                        print(f"[SECURITY ALERT DISPATCHED] Login detectado ({client_ip}) para {user['username']}. Alerta enviado para {sec_email}.")
+                        print(f"[SECURITY ALERT DISPATCHED] Login detectado ({ip_val}) para {u_snap['username']}. Alerta enviado para {sec_email}.")
 
-                # Register / update IP
-                cur_ip.execute("""
-                    INSERT INTO user_known_ips (user_id, ip_address, user_agent, last_seen)
-                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-                    ON CONFLICT (user_id, ip_address) DO UPDATE SET last_seen = CURRENT_TIMESTAMP, user_agent = EXCLUDED.user_agent;
-                """, (user['id'], client_ip, client_ua))
-                conn_ip.commit()
-                cur_ip.close()
-                conn_ip.close()
-            except Exception as ip_err:
-                print("[LOGIN IP TRACKING ERROR]", ip_err)
+                    cur_ip.execute("""
+                        INSERT INTO user_known_ips (user_id, ip_address, user_agent, last_seen)
+                        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id, ip_address) DO UPDATE SET last_seen = CURRENT_TIMESTAMP, user_agent = EXCLUDED.user_agent;
+                    """, (u_snap['id'], ip_val, ua_val))
+                    conn_ip.commit()
+                    cur_ip.close()
+                    conn_ip.close()
+                except Exception as ip_err:
+                    print("[LOGIN IP TRACKING ERROR]", ip_err)
+
+            threading.Thread(
+                target=_bg_post_login_tasks,
+                args=(user_snapshot, audit_msg, login_stage, req_ip, req_ua, req_cf_city, req_cf_region, req_cf_country),
+                daemon=True,
+                name="Login-PostTasks",
+            ).start()
+
             user_payload = get_user_info_dict(user['id']) or {
                 "id": user['id'],
                 "username": user['username'],
                 "role": user['role'],
                 "company": get_user_company(user['id']),
                 "needs_email": True,
-                "totp_enabled": bool(user.get('totp_enabled')),
-                "totp_verified": False,
-                "totp_expires_at": 0,
-                "requires_totp_setup": not bool(user.get('totp_enabled')),
-                "requires_totp_verify": bool(user.get('totp_enabled'))
+                "totp_enabled": False if is_totp_exempt else bool(user.get('totp_enabled')),
+                "totp_verified": True if is_totp_exempt else False,
+                "totp_expires_at": int(time.time() + (12 * 3600)) if is_totp_exempt else 0,
+                "requires_totp_setup": False if is_totp_exempt else (not bool(user.get('totp_enabled'))),
+                "requires_totp_verify": False if is_totp_exempt else bool(user.get('totp_enabled'))
             }
             return jsonify({"user": user_payload})
 
@@ -4752,7 +4858,6 @@ def api_update_my_profile():
 
     if theme_pref and not email and not phone and not name and not new_password:
         try:
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(10) DEFAULT 'dark';")
             cur.execute("UPDATE users SET theme_preference = %s WHERE id = %s;", (theme_pref, user_id))
             conn.commit()
         except Exception:
@@ -4785,11 +4890,6 @@ def api_update_my_profile():
             conn.close()
             return jsonify({"error": "A senha atual informada está incorreta."}), 400
         hashed_pw = generate_password_hash(new_password)
-
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(10) DEFAULT 'dark';")
-    except Exception:
-        conn.rollback()
 
     if hashed_pw:
         cur.execute("""
